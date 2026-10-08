@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="assets/images/logo.png" alt="Handelha Logo" width="150" style="border-radius: 20%; margin-bottom: 20px;"/>
+ 
   
-  <h1>هندلها | Handelha 🌿</h1>
+  <h1>هندلها | Handelha </h1>
   <p><b>إنتاجية هادئة وذكية (Calm Intelligent Productivity)</b></p>
 
   <p>
@@ -93,13 +93,6 @@ flutter run
 
 ---
 
-## 📱 جولة في التطبيق (Screenshots)
-
-*(يمكنك إضافة مسارات الصور هنا لعرض لقطات من التطبيق)*
-
-| الشاشة الرئيسية (Home) | مساحة المشروع (Project) | المساعد الذكي (Assistant) |
-| :---: | :---: | :---: |
-| <img src="assets/images/screenshots/home.png" width="250"/> | <img src="assets/images/screenshots/project.png" width="250"/> | <img src="assets/images/screenshots/assistant.png" width="250"/> |
 
 ---
 

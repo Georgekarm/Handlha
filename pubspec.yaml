@@ -1,0 +1,59 @@
+name: sekretairak
+description: "هندلها - خطوة هادئة لتنظيم يومك ومشاريعك"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^2.0.0
+  flutter_localizations:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^3.4.3
+  riverpod_annotation: ^4.0.7
+
+  # Navigation
+  go_router: ^18.0.2
+
+  # UI & Fonts
+  google_fonts: ^9.0.0
+
+  # Serialization
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.12.0
+
+  # Localization
+  intl: ^0.20.3
+
+  # Local Database (lightweight, no native issues)
+  shared_preferences: ^2.3.3
+
+  # Secure Storage
+  flutter_secure_storage: ^9.2.2
+
+  # UUID
+  uuid: ^4.5.1
+
+  # Equatable
+  equatable: ^2.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.16.1
+  freezed: ^4.0.2
+  json_serializable: ^6.14.1
+  riverpod_generator: ^4.0.9
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --color-background: #F7F8F6;
+    --color-surface: #FFFFFF;
+    --color-surface-soft: #EEF3F0;
+    --color-surface-muted: #E4ECE8;
+    --color-primary: #2F6F68;
+    --color-primary-strong: #245650;
+    --color-primary-soft: #D9ECE8;
+    --color-secondary: #7773A1;
+    --color-secondary-soft: #E9E8F2;
+    --color-accent: #C9826C;
+    --color-accent-soft: #F3E1DB;
+    --color-text-primary: #1E2D2B;
+    --color-text-secondary: #647370;
+    --color-text-muted: #99A6A2;
+    --color-border: #DDE7E2;
+    --color-divider: #EAF0ED;
+  }
+
+  .dark {
+    --color-background: #101A18;
+    --color-surface: #182724;
+    --color-surface-soft: #203530;
+    --color-surface-muted: #29423B;
+    --color-primary: #76BCAF;
+    --color-primary-strong: #9DD2C5;
+    --color-primary-soft: #244F48;
+    --color-secondary: #A9A7CD;
+    --color-secondary-soft: #3D3B5C;
+    --color-accent: #D39A83;
+    --color-accent-soft: #563A32;
+    --color-text-primary: #EFF6F2;
+    --color-text-secondary: #B7C9C2;
+    --color-text-muted: #81948E;
+    --color-border: #354D46;
+    --color-divider: #2A403A;
+  }
+
+  body {
+    font-family: 'Cairo', 'Alexandria', system-ui, -apple-system, sans-serif;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(47, 111, 104, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(47, 111, 104, 0.4);
+}

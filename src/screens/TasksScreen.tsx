@@ -28,7 +28,6 @@ export const TasksScreen: React.FC = () => {
     toggleTaskCompletion,
     deleteTask,
     setIsQuickAddOpen,
-    setIsSmartAddOpen,
     setActiveFocusTask,
     navigate,
   } = useApp();
@@ -94,24 +93,13 @@ export const TasksScreen: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsSmartAddOpen(true)}
-            className="p-2.5 rounded-2xl bg-[#EAF5F2] dark:bg-[#203D37] text-[#2F6F68] dark:text-[#8AD3C4] border border-[#CCE2DC] dark:border-[#2C524A] hover:bg-[#D9ECE8] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold"
-            title="إضافة ذكية"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>ذكية</span>
-          </button>
-
-          <button
-            onClick={() => setIsQuickAddOpen(true)}
-            className="p-2.5 rounded-2xl bg-[#2F6F68] text-white hover:bg-[#245650] shadow-sm transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>مهمة جديدة</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setIsQuickAddOpen(true)}
+          className="p-2.5 px-4 rounded-2xl bg-[#2F6F68] text-white hover:bg-[#245650] shadow-sm transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold active:scale-95"
+        >
+          <Plus className="w-4 h-4" />
+          <span>إضافة مهمة</span>
+        </button>
       </header>
 
       {/* Search Input */}
@@ -176,7 +164,7 @@ export const TasksScreen: React.FC = () => {
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#2F6F68] text-white text-xs font-bold hover:bg-[#245650] transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              أضف مهمة
+              <span>إضافة مهمة جديدة</span>
             </button>
           </div>
         ) : (

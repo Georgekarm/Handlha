@@ -17,6 +17,15 @@ import {
   generateEgyptianVoiceResponse,
 } from '../utils/egyptianAi';
 import { formatEgyptianFullDeadline } from '../utils/taskParser';
+import {
+  createDeadlineApproachingNotification,
+  createTaskCompletedNotification,
+  createOverdueNotification,
+  createFocusSessionStartNotification,
+  createFocusSessionFinishNotification,
+  createBreakFinishNotification,
+  evaluateSmartNotifications,
+} from '../utils/smartNotifications';
 
 interface AppContextType {
   user: AppUser | null;
@@ -54,7 +63,7 @@ interface AppContextType {
 
   // Projects
   projects: Project[];
-  createProject: (params: { title: string; description?: string; accentColor?: string }) => Project;
+  createProject: (params: { title: string; description?: string; accentColor?: string; subtasks?: string[] }) => Project;
   updateProject: (id: string, updates: Partial<Project>) => void;
 
   // Notifications
@@ -63,6 +72,20 @@ interface AppContextType {
   setQuietHoursEnabled: (enabled: boolean) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
+  addNotification: (item: NotificationItem) => void;
+  activeToast: NotificationItem | null;
+  dismissToast: () => void;
+  triggerFocusStartNotification: (taskTitle: string) => void;
+  triggerFocusFinishNotification: (taskTitle: string, minutes?: number) => void;
+  triggerBreakFinishNotification: () => void;
+  triggerDeadlineAlert: (taskId: string) => void;
+  triggerOverdueAlert: (taskId: string) => void;
+  checkAndGenerateSmartNotifications: () => void;
+
+  // Focus Tracking & Statistics
+  focusSessionsCount: number;
+  totalFocusMinutes: number;
+  completeFocusSession: (minutes?: number, taskTitle?: string) => void;
 
   // Chat
   chatMessages: ChatMessageItem[];
@@ -71,6 +94,8 @@ interface AppContextType {
   confirmProposal: (messageId: string, proposalId?: string) => void;
 
   // Sheets & Modals
+  isAddChoiceOpen: boolean;
+  setIsAddChoiceOpen: (open: boolean) => void;
   isQuickAddOpen: boolean;
   setIsQuickAddOpen: (open: boolean) => void;
   isSmartAddOpen: boolean;
@@ -89,12 +114,13 @@ const initialTasks: Task[] = [
   {
     id: 't-1',
     userId: 'u-1',
+    projectId: '1',
     title: 'مراجعة تدفق المهام وتجربة المستخدم',
     description: 'التأكد من سلاسة الإدخال السريع بدون لود ذهني',
     status: 'planned',
     priority: 'urgent',
     estimatedDurationMinutes: 20,
-    timeSlot: '11:00 ص - 12:00 م',
+    timeSlot: 'اليوم 12:00 م',
     energyLevel: 'high',
     source: 'manual',
     createdAt: new Date().toISOString(),
@@ -103,12 +129,13 @@ const initialTasks: Task[] = [
   {
     id: 't-2',
     userId: 'u-1',
+    projectId: '1',
     title: 'إعداد جلسة التركيز التفاعلية',
     description: 'ضبط مؤقت الـ 25 دقيقة وحلقات الإنجاز',
     status: 'planned',
     priority: 'high',
     estimatedDurationMinutes: 30,
-    timeSlot: '12:30 م - 1:00 م',
+    timeSlot: 'اليوم 01:00 م',
     energyLevel: 'medium',
     source: 'manual',
     createdAt: new Date().toISOString(),
@@ -117,11 +144,13 @@ const initialTasks: Task[] = [
   {
     id: 't-3',
     userId: 'u-1',
+    projectId: '1',
     title: 'تحديث نظام الألوان الهادئ لمساحة العمل',
     description: 'اعتماد لوحة Calm Intelligent Productivity',
     status: 'completed',
     priority: 'low',
     estimatedDurationMinutes: 15,
+    actualDurationMinutes: 12,
     timeSlot: '9:30 ص - 10:00 ص',
     energyLevel: 'low',
     source: 'manual',
@@ -131,11 +160,13 @@ const initialTasks: Task[] = [
   {
     id: 't-4',
     userId: 'u-1',
+    projectId: '1',
     title: 'ضبط تدفق الشات والمقترحات المنظمة',
     description: 'تحويل الأفكار إلى خطوات تنفيذية جاهزة للتثبيت',
     status: 'completed',
     priority: 'medium',
     estimatedDurationMinutes: 45,
+    actualDurationMinutes: 40,
     timeSlot: '10:00 ص - 10:45 ص',
     energyLevel: 'medium',
     source: 'chat',
@@ -150,7 +181,53 @@ const initialTasks: Task[] = [
     status: 'inbox',
     priority: 'medium',
     estimatedDurationMinutes: 25,
+    timeSlot: 'أمس 04:00 م (فات الميعاد)',
     energyLevel: 'low',
+    source: 'manual',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 't-6',
+    userId: 'u-1',
+    title: 'تحديد موعد الفحص الطبي السنوي',
+    description: 'مكالمة هادئة لتأكيد الحجز بدون تأجيل',
+    status: 'planned',
+    priority: 'low',
+    estimatedDurationMinutes: 15,
+    timeSlot: 'غداً 11:00 ص',
+    energyLevel: 'low',
+    source: 'manual',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 't-7',
+    userId: 'u-1',
+    projectId: '2',
+    title: 'فرز الملاحظات الورقية وتنظيمها',
+    description: 'ترتيب أوراق المكتب والتخلص من المشتتات',
+    status: 'completed',
+    priority: 'medium',
+    estimatedDurationMinutes: 25,
+    actualDurationMinutes: 20,
+    timeSlot: 'صباح اليوم',
+    energyLevel: 'medium',
+    source: 'manual',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 't-8',
+    userId: 'u-1',
+    projectId: '2',
+    title: 'إعداد إضاءة مريحة للقراءة والتركيز',
+    description: 'تجهيز اللمبة الدافئة وضبط زاوية المكتب',
+    status: 'planned',
+    priority: 'high',
+    estimatedDurationMinutes: 20,
+    timeSlot: 'اليوم 05:00 م',
+    energyLevel: 'medium',
     source: 'manual',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -164,7 +241,7 @@ const initialProjects: Project[] = [
     title: 'إطلاق نسخة هندلها',
     description: 'نشر نسخة تجريبية قابلة للاستخدام لتنظيم المهام والمشاريع بهدوء.',
     status: 'active',
-    progressPercent: 0.65,
+    progressPercent: 0.50,
     nextStepTitle: 'مراجعة تدفق المهام',
     targetDate: '2026-10-31',
     taskIds: ['t-1', 't-2', 't-3', 't-4'],
@@ -183,14 +260,14 @@ const initialProjects: Project[] = [
     title: 'تنظيم مساحة العمل',
     description: 'تهيئة مكان مريح للتركيز والإنجاز والتخلص من المشتتات.',
     status: 'active',
-    progressPercent: 0.40,
-    nextStepTitle: 'ترتيب أوراق المشاريع المؤجلة',
+    progressPercent: 0.50,
+    nextStepTitle: 'إعداد إضاءة مريحة للقراءة',
     targetDate: '2026-10-25',
-    taskIds: [],
+    taskIds: ['t-7', 't-8'],
     subtasks: [
-      'فرز الملاحظات الورقية',
-      'تنظيم الملفات الرقمية في مجلدات هادئة',
+      'فرز الملاحظات الورقية (منجز)',
       'إعداد إضاءة مريحة للقراءة',
+      'تنظيم الملفات الرقمية في مجلدات هادئة',
     ],
     accentColor: '#5683A5',
     createdAt: new Date().toISOString(),
@@ -237,35 +314,52 @@ const initialProjects: Project[] = [
 const initialNotifications: NotificationItem[] = [
   {
     id: '1',
-    title: 'خطوة صغيرة جاية في السكة',
-    body: 'فاضل نص ساعة على ميعاد مراجعة المهام.. جاهز تهندلها على مهلك وبكل روقان؟',
+    title: 'ديدلاين مهمة بيقرّب ⏳',
+    body: 'يا بطل، ديدلاين مهمة "مراجعة تدفق المهام وتجربة المستخدم" بيقرّب خلاص (اليوم 12:00 م).. يلا تكة ونخلّصها سوا ونشيل همّها!',
     category: 'reminder',
-    time: 'منذ 20 دقيقة',
+    type: 'deadline',
+    time: 'الآن',
     isRead: false,
+    taskId: 't-1',
+    projectId: '1',
+    actionLabel: 'ابدأ الشغل عليها دلوقتي',
+    actionUrl: '/focus-session',
   },
   {
     id: '2',
-    title: 'الله ينور عليك يا فنان ✨',
-    body: 'عاش والله! خلّصت مهمتين أساسيتين في أول النهار.. اشربلك شاي ولا قهوة وروّق 5 دقايق تستاهلهم!',
+    title: 'عاش يا فنان.. تسلم إيدك! ✨',
+    body: 'قفلت مهمة تقيلة "تحديث نظام الألوان الهادئ لمساحة العمل" في وقت قياسي ومظبوط.. مجهود يستاهل التحية والله! خدلك بوق ماية وروّق.',
     category: 'encouragement',
+    type: 'achievement',
     time: 'منذ ساعتين',
     isRead: true,
+    taskId: 't-3',
+    projectId: '1',
+    actionLabel: 'شوف تقدمك في التحليلات',
+    actionUrl: '/analytics',
   },
   {
     id: '3',
-    title: 'جلسة تركيز على الرايق',
-    body: 'دلوقتي وقت رايق جداً تاخدلك جلسة بومودورو 25 دقيقة وتنجز اللي وراك بهدوء.',
+    title: 'جلسة تركيز على الرايق 🎯',
+    body: 'دلوقتي وقت رايق جداً تاخدلك جلسة بومودورو 25 دقيقة صافية وتنجز خطوة مهمة بدون أي مشتتات.',
     category: 'focus',
+    type: 'focus_start',
     time: 'منذ 4 ساعات',
     isRead: true,
+    actionLabel: 'الذهاب لمؤقت التركيز',
+    actionUrl: '/focus-session',
   },
   {
     id: '4',
-    title: 'مهمة محتاجة إعادة تظبيط',
-    body: 'ولا تشيل هم خالص، هنظبط ميعاد مهمة "مكالمة المهندس" على قد وقتك ومزاجك.',
+    title: 'ولا تشيل هم خالص.. هنظبطها سوا 💪',
+    body: 'مهمة "تجهيز قائمة مشتريات للمكتب" معادها فات من شوية.. متقلقش كلنا بنسهى، خد نَفَس ويلا نحددلها ميعاد أو ننجزها سوا دلوقتي!',
     category: 'important',
-    time: 'البارحة',
+    type: 'overdue',
+    time: 'أمس',
     isRead: true,
+    taskId: 't-5',
+    actionLabel: 'هندل المهمة دي دلوقتي',
+    actionUrl: '/tasks',
   },
 ];
 
@@ -351,10 +445,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
+  const [activeToast, setActiveToast] = useState<NotificationItem | null>(null);
   const [quietHoursEnabled, setQuietHoursEnabled] = useState<boolean>(true);
   const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>(initialMessages);
+  const [focusSessionsCount, setFocusSessionsCount] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('handelha_focus_count');
+      if (saved) return parseInt(saved, 10) || 7;
+    } catch {}
+    return 7;
+  });
+
+  const [totalFocusMinutes, setTotalFocusMinutes] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('handelha_focus_minutes');
+      if (saved) return parseInt(saved, 10) || 175;
+    } catch {}
+    return 175;
+  });
+
+  const completeFocusSession = (minutes: number = 25, taskTitle?: string) => {
+    setFocusSessionsCount((prev) => {
+      const next = prev + 1;
+      try {
+        localStorage.setItem('handelha_focus_count', next.toString());
+      } catch {}
+      return next;
+    });
+
+    setTotalFocusMinutes((prev) => {
+      const next = prev + minutes;
+      try {
+        localStorage.setItem('handelha_focus_minutes', next.toString());
+      } catch {}
+      return next;
+    });
+
+    if (taskTitle) {
+      triggerFocusFinishNotification(taskTitle, minutes);
+    }
+  };
+
+  // Auto-dismiss activeToast after 6 seconds
+  useEffect(() => {
+    if (activeToast) {
+      const timer = setTimeout(() => {
+        setActiveToast(null);
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeToast]);
+
+  const dismissToast = () => setActiveToast(null);
+
+  const addNotification = (item: NotificationItem) => {
+    setNotifications(prev => [item, ...prev]);
+    setActiveToast(item);
+  };
+
+  const triggerFocusStartNotification = (taskTitle: string) => {
+    const notif = createFocusSessionStartNotification(taskTitle);
+    addNotification(notif);
+  };
+
+  const triggerFocusFinishNotification = (taskTitle: string, minutes: number = 25) => {
+    const notif = createFocusSessionFinishNotification(taskTitle, minutes);
+    addNotification(notif);
+  };
+
+  const triggerBreakFinishNotification = () => {
+    const notif = createBreakFinishNotification();
+    addNotification(notif);
+  };
+
+  const triggerDeadlineAlert = (taskId: string) => {
+    const target = tasks.find(t => t.id === taskId);
+    if (target) {
+      const notif = createDeadlineApproachingNotification(target);
+      addNotification(notif);
+    }
+  };
+
+  const triggerOverdueAlert = (taskId: string) => {
+    const target = tasks.find(t => t.id === taskId);
+    if (target) {
+      const notif = createOverdueNotification(target);
+      addNotification(notif);
+    }
+  };
+
+  const checkAndGenerateSmartNotifications = () => {
+    const generated = evaluateSmartNotifications(tasks, notifications);
+    if (generated.length > 0) {
+      setNotifications(prev => [...generated, ...prev]);
+      setActiveToast(generated[0]);
+    }
+  };
 
   // Modals
+  const [isAddChoiceOpen, setIsAddChoiceOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isSmartAddOpen, setIsSmartAddOpen] = useState(false);
   const [isAiBreakdownOpen, setIsAiBreakdownOpen] = useState(false);
@@ -475,6 +664,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
     setTasks(prev => [newTask, ...prev]);
+
+    if (projectId) {
+      setProjects(prev =>
+        prev.map(p => {
+          if (p.id === projectId) {
+            const currentSubtasks = p.subtasks || [];
+            const updatedSubtasks = currentSubtasks.includes(newTask.title)
+              ? currentSubtasks
+              : [...currentSubtasks, newTask.title];
+            return {
+              ...p,
+              taskIds: [...(p.taskIds || []), newTask.id],
+              subtasks: updatedSubtasks,
+              nextStepTitle: p.nextStepTitle || newTask.title,
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return p;
+        })
+      );
+      if (activeProjectWorkspace?.id === projectId) {
+        setActiveProjectWorkspace(prev => {
+          if (!prev) return null;
+          const currentSubtasks = prev.subtasks || [];
+          const updatedSubtasks = currentSubtasks.includes(newTask.title)
+            ? currentSubtasks
+            : [...currentSubtasks, newTask.title];
+          return {
+            ...prev,
+            taskIds: [...(prev.taskIds || []), newTask.id],
+            subtasks: updatedSubtasks,
+            nextStepTitle: prev.nextStepTitle || newTask.title,
+          };
+        });
+      }
+    }
+
+    if (priority === 'urgent') {
+      const deadlineNotif = createDeadlineApproachingNotification(newTask);
+      setNotifications(prev => [deadlineNotif, ...prev]);
+      setActiveToast(deadlineNotif);
+    }
+
     return newTask;
   };
 
@@ -483,9 +715,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map(t => {
         if (t.id === taskId) {
           const isDone = t.status === 'completed';
+          const nextStatus = isDone ? 'planned' : 'completed';
+
+          if (!isDone) {
+            // Task just completed! Send smart Egyptian achievement encouragement
+            const notif = createTaskCompletedNotification(t);
+            setNotifications(nPrev => [notif, ...nPrev]);
+            setActiveToast(notif);
+          }
+
           return {
             ...t,
-            status: isDone ? 'planned' : 'completed',
+            status: nextStatus,
             updatedAt: new Date().toISOString(),
           };
         }
@@ -517,10 +758,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     title,
     description,
     accentColor = '#2F6F68',
+    subtasks = [],
   }: {
     title: string;
     description?: string;
     accentColor?: string;
+    subtasks?: string[];
   }): Project => {
     const newProj: Project = {
       id: `p-${Date.now()}`,
@@ -529,9 +772,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       description,
       status: 'active',
       progressPercent: 0,
-      nextStepTitle: undefined,
+      nextStepTitle: subtasks.length > 0 ? subtasks[0] : undefined,
       taskIds: [],
-      subtasks: [],
+      subtasks,
       accentColor,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -826,10 +1069,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setQuietHoursEnabled,
         markNotificationRead,
         markAllNotificationsRead,
+        addNotification,
+        activeToast,
+        dismissToast,
+        triggerFocusStartNotification,
+        triggerFocusFinishNotification,
+        triggerBreakFinishNotification,
+        triggerDeadlineAlert,
+        triggerOverdueAlert,
+        checkAndGenerateSmartNotifications,
         chatMessages,
         sendChatMessage,
         sendVoiceMessage,
         confirmProposal,
+        isAddChoiceOpen,
+        setIsAddChoiceOpen,
         isQuickAddOpen,
         setIsQuickAddOpen,
         isSmartAddOpen,
@@ -842,6 +1096,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveProjectWorkspace,
         activeFocusTask,
         setActiveFocusTask,
+        focusSessionsCount,
+        totalFocusMinutes,
+        completeFocusSession,
       }}
     >
       {children}

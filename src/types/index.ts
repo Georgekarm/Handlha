@@ -61,6 +61,8 @@ export interface AppUser {
 
 export type NotificationCategory = 'reminder' | 'encouragement' | 'focus' | 'important' | 'summary';
 
+export type NotificationType = 'deadline' | 'achievement' | 'overdue' | 'focus_start' | 'focus_finish' | 'break' | 'general';
+
 export interface NotificationItem {
   id: string;
   title: string;
@@ -68,6 +70,12 @@ export interface NotificationItem {
   category: NotificationCategory;
   time: string;
   isRead: boolean;
+  taskId?: string;
+  projectId?: string;
+  actionUrl?: string;
+  actionLabel?: string;
+  type?: NotificationType;
+  createdAt?: string;
 }
 
 export interface ProposalCard {

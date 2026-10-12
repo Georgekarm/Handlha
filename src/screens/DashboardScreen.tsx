@@ -1,22 +1,16 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { HandelhaLogo } from '../components/HandelhaBrand';
-import { DailyGoalTracker } from '../components/DailyGoalTracker';
 import { CelebrationCheckbox } from '../components/CelebrationCheckbox';
 import {
   Bell,
-  Settings,
-  Sparkles,
   Play,
-  CheckCircle2,
-  Check,
-  Clock,
-  ArrowLeft,
   FolderOpen,
   Calendar,
-  Layers,
   ChevronLeft,
+  Plus,
   Pencil,
+  BarChart3,
 } from 'lucide-react';
 import { Task, TaskPriority } from '../types';
 import { formatEgyptianFullDeadline } from '../utils/taskParser';
@@ -31,11 +25,10 @@ export const DashboardScreen: React.FC = () => {
     notifications,
     toggleTaskCompletion,
     navigate,
-    setIsSmartAddOpen,
-    setIsAiBreakdownOpen,
+    setIsQuickAddOpen,
+    setIsNewProjectOpen,
     setActiveFocusTask,
     setActiveProjectWorkspace,
-    isDarkMode,
   } = useApp();
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -44,6 +37,10 @@ export const DashboardScreen: React.FC = () => {
   const completedToday = todayTasks.filter(t => t.status === 'completed').length;
   const progressRatio = todayTasks.length > 0 ? completedToday / todayTasks.length : 0;
   const progressPercent = Math.round(progressRatio * 100);
+
+  // Dynamic time-based greeting
+  const currentHour = new Date().getHours();
+  const timeGreeting = currentHour >= 5 && currentHour < 12 ? 'صباح النور' : 'مساء الخير';
 
   // Focus candidate task (first uncompleted task)
   const focusTask = todayTasks.find(t => t.status !== 'completed');
@@ -73,12 +70,14 @@ export const DashboardScreen: React.FC = () => {
   };
 
   return (
-    <div className="pb-28 pt-4 px-4 sm:px-6 space-y-6">
+    <div className="pb-28 pt-4 px-4 sm:px-6 space-y-6 max-w-xl mx-auto">
       {/* Top Header */}
-      <header className="flex items-center justify-between pt-2">
+      <header className="flex items-center justify-between pt-1">
         <HandelhaLogo subtitle="خطوات هادية، وإنجاز أكيد" />
 
         <div className="flex items-center gap-2">
+
+
           {/* Notifications Button */}
           <button
             onClick={() => navigate('/notifications')}
@@ -91,13 +90,13 @@ export const DashboardScreen: React.FC = () => {
             )}
           </button>
 
-          {/* Settings / Profile Button */}
+          {/* Profile / Settings Button */}
           <button
             onClick={() => navigate('/settings')}
-            className="p-2.5 rounded-2xl bg-white dark:bg-[#1A2825] border border-[#E3ECE8] dark:border-[#2C403B] text-[#556965] dark:text-[#AFC1BC] hover:text-[#245650] dark:hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+            className="p-2 rounded-2xl bg-white dark:bg-[#1A2825] border border-[#E3ECE8] dark:border-[#2C403B] text-[#556965] dark:text-[#AFC1BC] hover:text-[#245650] dark:hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
             title="الإعدادات"
           >
-            <div className="w-5 h-5 rounded-full bg-[#D9ECE8] dark:bg-[#254B44] text-[#2F6F68] dark:text-[#8FD0C3] flex items-center justify-center text-xs font-bold">
+            <div className="w-6 h-6 rounded-full bg-[#D9ECE8] dark:bg-[#254B44] text-[#2F6F68] dark:text-[#8FD0C3] flex items-center justify-center text-xs font-bold">
               {user?.displayName ? user.displayName.charAt(0) : 'أ'}
             </div>
           </button>
@@ -106,7 +105,7 @@ export const DashboardScreen: React.FC = () => {
 
       {/* Calm Greeting Card */}
       <div className="relative overflow-hidden rounded-3xl bg-linear-to-l from-[#2F6F68] to-[#245650] text-white p-6 shadow-sm">
-        {/* Soft background shape */}
+        {/* Soft background glow */}
         <div className="absolute -top-12 -left-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
         <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-[#4E9B77]/20 rounded-full blur-xl pointer-events-none" />
 
@@ -123,7 +122,7 @@ export const DashboardScreen: React.FC = () => {
 
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white mb-1">
-              صباح النور، {user?.displayName || 'صديقي'} ✨
+              {timeGreeting}، {user?.displayName || 'صديقي'} ✨
             </h1>
             <p className="text-sm text-[#D7ECE7] leading-relaxed">
               خطة اليوم هادية وموزونة. خطوة واحدة في كل مرة بتفرق في هدوء بالك وإنجازك.
@@ -142,47 +141,26 @@ export const DashboardScreen: React.FC = () => {
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
+
+            {/* Quick Analytics Link */}
+            <div className="pt-2 flex items-center justify-between">
+              <button
+                onClick={() => navigate('/analytics')}
+                className="text-[11px] font-bold text-[#E1F3EE] hover:text-white flex items-center gap-1.5 cursor-pointer hover:underline"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>عرض تقرير المتابعة، تقدم المشاريع والوقت المتبقي</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Smart Quick Triggers */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => setIsSmartAddOpen(true)}
-          className="flex items-center gap-3 p-3.5 rounded-2xl bg-white dark:bg-[#1A2825] border border-[#DDE7E2] dark:border-[#2A3E39] hover:border-[#2F6F68] dark:hover:border-[#76BCAF] transition-all text-right shadow-xs hover:shadow-md cursor-pointer group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-[#E8F4F1] dark:bg-[#203D37] text-[#2F6F68] dark:text-[#8AD3C4] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div>
-            <h4 className="text-xs font-bold text-[#1E2D2B] dark:text-white">إضافة بالذكاء</h4>
-            <p className="text-[11px] text-[#6A7E7A] dark:text-[#9FB3AE]">بالعامية أو الصوت</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setIsAiBreakdownOpen(true)}
-          className="flex items-center gap-3 p-3.5 rounded-2xl bg-white dark:bg-[#1A2825] border border-[#DDE7E2] dark:border-[#2A3E39] hover:border-[#2F6F68] dark:hover:border-[#76BCAF] transition-all text-right shadow-xs hover:shadow-md cursor-pointer group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-[#F4EFE6] dark:bg-[#342D22] text-[#9E6F28] dark:text-[#E2BD82] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-            <Layers className="w-5 h-5" />
-          </div>
-          <div>
-            <h4 className="text-xs font-bold text-[#1E2D2B] dark:text-white">تقسيم مشروع</h4>
-            <p className="text-[11px] text-[#6A7E7A] dark:text-[#9FB3AE]">خطوات واضحة</p>
-          </div>
-        </button>
-      </div>
-
-      {/* Daily Goal & Milestones Tracker */}
-      <DailyGoalTracker />
-
       {/* The Next Calm Focus Step */}
       {focusTask && (
-        <section className="space-y-3">
+        <section className="space-y-2.5">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-[#4B635F] dark:text-[#A7BCB7] flex items-center gap-1.5">
+            <h2 className="text-xs font-bold text-[#4B635F] dark:text-[#A7BCB7] flex items-center gap-1.5 uppercase tracking-wide">
               <span className="w-2 h-2 rounded-full bg-[#2F6F68] dark:bg-[#77BCB0] animate-pulse" />
               الخطوة التالية الموصى بها
             </h2>
@@ -197,7 +175,7 @@ export const DashboardScreen: React.FC = () => {
 
           <div className="p-4 rounded-3xl bg-white dark:bg-[#1A2825] border border-[#DFEAE5] dark:border-[#2A3E39] shadow-xs hover:border-[#2F6F68]/40 transition-all">
             <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1.5 flex-1">
+              <div className="space-y-1.5 flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${getPriorityBadge(focusTask.priority).bg}`}>
                     {getPriorityBadge(focusTask.priority).label}
@@ -210,11 +188,11 @@ export const DashboardScreen: React.FC = () => {
                   )}
                 </div>
 
-                <h3 className="text-base font-bold text-[#1E2D2B] dark:text-white">
+                <h3 className="text-base font-bold text-[#1E2D2B] dark:text-white truncate">
                   {focusTask.title}
                 </h3>
                 {focusTask.description && (
-                  <p className="text-xs text-[#627773] dark:text-[#98ADA7] leading-relaxed">
+                  <p className="text-xs text-[#627773] dark:text-[#98ADA7] leading-relaxed line-clamp-2">
                     {focusTask.description}
                   </p>
                 )}
@@ -244,92 +222,120 @@ export const DashboardScreen: React.FC = () => {
             </span>
           </div>
 
-          <button
-            onClick={() => navigate('/tasks')}
-            className="text-xs font-bold text-[#2F6F68] dark:text-[#76BCAF] hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            عرض الكل
-            <ChevronLeft className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsQuickAddOpen(true)}
+              className="text-xs font-bold text-[#2F6F68] dark:text-[#76BCAF] hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>مهمة جديدة</span>
+            </button>
+            <span className="text-[#B9CAC4] dark:text-[#38514A]">•</span>
+            <button
+              onClick={() => navigate('/tasks')}
+              className="text-xs font-bold text-[#2F6F68] dark:text-[#76BCAF] hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              عرض الكل
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2.5">
-          {todayTasks.slice(0, 4).map((task) => {
-            const isCompleted = task.status === 'completed';
-            const badge = getPriorityBadge(task.priority);
-
-            return (
-              <div
-                key={task.id}
-                className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${
-                  isCompleted
-                    ? 'bg-[#F2F6F4] dark:bg-[#15221F] border-[#E1ECE6] dark:border-[#22332F] opacity-75'
-                    : 'bg-white dark:bg-[#1A2825] border-[#DFE9E4] dark:border-[#283C37] shadow-2xs hover:border-[#2F6F68]/30'
-                }`}
+          {todayTasks.length === 0 ? (
+            <div className="p-6 rounded-3xl bg-white dark:bg-[#1A2825] border border-dashed border-[#CFDDD7] dark:border-[#2B403A] text-center space-y-2">
+              <p className="text-sm font-semibold text-[#3A534E] dark:text-[#A7BCB7]">
+                مفيش مهام مجدولة لليوم حتى الآن 🌿
+              </p>
+              <p className="text-xs text-[#708580] dark:text-[#8D9F9B]">
+                يومك رايق وهادي، تقدر تبدأ بإضافة مهمة جديدة وتحديد خواصها بكل هدوء
+              </p>
+              <button
+                onClick={() => setIsQuickAddOpen(true)}
+                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#235D55] text-white text-xs font-bold hover:bg-[#1C4B45] transition-all cursor-pointer shadow-xs"
               >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <CelebrationCheckbox
-                    checked={isCompleted}
-                    onChange={() => toggleTaskCompletion(task.id)}
-                    size="md"
-                    celebrationIntensity="subtle"
-                    ariaLabel={task.title}
-                  />
+                <Plus className="w-4 h-4" />
+                <span>إضافة مهمة جديدة</span>
+              </button>
+            </div>
+          ) : (
+            todayTasks.slice(0, 4).map((task) => {
+              const isCompleted = task.status === 'completed';
+              const badge = getPriorityBadge(task.priority);
 
-                  <div
-                    className="min-w-0 flex-1 cursor-pointer select-none"
-                    onClick={() => setEditingTask(task)}
-                    title="انقر لتعديل المهمة"
-                  >
-                    <p
-                      className={`text-sm font-semibold truncate hover:text-[#2F6F68] transition-colors ${
-                        isCompleted
-                          ? 'line-through text-[#798D88] dark:text-[#7C918C]'
-                          : 'text-[#1E2D2B] dark:text-[#E7F0ED]'
-                      }`}
+              return (
+                <div
+                  key={task.id}
+                  className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${
+                    isCompleted
+                      ? 'bg-[#F2F6F4] dark:bg-[#15221F] border-[#E1ECE6] dark:border-[#22332F] opacity-75'
+                      : 'bg-white dark:bg-[#1A2825] border-[#DFE9E4] dark:border-[#283C37] shadow-2xs hover:border-[#2F6F68]/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <CelebrationCheckbox
+                      checked={isCompleted}
+                      onChange={() => toggleTaskCompletion(task.id)}
+                      size="md"
+                      celebrationIntensity="subtle"
+                      ariaLabel={task.title}
+                    />
+
+                    <div
+                      className="min-w-0 flex-1 cursor-pointer select-none"
+                      onClick={() => setEditingTask(task)}
+                      title="انقر لتعديل المهمة"
                     >
-                      {task.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#697E7A] dark:text-[#9AB1AC]">
-                      {(task.timeSlot || task.dueAt) && (
-                        <span className="flex items-center gap-1 text-[#8A5A1B] dark:text-[#E8BD7C] font-semibold">
-                          <Calendar className="w-3 h-3" />
-                          <span>{task.timeSlot || formatEgyptianFullDeadline(task.dueAt)}</span>
-                        </span>
-                      )}
-                      <span>• {task.estimatedDurationMinutes || 25} دقيقة</span>
+                      <p
+                        className={`text-sm font-semibold truncate hover:text-[#2F6F68] transition-colors ${
+                          isCompleted
+                            ? 'line-through text-[#798D88] dark:text-[#7C918C]'
+                            : 'text-[#1E2D2B] dark:text-[#E7F0ED]'
+                        }`}
+                      >
+                        {task.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#697E7A] dark:text-[#9AB1AC]">
+                        {(task.timeSlot || task.dueAt) && (
+                          <span className="flex items-center gap-1 text-[#8A5A1B] dark:text-[#E8BD7C] font-semibold">
+                            <Calendar className="w-3 h-3" />
+                            <span>{task.timeSlot || formatEgyptianFullDeadline(task.dueAt)}</span>
+                          </span>
+                        )}
+                        <span>• {task.estimatedDurationMinutes || 25} دقيقة</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-1.5 shrink-0 pr-2">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${badge.bg}`}>
-                    {badge.label}
-                  </span>
-                  <button
-                    onClick={() => setEditingTask(task)}
-                    className="p-1.5 rounded-lg text-[#657C77] hover:text-[#2F6F68] hover:bg-[#EEF5F2] dark:hover:bg-[#253D37] transition-colors cursor-pointer"
-                    title="تعديل المهمة"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  {!isCompleted && (
+                  <div className="flex items-center gap-1.5 shrink-0 pr-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${badge.bg}`}>
+                      {badge.label}
+                    </span>
                     <button
-                      onClick={() => startFocusSessionFor(task.title)}
+                      onClick={() => setEditingTask(task)}
                       className="p-1.5 rounded-lg text-[#657C77] hover:text-[#2F6F68] hover:bg-[#EEF5F2] dark:hover:bg-[#253D37] transition-colors cursor-pointer"
-                      title="جلسة تركيز"
+                      title="تعديل المهمة"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <Pencil className="w-3.5 h-3.5" />
                     </button>
-                  )}
+                    {!isCompleted && (
+                      <button
+                        onClick={() => startFocusSessionFor(task.title)}
+                        className="p-1.5 rounded-lg text-[#657C77] hover:text-[#2F6F68] hover:bg-[#EEF5F2] dark:hover:bg-[#253D37] transition-colors cursor-pointer"
+                        title="جلسة تركيز"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </section>
 
-      {/* Active Projects Carousel/Grid */}
+      {/* Active Projects / Sections */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -394,13 +400,6 @@ export const DashboardScreen: React.FC = () => {
           })}
         </div>
       </section>
-
-      {/* Gentle Quote Card */}
-      <div className="p-4 rounded-3xl bg-[#EEF5F2] dark:bg-[#182A26] border border-[#D5E3DD] dark:border-[#263D37] text-center space-y-1">
-        <p className="text-xs font-medium text-[#2F6F68] dark:text-[#88C6B9]">
-          «الإنتاجية مش إنك تعمل كل حاجة، الإنتاجية إنك تعمل الحاجة الصح بهدوء وتركيز.»
-        </p>
-      </div>
 
       {/* Edit Task Modal */}
       <EditTaskModal

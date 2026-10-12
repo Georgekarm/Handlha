@@ -20,6 +20,7 @@ export const ProjectsScreen: React.FC = () => {
     projects,
     setIsNewProjectOpen,
     setIsAiBreakdownOpen,
+    setIsAddChoiceOpen,
     setActiveProjectWorkspace,
     setActiveFocusTask,
     navigate,
@@ -76,24 +77,14 @@ export const ProjectsScreen: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsAiBreakdownOpen(true)}
-            className="p-2.5 rounded-2xl bg-[#EAF5F2] dark:bg-[#203D37] text-[#2F6F68] dark:text-[#8AD3C4] border border-[#CCE2DC] dark:border-[#2C524A] hover:bg-[#D9ECE8] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold"
-            title="تقسيم مشروع ذكي"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>تقسيم ذكي</span>
-          </button>
-
-          <button
-            onClick={() => setIsNewProjectOpen(true)}
-            className="p-2.5 rounded-2xl bg-[#2F6F68] text-white hover:bg-[#245650] shadow-sm transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>مشروع جديد</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setIsAddChoiceOpen(true)}
+          className="p-2.5 px-4 rounded-2xl bg-[#2F6F68] text-white hover:bg-[#245650] shadow-sm transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold active:scale-95"
+          title="إضافة سكشن جديد أو مهمة"
+        >
+          <Plus className="w-4 h-4" />
+          <span>إضافة جديدة</span>
+        </button>
       </header>
 
       {/* Search Input */}
@@ -154,11 +145,11 @@ export const ProjectsScreen: React.FC = () => {
               </p>
             </div>
             <button
-              onClick={() => setIsNewProjectOpen(true)}
+              onClick={() => setIsAddChoiceOpen(true)}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#2F6F68] text-white text-xs font-bold hover:bg-[#245650] transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              أضف مشروعاً
+              <span>إضافة سكشن أو مهمة</span>
             </button>
           </div>
         ) : (

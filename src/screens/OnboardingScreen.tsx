@@ -10,12 +10,13 @@ export const OnboardingScreen: React.FC = () => {
   const [step, setStep] = useState(1);
   const [challenge, setChallenge] = useState('clutter');
   const [preferredTime, setPreferredTime] = useState<'morning' | 'afternoon' | 'night'>('morning');
-  const [tone, setTone] = useState<AssistantTone>('friendly');
+  const [notificationPref, setNotificationPref] = useState<'gentle' | 'summaryOnly' | 'silent'>('gentle');
 
   const handleFinish = () => {
     completeOnboarding({
       activityTime: preferredTime,
-      preferredTone: tone,
+      preferredTone: 'friendly',
+      notificationPreference: notificationPref,
     });
     navigate('/home');
   };
@@ -140,24 +141,24 @@ export const OnboardingScreen: React.FC = () => {
                 الخطوة الثالثة
               </span>
               <h1 className="text-2xl font-bold text-[#1E2D2B] dark:text-white">
-                تحب أسلوب مساعد هندلها إزاي؟
+                طريقتك المفضلة في التنبيهات؟
               </h1>
               <p className="text-xs text-[#637974] dark:text-[#9FB3AE]">
-                تقدر تغير الأسلوب في أي وقت من الإعدادات.
+                هنبعتلك إشعارات ذكية بدون أي إلحاح أو إزعاج.
               </p>
             </div>
 
             <div className="space-y-2.5 pt-2">
               {[
-                { id: 'friendly', title: 'ودودة ومصرية هادئة ✨', desc: 'لهجة مريحة، تفاؤل، وتشجيع هادي بدون ضغط' },
-                { id: 'concise', title: 'مختصرة وسريعة ⚡', desc: 'خطوات عملية واضحة على طول بدون إطالة' },
-                { id: 'formal', title: 'فصحى متزنة 🌿', desc: 'لغة رصينة وهادئة بوضوح وتنظيم فائق' },
+                { id: 'gentle', title: 'تنبيهات لطيفة وذكية ✨', desc: 'تذكير بالمواعيد وتشجيع عند الإنجاز وتنبيه بجلسات التركيز' },
+                { id: 'summaryOnly', title: 'ملخص يومي فقط 📋', desc: 'ملخص موجز لمهام اليوم صباحاً ومساءً بدون رنات مستمرة' },
+                { id: 'silent', title: 'وضع الهدوء التام 🌙', desc: 'بدون إشعارات منبثقة، ستجد كل شيء مرتباً داخل التطبيق فقط' },
               ].map((opt) => {
-                const isSelected = tone === opt.id;
+                const isSelected = notificationPref === opt.id;
                 return (
                   <button
                     key={opt.id}
-                    onClick={() => setTone(opt.id as any)}
+                    onClick={() => setNotificationPref(opt.id as any)}
                     className={`w-full p-4 rounded-3xl border text-right transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-[#EEF5F2] dark:bg-[#1E3731] border-[#2F6F68] dark:border-[#76BCAF]'

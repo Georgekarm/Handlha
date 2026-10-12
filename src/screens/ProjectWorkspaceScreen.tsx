@@ -26,6 +26,8 @@ export const ProjectWorkspaceScreen: React.FC = () => {
     toggleTaskCompletion,
     setActiveFocusTask,
     setIsAiBreakdownOpen,
+    setIsAddChoiceOpen,
+    setIsQuickAddOpen,
     navigate,
   } = useApp();
 
@@ -53,15 +55,30 @@ export const ProjectWorkspaceScreen: React.FC = () => {
 
   const handleAddQuickTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTaskInput.trim()) return;
+    if (!newTaskInput.trim()) {
+      setIsAddChoiceOpen(true);
+      return;
+    }
 
+    const taskTitle = newTaskInput.trim();
     createTask({
-      title: newTaskInput.trim(),
+      title: taskTitle,
       projectId: project.id,
       priority: 'medium',
       status: 'planned',
       estimatedDurationMinutes: 30,
     });
+
+    const updatedSubtasks = [...(project.subtasks || []), taskTitle];
+    const completedCount = updatedSubtasks.filter(s => s.includes('(منجز)')).length;
+    const newProgress = updatedSubtasks.length > 0 ? completedCount / updatedSubtasks.length : 0;
+
+    updateProject(project.id, {
+      subtasks: updatedSubtasks,
+      nextStepTitle: project.nextStepTitle || taskTitle,
+      progressPercent: Number(newProgress.toFixed(2)),
+    });
+
     setNewTaskInput('');
   };
 
@@ -105,14 +122,25 @@ export const ProjectWorkspaceScreen: React.FC = () => {
           مساحة المشروع
         </h2>
 
-        <button
-          onClick={() => setIsAiBreakdownOpen(true)}
-          className="p-2 rounded-xl text-[#2F6F68] dark:text-[#88C6B9] hover:bg-[#EAF3F0] dark:hover:bg-[#1E3731] transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold"
-          title="تقسيم إضافي بالذكاء الاصطناعي"
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>تقسيم</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setIsAddChoiceOpen(true)}
+            className="p-2 rounded-xl text-white bg-[#2F6F68] hover:bg-[#245650] transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs active:scale-95"
+            title="إضافة سكشن أو مهمة"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إضافة</span>
+          </button>
+
+          <button
+            onClick={() => setIsAiBreakdownOpen(true)}
+            className="p-2 rounded-xl text-[#2F6F68] dark:text-[#88C6B9] bg-[#EAF3F0] dark:bg-[#1E3731] hover:bg-[#D9ECE8] transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold"
+            title="تقسيم إضافي بالذكاء الاصطناعي"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>تقسيم</span>
+          </button>
+        </div>
       </header>
 
       {/* Project Hero Card */}
@@ -221,6 +249,19 @@ export const ProjectWorkspaceScreen: React.FC = () => {
               إضافة
             </button>
           </form>
+
+          {/* Quick Choice trigger */}
+          <div className="flex items-center justify-between text-[11px] px-1 text-[#667E79] dark:text-[#9BB0AB]">
+            <span>عاوز سكشن جديد أو تفاصيل كاملة؟</span>
+            <button
+              type="button"
+              onClick={() => setIsAddChoiceOpen(true)}
+              className="font-bold text-[#2F6F68] dark:text-[#76BCAF] hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3 h-3" />
+              <span>عرض خيارات الإضافة (سكشن / مهمة)</span>
+            </button>
+          </div>
 
           {/* Subtasks checklist */}
           <div className="space-y-2">

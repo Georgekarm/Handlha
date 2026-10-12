@@ -5,7 +5,6 @@ import {
   Sun,
   Moon,
   Laptop,
-  MessageSquare,
   Sparkles,
   Bell,
   Clock,
@@ -65,26 +64,10 @@ export const SettingsScreen: React.FC = () => {
     setTimeout(() => setExportNotice(false), 3000);
   };
 
-  const tones: { id: AssistantTone; title: string; desc: string }[] = [
-    {
-      id: 'friendly',
-      title: 'ودودة ومصرية هادئة ✨',
-      desc: 'بلهجة مصرية محببة وكلمات تشجيع خفيفة على القلب دون إلحاح.',
-    },
-    {
-      id: 'concise',
-      title: 'مختصرة ومباشرة ⚡',
-      desc: 'خطوات عملية محددة دون مقدمات طويلة، مناسبة لأوقات السرعة.',
-    },
-    {
-      id: 'formal',
-      title: 'فصحى رسمية 🌿',
-      desc: 'لغة عربية فصحى راقية ومرتبة لأعلى درجات الاتزان.',
-    },
-  ];
+
 
   return (
-    <div className="pb-28 pt-4 px-4 sm:px-6 space-y-6">
+    <div className="min-h-screen bg-[#F7F8F6] dark:bg-[#101A18] text-[#1E2D2B] dark:text-[#EFF6F2] pb-28 pt-4 px-4 sm:px-6 space-y-6 max-w-xl mx-auto transition-colors">
       {/* Header */}
       <header className="flex items-center justify-between pt-2">
         <div className="flex items-center gap-2">
@@ -182,46 +165,7 @@ export const SettingsScreen: React.FC = () => {
         </div>
       </section>
 
-      {/* Tone of Assistant */}
-      <section className="p-5 rounded-3xl bg-white dark:bg-[#1A2825] border border-[#DEE7E2] dark:border-[#283C37] space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-[#556965] dark:text-[#A7BCB7] flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-[#2F6F68]" />
-            أسلوب مساعد هندلها
-          </h3>
-          <span className="text-xs font-bold text-[#2F6F68] dark:text-[#76BCAF]">
-            {tones.find(t => t.id === (user?.preferredTone || 'friendly'))?.title}
-          </span>
-        </div>
 
-        <div className="space-y-2 pt-1">
-          {tones.map((t) => {
-            const isSelected = (user?.preferredTone || 'friendly') === t.id;
-
-            return (
-              <button
-                key={t.id}
-                onClick={() => updateUserProfile({ preferredTone: t.id })}
-                className={`w-full p-3.5 rounded-2xl text-right border transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-[#EEF5F2] dark:bg-[#203D37] border-[#2F6F68] dark:border-[#76BCAF]'
-                    : 'bg-[#F9FCFA] dark:bg-[#152320] border-[#E2EBE6] dark:border-[#253934] hover:border-[#C4D7D0] dark:hover:border-[#334B44]'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-[#1E2D2B] dark:text-white">
-                    {t.title}
-                  </span>
-                  {isSelected && <Check className="w-4 h-4 text-[#2F6F68] dark:text-[#76BCAF] stroke-[3]" />}
-                </div>
-                <p className="text-[11px] text-[#6A7F7A] dark:text-[#9FB3AE] leading-relaxed">
-                  {t.desc}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </section>
 
       {/* Data & Privacy */}
       <section className="p-5 rounded-3xl bg-white dark:bg-[#1A2825] border border-[#DEE7E2] dark:border-[#283C37] space-y-3">

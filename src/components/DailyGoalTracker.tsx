@@ -22,6 +22,7 @@ import {
   ChevronUp,
   RotateCcw,
 } from 'lucide-react';
+import { CustomSelect } from './CustomSelect';
 
 const STORAGE_KEY = 'handelha_daily_goals';
 
@@ -779,16 +780,18 @@ export const DailyGoalTracker: React.FC = () => {
             className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-[#D8E6E0] dark:border-[#2B403B] bg-[#FDFEFE] dark:bg-[#172522] text-[#1E2D2B] dark:text-white placeholder-[#879C97] dark:placeholder-[#6C827D] focus:outline-hidden focus:border-[#2F6F68] dark:focus:border-[#7ABCB1]"
           />
 
-          <select
-            value={newMilestoneCategory}
-            onChange={e => setNewMilestoneCategory(e.target.value as any)}
-            className="px-2.5 py-2 text-xs rounded-xl border border-[#D8E6E0] dark:border-[#2B403B] bg-[#FDFEFE] dark:bg-[#172522] text-[#3E534F] dark:text-[#C5D9D4] focus:outline-hidden cursor-pointer"
-          >
-            <option value="task">إنجاز</option>
-            <option value="wellness">هدوء</option>
-            <option value="learning">تعلم</option>
-            <option value="focus">تركيز</option>
-          </select>
+          <div className="w-28 shrink-0">
+            <CustomSelect
+              value={newMilestoneCategory}
+              onChange={(val) => setNewMilestoneCategory(val as any)}
+              options={[
+                { value: 'task', label: 'إنجاز' },
+                { value: 'wellness', label: 'هدوء' },
+                { value: 'learning', label: 'تعلم' },
+                { value: 'focus', label: 'تركيز' },
+              ]}
+            />
+          </div>
 
           <button
             type="submit"

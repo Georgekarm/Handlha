@@ -14,9 +14,12 @@ import {
   CheckCircle2,
   Play,
   RotateCcw,
+  CheckSquare,
 } from 'lucide-react';
 import { Task, TaskPriority, TaskStatus, EnergyLevel } from '../types';
 import { formatEgyptianDateSlot } from '../utils/taskParser';
+import { CustomSelect } from './CustomSelect';
+import { CustomDatePicker } from './CustomDatePicker';
 
 interface EditTaskModalProps {
   task: Task | null;
@@ -385,56 +388,47 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ task, isOpen, onCl
               ))}
             </div>
 
-            {/* Date & Time Picker */}
+            {/* Interactive Arabic Date & Time Picker */}
             {deadlinePreset !== 'none' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                <div>
-                  <label className="block text-[11px] text-[#5A706B] dark:text-[#99AEA9] mb-1">
-                    تاريخ الديدلاين
-                  </label>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={e => {
-                      setSelectedDate(e.target.value);
-                      setDeadlinePreset('custom');
-                    }}
-                    className="w-full px-3 py-2 rounded-xl border border-[#D5E3DE] dark:border-[#283E38] bg-white dark:bg-[#1A2825] text-xs text-[#1E2D2B] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#2F6F68]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-[#5A706B] dark:text-[#99AEA9] mb-1">
-                    الساعة / الوقت
-                  </label>
-                  <input
-                    type="time"
-                    value={selectedTime}
-                    onChange={e => setSelectedTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#D5E3DE] dark:border-[#283E38] bg-white dark:bg-[#1A2825] text-xs text-[#1E2D2B] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#2F6F68]"
-                  />
-                </div>
+              <div className="pt-1">
+                <CustomDatePicker
+                  selectedDate={selectedDate}
+                  onSelectDate={(newDate) => {
+                    setSelectedDate(newDate);
+                    setDeadlinePreset('custom');
+                  }}
+                  selectedTime={selectedTime}
+                  onSelectTime={setSelectedTime}
+                  defaultOpen={deadlinePreset === 'custom'}
+                />
               </div>
             )}
           </div>
 
-          {/* Project selector */}
+          {/* Project selector with CustomSelect */}
           {projects.length > 0 && (
             <div>
               <label className="block text-xs font-bold text-[#2D3F3B] dark:text-[#D1E0DC] mb-1.5">
                 المشروع
               </label>
-              <select
+              <CustomSelect
                 value={projectId}
-                onChange={e => setProjectId(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5E3DE] dark:border-[#283E38] bg-white dark:bg-[#1A2825] text-xs text-[#1E2D2B] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#2F6F68]"
-              >
-                <option value="">بدون مشروع (مهمة عامة)</option>
-                {projects.map(proj => (
-                  <option key={proj.id} value={proj.id}>
-                    {proj.title}
-                  </option>
-                ))}
-              </select>
+                onChange={setProjectId}
+                options={[
+                  {
+                    value: '',
+                    label: 'بدون مشروع (مهمة عامة)',
+                    icon: <CheckSquare className="w-3.5 h-3.5" />,
+                  },
+                  ...projects.map((proj) => ({
+                    value: proj.id,
+                    label: proj.title,
+                    color: proj.accentColor || '#2F6F68',
+                    icon: <Folder className="w-3.5 h-3.5" />,
+                  })),
+                ]}
+                placeholder="اختر المشروع..."
+              />
             </div>
           )}
         </form>

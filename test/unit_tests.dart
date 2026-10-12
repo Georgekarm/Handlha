@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sekretairak/core/database/local_task_database.dart';
 import 'package:sekretairak/core/result/result.dart';
 import 'package:sekretairak/features/authentication/data/mock_auth_repository.dart';
 import 'package:sekretairak/features/tasks/domain/task.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 void main() {
@@ -12,15 +14,17 @@ void main() {
   // Result type tests
   // ---------------------------------------------------------------------------
   group('Result type', () {
-    test('Success holds value', () {
+    test('Success holds value and equals same result', () {
       const result = Success('hello');
       expect(result.data, equals('hello'));
+      expect(result, equals(const Success('hello')));
       expect(result, isA<Success<String>>());
     });
 
-    test('Failure holds failure', () {
+    test('Failure holds failure and equals same failure result', () {
       const result = Failure<String>(NetworkFailure());
       expect(result.failure, isA<NetworkFailure>());
+      expect(result, equals(const Failure<String>(NetworkFailure())));
       expect(result, isA<Failure<String>>());
     });
   });
@@ -129,6 +133,24 @@ void main() {
         ..sort((a, b) => scores[b]!.compareTo(scores[a]!));
       expect(sorted.first, equals(TaskPriority.urgent));
       expect(sorted.last, equals(TaskPriority.low));
+    });
+
+    test('Today view includes planned tasks scheduled today', () async {
+      SharedPreferences.setMockInitialValues({});
+      final db = LocalTaskDatabase.instance;
+      final now = DateTime.now();
+
+      await db.createTask(
+        userId: 'user-1',
+        title: 'Task scheduled today',
+        status: TaskStatus.planned,
+        scheduledStartAt: DateTime(now.year, now.month, now.day, 9),
+      );
+
+      final result = await db.getTasksForToday('user-1');
+      expect(result, isA<Success<List<Task>>>());
+      final tasks = (result as Success<List<Task>>).data;
+      expect(tasks.any((task) => task.title == 'Task scheduled today'), isTrue);
     });
   });
 

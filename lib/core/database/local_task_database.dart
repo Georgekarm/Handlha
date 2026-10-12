@@ -71,14 +71,17 @@ class LocalTaskDatabase {
     final todayTasks = tasks.where((t) {
       if (t.status == TaskStatus.cancelled) return false;
       if (t.scheduledStartAt != null) {
-        return t.scheduledStartAt!.isAfter(todayStart) &&
-            t.scheduledStartAt!.isBefore(todayEnd);
+        final scheduled = t.scheduledStartAt!;
+        return !scheduled.isBefore(todayStart) && scheduled.isBefore(todayEnd);
       }
       if (t.dueAt != null) {
-        return t.dueAt!.isBefore(todayEnd);
+        final dueAt = t.dueAt!;
+        return !dueAt.isBefore(todayStart) && dueAt.isBefore(todayEnd);
       }
-      // Include inbox items with no date in today's view
-      return t.status == TaskStatus.inbox || t.status == TaskStatus.inProgress;
+      // Include undated tasks that are still active for today.
+      return t.status == TaskStatus.inbox ||
+          t.status == TaskStatus.planned ||
+          t.status == TaskStatus.inProgress;
     }).toList();
 
     // Sort: urgent > high > medium > low, then by time

@@ -1,18 +1,24 @@
 import 'package:equatable/equatable.dart';
 
 /// Represents either a successful [T] value or a [Failure].
-sealed class Result<T> {
+sealed class Result<T> extends Equatable {
   const Result();
 }
 
 final class Success<T> extends Result<T> {
   final T data;
   const Success(this.data);
+
+  @override
+  List<Object?> get props => [data];
 }
 
 final class Failure<T> extends Result<T> {
   final AppFailure failure;
   const Failure(this.failure);
+
+  @override
+  List<Object?> get props => [failure];
 }
 
 // ---------------------------------------------------------------------------

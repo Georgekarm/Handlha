@@ -12,6 +12,10 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
+  FileText,
+  RotateCcw,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 import { TaskPriority } from '../types';
 
@@ -22,11 +26,18 @@ export const SmartAddTaskSheet: React.FC = () => {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [priority, setPriority] = useState<TaskPriority>('high');
   const [phase, setPhase] = useState('مرحلة التطوير');
   const [duration, setDuration] = useState('45 دقيقة');
   const [dueDate, setDueDate] = useState('غداً، 2:00 م');
   const [showManualForm, setShowManualForm] = useState(true);
+
+  // واجهة معاينة التفريغ الداخلي (Transcript Preview)
+  const [showTranscriptPreview, setShowTranscriptPreview] = useState(false);
+  const [transcriptText, setTranscriptText] = useState('');
+  const [transcriptConfidence] = useState(0.94);
+  const [isEditingTranscript, setIsEditingTranscript] = useState(false);
 
   const phases = ['التخطيط', 'التصميم', 'مرحلة التطوير', 'الاختبار والإطلاق'];
   const durations = ['20 دقيقة', '30 دقيقة', '45 دقيقة', '60 دقيقة', '90 دقيقة'];
@@ -86,13 +97,26 @@ export const SmartAddTaskSheet: React.FC = () => {
   const handleVoiceToggle = () => {
     setIsListening(true);
     setTimeout(() => {
-      setInput('إنهاء شاشة تسجيل الدخول بكرة بعد الضهر محتاجة 45 دقيقة أولوية عالية');
       setIsListening(false);
+      setIsTranscribing(true);
+      setTimeout(() => {
+        const rawSpeech = 'إنهاء شاشة تسجيل الدخول بكرة بعد الضهر محتاجة 45 دقيقة وأولوية عالية على الرايق';
+        setTranscriptText(rawSpeech);
+        setIsTranscribing(false);
+        setShowTranscriptPreview(true);
+      }, 700);
     }, 1200);
   };
 
+  const handleApplyTranscript = () => {
+    setInput(transcriptText);
+    setShowTranscriptPreview(false);
+  };
+
   const handleQuickTemplate = () => {
-    setInput('مكالمة المهندس ومراجعة المستلزمات النهاردة بعد العصر تاخد ربع ساعة على الرايق');
+    const speech = 'مكالمة المهندس ومراجعة المستلزمات النهاردة بعد العصر تاخد ربع ساعة على الرايق';
+    setTranscriptText(speech);
+    setShowTranscriptPreview(true);
   };
 
   const cyclePriority = () => {
@@ -150,6 +174,7 @@ export const SmartAddTaskSheet: React.FC = () => {
     setInput('');
     setTitle('');
     setNotes('');
+    setShowTranscriptPreview(false);
   };
 
   const getPriorityInfo = (p: TaskPriority) => {
@@ -179,11 +204,11 @@ export const SmartAddTaskSheet: React.FC = () => {
               <h3 className="text-xl font-extrabold flex items-center gap-2">
                 <span>إضافة مهمة ذكية</span>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-[#2F6F68]/10 text-[#2F6F68] dark:bg-[#76BCAF]/20 dark:text-[#76BCAF]">
-                  مصري 🇪🇬
+                  نموذج داخلي 🇪🇬
                 </span>
               </h3>
               <p className="text-xs text-[#647370] dark:text-[#B7C9C2]">
-                اكتبها بالعامية المصرية أو قولها بصوتك، وهنهندلها ونرتبها لك
+                اكتبها بطريقتك أو قولها، وسيتم فهم التفاصيل وترتيبها لك
               </p>
             </div>
           </div>
@@ -194,6 +219,70 @@ export const SmartAddTaskSheet: React.FC = () => {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* واجهة معاينة التفريغ الداخلي (TranscriptPreview) */}
+        {showTranscriptPreview && (
+          <div className="mb-4 p-4 rounded-2xl bg-[#EEF3F0] dark:bg-[#203530] border-2 border-[#2F6F68] dark:border-[#76BCAF] transition-all animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#2F6F68] dark:text-[#76BCAF]" />
+                <span className="text-xs font-bold text-[#1E2D2B] dark:text-[#EFF6F2]">
+                  معاينة التفريغ من النظام الداخلي (Transcript Preview)
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#2F6F68]/15 text-[#245650] dark:bg-[#76BCAF]/25 dark:text-[#9DD2C5]">
+                  دقة: {Math.round(transcriptConfidence * 100)}% (ar-EG)
+                </span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#B7863C]/15 text-[#B7863C] dark:bg-[#D4B16B]/25 dark:text-[#D4B16B] flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3" />
+                  محلي
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[#647370] dark:text-[#B7C9C2] mb-2">
+              سمعتك بتقول (تقدر تعدل أي كلمة قبل الاعتماد والتحليل):
+            </p>
+
+            <textarea
+              rows={2}
+              value={transcriptText}
+              onChange={(e) => setTranscriptText(e.target.value)}
+              className="w-full p-2.5 rounded-xl bg-white dark:bg-[#182724] border border-[#DDE7E2] dark:border-[#354D46] text-sm text-[#1E2D2B] dark:text-[#EFF6F2] focus:outline-none focus:ring-2 focus:ring-[#2F6F68]"
+              placeholder="نص التفريغ الصوتي..."
+            />
+
+            <div className="flex items-center justify-between mt-3">
+              <button
+                type="button"
+                onClick={handleVoiceToggle}
+                className="flex items-center gap-1 text-xs text-[#647370] dark:text-[#B7C9C2] hover:underline cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                إعادة التسجيل
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTranscriptPreview(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#647370] dark:text-[#B7C9C2] hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyTranscript}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-[#2F6F68] text-white hover:bg-[#245650] dark:bg-[#76BCAF] dark:text-[#101A18] dark:hover:bg-[#9DD2C5] transition-all cursor-pointer shadow-xs"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  حلّل واعتمد الكلام
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div
           className={`rounded-2xl p-4 border transition-all ${
@@ -218,21 +307,34 @@ export const SmartAddTaskSheet: React.FC = () => {
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
                 isListening
                   ? 'bg-[#B96368] text-white animate-pulse'
+                  : isTranscribing
+                  ? 'bg-[#B7863C] text-white animate-pulse'
                   : 'bg-white dark:bg-[#182724] border border-[#DDE7E2] dark:border-[#354D46] text-[#2F6F68] dark:text-[#76BCAF]'
               }`}
             >
               <Mic className="w-3.5 h-3.5" />
-              {isListening ? 'بيسمعك دلوقتي...' : 'تسجيل صوتي'}
+              {isListening ? 'بيسمعك دلوقتي...' : isTranscribing ? 'جاري التفريغ داخلياً...' : 'تسجيل صوتي'}
             </button>
 
-            <button
-              type="button"
-              onClick={handleQuickTemplate}
-              className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#D9ECE8]/60 dark:bg-[#244F48]/60 text-[#245650] dark:text-[#9DD2C5] hover:opacity-80 cursor-pointer"
-            >
-              <Zap className="w-3 h-3" />
-              تجربة سريعة
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleQuickTemplate}
+                className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#D9ECE8]/60 dark:bg-[#244F48]/60 text-[#245650] dark:text-[#9DD2C5] hover:opacity-80 cursor-pointer"
+              >
+                <FileText className="w-3 h-3" />
+                معاينة تفريغ
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInput('إنهاء شاشة تسجيل الدخول بكرة بعد الضهر محتاجة 45 دقيقة وأولوية عالية')}
+                className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#E9E8F2]/60 dark:bg-[#3D3B5C]/60 text-[#7773A1] dark:text-[#A9A7CD] hover:opacity-80 cursor-pointer"
+              >
+                <Zap className="w-3 h-3" />
+                تجربة سريعة
+              </button>
+            </div>
           </div>
         </div>
 
@@ -304,60 +406,41 @@ export const SmartAddTaskSheet: React.FC = () => {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="عنوان المهمة..."
-                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm border focus:outline-hidden ${
-                    isDarkMode
-                      ? 'bg-[#203530] border-[#354D46] text-white'
-                      : 'bg-[#F7F8F6] border-[#DDE7E2] text-[#1E2D2B]'
-                  }`}
+                  className="w-full px-3 py-2 rounded-xl text-xs bg-black/5 dark:bg-white/5 border border-[#DDE7E2] dark:border-[#354D46] focus:outline-hidden focus:ring-2 focus:ring-[#2F6F68]"
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-[#203530] border-[#354D46]' : 'bg-[#F7F8F6] border-[#DDE7E2]'}`}>
-                  <span className="text-[10px] font-semibold text-[#99A6A2]">الموعد</span>
-                  <div className="font-bold text-xs mt-0.5">{dueDate}</div>
-                </div>
-                <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-[#203530] border-[#354D46]' : 'bg-[#F7F8F6] border-[#DDE7E2]'}`}>
-                  <span className="text-[10px] font-semibold text-[#99A6A2]">المدة التقديرية</span>
-                  <div className="font-bold text-xs mt-0.5">{duration}</div>
-                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold mb-1 text-[#647370] dark:text-[#B7C9C2]">
-                  ملاحظات وتفاصيل إضافية (اختياري)
+                  ملاحظات وتفاصيل إضافية
                 </label>
-                <textarea
-                  rows={2}
+                <input
+                  type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="أي روابط أو نقاط فرعية..."
-                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm border focus:outline-hidden ${
-                    isDarkMode
-                      ? 'bg-[#203530] border-[#354D46] text-white'
-                      : 'bg-[#F7F8F6] border-[#DDE7E2] text-[#1E2D2B]'
-                  }`}
+                  placeholder="أي تفاصيل أو روابط..."
+                  className="w-full px-3 py-2 rounded-xl text-xs bg-black/5 dark:bg-white/5 border border-[#DDE7E2] dark:border-[#354D46] focus:outline-hidden focus:ring-2 focus:ring-[#2F6F68]"
                 />
               </div>
             </div>
           )}
         </div>
 
-        <div className="mt-6 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm bg-[#245650] text-white dark:bg-[#9DD2C5] dark:text-[#101A18] hover:opacity-90 transition-opacity cursor-pointer"
-          >
-            <Check className="w-4 h-4" />
-            إضافة المهمة للمشروع
-          </button>
+        <div className="mt-6 flex items-center justify-end gap-3">
           <button
             type="button"
             onClick={() => setIsSmartAddOpen(false)}
-            className="px-5 py-3 rounded-xl font-bold text-sm border border-[#DDE7E2] dark:border-[#354D46] text-[#647370] dark:text-[#B7C9C2] hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-xs font-bold text-[#647370] dark:text-[#B7C9C2] hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
           >
             إلغاء
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold bg-[#2F6F68] text-white hover:bg-[#245650] dark:bg-[#76BCAF] dark:text-[#101A18] dark:hover:bg-[#9DD2C5] shadow-sm transition-all cursor-pointer"
+          >
+            <Check className="w-4 h-4" />
+            إضافة المهمة للمشروع
           </button>
         </div>
       </div>

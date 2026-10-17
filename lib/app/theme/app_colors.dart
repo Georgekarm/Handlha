@@ -47,32 +47,36 @@ class AppColors {
   // Dark Theme
   // ===========================================================================
 
-  static const Color darkBackground = Color(0xFF101A18);
-  static const Color darkSurface = Color(0xFF182724);
-  static const Color darkSurface2 = Color(0xFF203530);
-  static const Color darkSurface3 = Color(0xFF29423B);
+  static const Color darkBackground = Color(0xFF0E1715);
+  static const Color darkSurface = Color(0xFF162320);
+  static const Color darkSurface2 = Color(0xFF1C2C28);
+  static const Color darkSurface3 = Color(0xFF243833);
 
-  static const Color darkPrimary = Color(0xFF76BCAF);
-  static const Color darkPrimaryStrong = Color(0xFF9DD2C5);
-  static const Color darkPrimarySoft = Color(0xFF244F48);
+  static const Color darkPrimary = Color(0xFF72C5B5);
+  static const Color darkPrimaryStrong = Color(0xFF90D6C8);
+  static const Color darkPrimarySoft = Color(0xFF20423C);
 
   static const Color darkSecondary = Color(0xFFA9A7CD);
   static const Color darkSecondarySoft = Color(0xFF3D3B5C);
 
-  static const Color darkAccent = Color(0xFFD39A83);
-  static const Color darkAccentSoft = Color(0xFF563A32);
+  static const Color darkAccent = Color(0xFFE17B71);
+  static const Color darkAccentSoft = Color(0xFF4A2B28);
 
   static const Color darkTextPrimary = Color(0xFFEFF6F2);
-  static const Color darkTextSecondary = Color(0xFFB7C9C2);
-  static const Color darkTextMuted = Color(0xFF81948E);
+  static const Color darkTextSecondary = Color(0xFF8D9E98);
+  static const Color darkTextMuted = Color(0xFF5E736C);
 
   static const Color darkSuccess = Color(0xFF7CCAA2);
-  static const Color darkWarning = Color(0xFFD4B16B);
-  static const Color darkDanger = Color(0xFFD58B91);
+  static const Color darkWarning = Color(0xFFE5B869);
+  static const Color darkDanger = Color(0xFFE17B71);
   static const Color darkInfo = Color(0xFF8CB4D1);
 
-  static const Color darkBorder = Color(0xFF354D46);
-  static const Color darkDivider = Color(0xFF2A403A);
+  static const Color darkBorder = Color(0xFF233631);
+  static const Color darkDivider = Color(0xFF1D2E2A);
+
+  static const Color assistantPurple = Color(0xFF433E60);
+  static const Color assistantPurpleSoft = Color(0xFF2D2A40);
+  static const Color salmonBadge = Color(0xFFE17B71);
 
   // ===========================================================================
   // Project Palette

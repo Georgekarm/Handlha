@@ -17,6 +17,7 @@ import '../../features/projects/presentation/project_settings_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/projects/presentation/handelha_focus_session_screen.dart';
+import '../../features/projects/presentation/tracking_screen.dart';
 import '../../shared/widgets/splash_screen.dart';
 
 Page<T> _buildCalmTransition<T>({
@@ -33,7 +34,7 @@ Page<T> _buildCalmTransition<T>({
 class _RouterNotifier extends ChangeNotifier {
   final Ref _ref;
   _RouterNotifier(this._ref) {
-    _ref.listen(authNotifierProvider, (_, __) => notifyListeners());
+    _ref.listen(authNotifierProvider, (_, _) => notifyListeners());
   }
 }
 
@@ -140,6 +141,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               context: context,
               state: state,
               child: const ProjectsScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/tracking',
+            pageBuilder: (context, state) => _buildCalmTransition(
+              context: context,
+              state: state,
+              child: const TrackingScreen(),
             ),
           ),
         ],

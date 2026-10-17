@@ -33,18 +33,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   FlutterSecureStorage.setMockInitialValues({});
 
-  group('Authentication Screens Widget Tests', () {
-    testWidgets('LoginScreen renders fields, buttons and calm logo', (
-      tester,
-    ) async {
+  group('Authentication Screens Widget Tests (PDF Design)', () {
+    testWidgets('LoginScreen renders fields, buttons and logo', (tester) async {
       await tester.pumpWidget(_buildTestApp(const LoginScreen()));
       await tester.pumpAndSettle();
 
       expect(find.byType(TextFormField), findsNWidgets(2)); // Email + Password
       expect(find.text('تسجيل الدخول'), findsWidgets);
-      expect(find.text('Google'), findsOneWidget);
-      expect(find.text('Facebook'), findsOneWidget);
-      expect(find.text('اعمل حساب جديد'), findsOneWidget);
+      expect(find.text('نسيت كلمة المرور؟'), findsOneWidget);
     });
 
     testWidgets('SignUpScreen renders registration form', (tester) async {
@@ -52,79 +48,71 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(TextFormField), findsNWidgets(3)); // Name, Email, Password
-      expect(find.text('إنشاء حساب'), findsOneWidget);
-      expect(find.text('سجّل دخولك'), findsOneWidget);
+      expect(find.text('إنشاء حساب'), findsWidgets);
+      expect(find.text('أوافق على شروط الاستخدام وسياسة الخصوصية.'), findsOneWidget);
     });
   });
 
-  group('Home & Productivity Screens Widget Tests', () {
-    testWidgets('DashboardScreen renders greeting, focus card and priorities', (
-      WidgetTester tester,
-    ) async {
+  group('Home & Productivity Screens Widget Tests (PDF Design)', () {
+    testWidgets('DashboardScreen renders greeting, focus card and priorities', (tester) async {
       await tester.pumpWidget(_buildTestApp(const DashboardScreen()));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
 
-      expect(find.text('أولويات النهار'), findsOneWidget);
-      expect(find.text('نخلّص خطوة واحدة دلوقتي.'), findsOneWidget);
-      expect(find.byType(TextField), findsOneWidget); // Quick add
+      expect(find.text('خطوتك الجاية'), findsOneWidget);
+      expect(find.text('مراجعة تدفق المهام وتجربة المستخدم'), findsOneWidget);
+      expect(find.text('ابدأ التركيز • ٢٥ دقيقة'), findsOneWidget);
+      expect(find.text('وبعدها'), findsOneWidget);
+      expect(find.text('إطلاق نسخة هندلها'), findsOneWidget);
     });
 
-    testWidgets('TasksScreen renders the three task filters', (tester) async {
+    testWidgets('TasksScreen renders the three task filters and action bar', (tester) async {
       await tester.pumpWidget(_buildTestApp(const TasksScreen()));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
 
-      expect(find.text('مهامك'), findsOneWidget);
-      expect(find.text('اليوم'), findsWidgets);
+      expect(find.text('مهامك، على مهلك'), findsOneWidget);
+      expect(find.text('اليوم ٨'), findsOneWidget);
       expect(find.text('الوارد'), findsOneWidget);
-      expect(find.text('المكتملة'), findsOneWidget);
+      expect(find.text('المكتملة ٣'), findsOneWidget);
+      expect(find.text('مراجعة تدفق المهام وتجربة المستخدم'), findsOneWidget);
     });
 
-    testWidgets('ChatScreen renders assistant greeting and proposals', (
-      tester,
-    ) async {
+    testWidgets('ChatScreen renders assistant greeting and proposals', (tester) async {
       await tester.pumpWidget(_buildTestApp(const ChatScreen()));
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('هندلها معاك'), findsOneWidget);
-      expect(find.text('متصل الآن'), findsOneWidget);
-      expect(find.text('تأكيد وإضافة'), findsOneWidget); // Proposal card CTA
+      expect(find.text('مساعد هندلها'), findsOneWidget);
+      expect(find.text('معاك، خطوة بخطوة'), findsOneWidget);
+      expect(find.text('مراجعة تدفق المهام وتجربة المستخدم'), findsOneWidget);
       expect(find.byType(TextField), findsOneWidget);
     });
 
-    testWidgets('ProjectsScreen renders filter chips and project cards', (
-      tester,
-    ) async {
+    testWidgets('ProjectsScreen renders filter chips and project cards', (tester) async {
       await tester.pumpWidget(_buildTestApp(const ProjectsScreen()));
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('مشاريع'), findsOneWidget);
-      expect(find.text('الكل'), findsOneWidget);
-      expect(find.text('شغّالة'), findsOneWidget);
+      expect(find.text('من فكرة لخطوة'), findsOneWidget);
+      expect(find.text('نشطة ٢'), findsOneWidget);
       expect(find.text('إطلاق نسخة هندلها'), findsOneWidget);
+      expect(find.text('تنظيم مساحة العمل'), findsOneWidget);
     });
 
-    testWidgets('NotificationsScreen renders quiet hours and category tabs', (
-      tester,
-    ) async {
+    testWidgets('NotificationsScreen renders notifications and quiet hours', (tester) async {
       await tester.pumpWidget(_buildTestApp(const NotificationsScreen()));
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('تنبيهاتك'), findsOneWidget);
-      expect(find.text('ساعات الهدوء: مفعّلة'), findsOneWidget);
-      expect(find.text('تذكير'), findsAtLeastNWidgets(1));
-      expect(find.text('تشجيع'), findsAtLeastNWidgets(1));
-      expect(find.text('تركيز'), findsAtLeastNWidgets(1));
+      expect(find.text('الإشعارات'), findsOneWidget);
+      expect(find.text('الكل'), findsOneWidget);
+      expect(find.text('غير المقروءة ٢'), findsOneWidget);
+      expect(find.text('خطوتك الأولى جاهزة'), findsOneWidget);
     });
 
-    testWidgets('SettingsScreen renders account, tone and preferences', (
-      tester,
-    ) async {
+    testWidgets('SettingsScreen renders account, tone and preferences', (tester) async {
       await tester.pumpWidget(_buildTestApp(const SettingsScreen()));
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('إعداداتك'), findsOneWidget);
+      expect(find.text('على طريقتك'), findsOneWidget);
       expect(find.text('نبرة المساعد'), findsOneWidget);
       expect(find.text('المظهر'), findsOneWidget);
       expect(find.text('الخصوصية والبيانات'), findsOneWidget);

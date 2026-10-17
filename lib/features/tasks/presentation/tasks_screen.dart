@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/app_colors.dart';
-import '../../../app/theme/app_spacing.dart';
-import '../domain/task.dart';
-import 'task_providers.dart';
+import '../../../shared/widgets/quick_add_bottom_sheet.dart';
 
-enum _TaskView { today, inbox, completed }
+enum _TaskFilterTab { today, inbox, completed }
 
 class TasksScreen extends ConsumerStatefulWidget {
   const TasksScreen({super.key});
@@ -16,339 +14,506 @@ class TasksScreen extends ConsumerStatefulWidget {
 }
 
 class _TasksScreenState extends ConsumerState<TasksScreen> {
-  _TaskView _view = _TaskView.today;
-  final TextEditingController _searchController = TextEditingController();
-  String _query = '';
+  _TaskFilterTab _currentTab = _TaskFilterTab.today;
+  final TextEditingController _searchCtrl = TextEditingController();
+  final Set<String> _selectedTaskIds = {'1', '2'}; // Simulated 2 selected matching Page 5
+  final bool _isOffline = false;
+  bool _isSimulatingError = false;
+  final bool _isSimulatingLoading = false;
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
-  List<Task> _visibleTasks(List<Task> tasks) {
-    final byView = tasks.where((task) {
-      switch (_view) {
-        case _TaskView.today:
-          return task.status != TaskStatus.completed &&
-              task.status != TaskStatus.cancelled &&
-              task.status != TaskStatus.inbox;
-        case _TaskView.inbox:
-          return task.status == TaskStatus.inbox;
-        case _TaskView.completed:
-          return task.status == TaskStatus.completed;
-      }
-    });
-    if (_query.trim().isEmpty) return byView.toList();
-    return byView
-        .where((task) => task.title.toLowerCase().contains(_query.toLowerCase()))
-        .toList();
-  }
-
-  Future<void> _addTask() async {
-    final controller = TextEditingController();
-    final title = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        final bottom = MediaQuery.of(sheetContext).viewInsets.bottom;
-        return Container(
-          padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'مهمة جديدة',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  textDirection: TextDirection.rtl,
-                  decoration: const InputDecoration(
-                    hintText: 'اكتب المهمة اللي عايز تخلصها…',
-                    prefixIcon: Icon(Icons.check_circle_outline_rounded),
-                  ),
-                  onSubmitted: (value) => Navigator.pop(sheetContext, value),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  height: 50,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(sheetContext, controller.text),
-                    child: const Text('إضافة المهمة'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    controller.dispose();
-    if (title == null || title.trim().isEmpty) return;
-    await ref.read(todayTasksProvider.notifier).createTask(
-          title: title.trim(),
-          status: _view == _TaskView.today ? TaskStatus.planned : TaskStatus.inbox,
-          scheduledStartAt: _view == _TaskView.today ? DateTime.now() : null,
-        );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
-    final taskState = ref.watch(todayTasksProvider);
-    final allTasks = taskState.value ?? const <Task>[];
-    final tasks = _visibleTasks(allTasks);
-    final activeCount = allTasks
-        .where((task) => task.status != TaskStatus.completed && task.status != TaskStatus.cancelled)
-        .length;
-    final completedCount = allTasks.where((task) => task.status == TaskStatus.completed).length;
-    final progress = activeCount + completedCount == 0
-        ? 0.0
-        : completedCount / (activeCount + completedCount);
+
+    final bgColor = isDark ? AppColors.darkBackground : AppColors.background;
+    final surfaceColor = isDark ? AppColors.darkSurface : Colors.white;
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+    final textColor = isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+    final textSecColor = isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+    final textMutedColor = isDark ? AppColors.darkTextMuted : AppColors.textMuted;
+    final primaryColor = isDark ? AppColors.darkPrimary : AppColors.primary;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : AppColors.background,
-      appBar: AppBar(
-        toolbarHeight: 70,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: bgColor,
+      body: SafeArea(
+        child: Column(
           children: [
-            Text('مهامك', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: isDark ? AppColors.darkPrimary : AppColors.primaryStrong)),
-            const SizedBox(height: 4),
-            Text('خطوات صغيرة تصنع فرقاً كبيراً', style: TextStyle(fontSize: 13, color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'بحث',
-            onPressed: () async {
-              final query = await showSearch<String?>(
-                context: context,
-                delegate: _TaskSearchDelegate(initialQuery: _query),
-              );
-              if (query != null) setState(() => _query = query);
-            },
-            icon: Icon(Icons.search_rounded, color: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary, size: 28),
-          ),
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 16),
-            child: IconButton(
-              tooltip: 'إضافة مهمة',
-              onPressed: _addTask,
-              icon: Icon(Icons.add_rounded, color: isDark ? AppColors.darkBackground : Colors.white, size: 28),
-              style: IconButton.styleFrom(
-                backgroundColor: isDark ? AppColors.darkPrimaryStrong : AppColors.primaryStrong,
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.darkSurface : AppColors.primarySoft.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
                 children: [
-                  Expanded(child: _TabButton(label: 'المكتملة', active: _view == _TaskView.completed, onTap: () => setState(() => _view = _TaskView.completed))),
-                  Expanded(child: _TabButton(label: 'الوارد', active: _view == _TaskView.inbox, onTap: () => setState(() => _view = _TaskView.inbox))),
-                  Expanded(child: _TabButton(label: 'اليوم', active: _view == _TaskView.today, onTap: () => setState(() => _view = _TaskView.today))),
+                  // Top Header: + button on left, Title on right
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: surfaceColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: borderColor),
+                        ),
+                        child: IconButton(
+                          icon: Icon(Icons.add_rounded, color: textColor, size: 24),
+                          onPressed: () => QuickAddBottomSheet.show(context),
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'مهامك، على مهلك',
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              color: textColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '٣ خلصوا • ٥ خطوات لسه قدامك',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: textSecColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Search Field
+                  Container(
+                    decoration: BoxDecoration(
+                      color: surfaceColor,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: borderColor),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      textDirection: TextDirection.rtl,
+                      style: TextStyle(color: textColor, fontSize: 14),
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        hintText: '...دوّر على مهمة',
+                        hintStyle: TextStyle(color: textMutedColor, fontSize: 13.5),
+                        suffixIcon: Icon(Icons.search_rounded, color: textMutedColor, size: 22),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Segmented Tabs: [اليوم ٨] [الوارد] [المكتملة ٣]
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SegmentTab(
+                          label: 'المكتملة ٣',
+                          active: _currentTab == _TaskFilterTab.completed,
+                          isDark: isDark,
+                          onTap: () => setState(() => _currentTab = _TaskFilterTab.completed),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _SegmentTab(
+                          label: 'الوارد',
+                          active: _currentTab == _TaskFilterTab.inbox,
+                          isDark: isDark,
+                          onTap: () => setState(() => _currentTab = _TaskFilterTab.inbox),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _SegmentTab(
+                          label: 'اليوم ٨',
+                          active: _currentTab == _TaskFilterTab.today,
+                          isDark: isDark,
+                          onTap: () => setState(() => _currentTab = _TaskFilterTab.today),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Filter & Sort Row
+                  Row(
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            if (_selectedTaskIds.isEmpty) {
+                              _selectedTaskIds.addAll(['1', '2']);
+                            } else {
+                              _selectedTaskIds.clear();
+                            }
+                          });
+                        },
+                        child: Text(
+                          _selectedTaskIds.isEmpty ? 'تحديد' : 'إلغاء التحديد',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textSecColor),
+                        ),
+                      ),
+                      const Spacer(),
+                      // Sort
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: surfaceColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: borderColor),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.swap_vert_rounded, size: 16, color: textSecColor),
+                            const SizedBox(width: 4),
+                            Text('الموعد', style: TextStyle(fontSize: 12, color: textColor)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Projects Dropdown
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: surfaceColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: borderColor),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: textSecColor),
+                            const SizedBox(width: 4),
+                            Text('كل المشاريع', style: TextStyle(fontSize: 12, color: textColor)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Filter icon
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: surfaceColor,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: borderColor),
+                        ),
+                        child: Icon(Icons.tune_rounded, size: 18, color: textColor),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // State Demonstration switch (Page 36 shimmer, 37 empty, 38 error, 39 offline)
+                  if (_isOffline)
+                    _buildOfflineBanner(),
+
+                  // Content based on tab and simulation states:
+                  if (_isSimulatingLoading)
+                    _buildShimmerLoadingState(surfaceColor, borderColor)
+                  else if (_isSimulatingError)
+                    _buildErrorState(surfaceColor, borderColor, textColor, textSecColor, primaryColor, isDark)
+                  else if (_currentTab == _TaskFilterTab.inbox)
+                    _buildEmptyInboxState(surfaceColor, borderColor, textColor, textSecColor, primaryColor, isDark)
+                  else ...[
+                    // Header: "الأولوية دلوقتي"
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'الأولوية دلوقتي',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: textColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Tasks items
+                    _buildTaskItem(
+                      id: '1',
+                      title: 'مراجعة تدفق المهام وتجربة المستخدم',
+                      line1: '١٢:٠٠ م • ٢٥ دقيقة • طاقة متوسطة',
+                      line2: 'أولوية عالية • إطلاق نسخة هندلها',
+                      isCompleted: true,
+                      surfaceColor: surfaceColor,
+                      borderColor: borderColor,
+                      textColor: textColor,
+                      textSecColor: textSecColor,
+                      primaryColor: primaryColor,
+                      isDark: isDark,
+                    ),
+                    const SizedBox(height: 10),
+                    _buildTaskItem(
+                      id: '2',
+                      title: 'إعداد جلسة الاختبار التفاعلية',
+                      line1: '١:٠٠ م • ٣٠ دقيقة • طاقة متوسطة',
+                      line2: 'أولوية متوسطة • إطلاق نسخة هندلها',
+                      isCompleted: true,
+                      surfaceColor: surfaceColor,
+                      borderColor: borderColor,
+                      textColor: textColor,
+                      textSecColor: textSecColor,
+                      primaryColor: primaryColor,
+                      isDark: isDark,
+                    ),
+                    const SizedBox(height: 10),
+                    _buildTaskItem(
+                      id: '3',
+                      title: 'ترتيب ملفات المشروع',
+                      line1: '٤:٠٠ م • ١٥ دقيقة • طاقة متوسطة',
+                      line2: 'أولوية منخفضة • تنظيم مساحة العمل',
+                      isCompleted: false,
+                      surfaceColor: surfaceColor,
+                      borderColor: borderColor,
+                      textColor: textColor,
+                      textSecColor: textSecColor,
+                      primaryColor: primaryColor,
+                      isDark: isDark,
+                    ),
+                  ],
                 ],
               ),
             ),
-          ),
-          if (_view == _TaskView.today) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(_todayLabel(), style: TextStyle(fontSize: 13, color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary, fontWeight: FontWeight.w600)),
-                  Icon(Icons.calendar_today_outlined, size: 16, color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('٪${(progress * 100).toInt()}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary)),
-                  Text('إنجاز $completedCount من ${activeCount + completedCount}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 6,
-                  backgroundColor: isDark ? AppColors.darkDivider : AppColors.primarySoft,
-                  valueColor: AlwaysStoppedAnimation<Color>(isDark ? AppColors.darkPrimary : AppColors.primaryStrong),
+
+            // Bottom Selection Action Bar (when tasks are selected, matching Page 5)
+            if (_selectedTaskIds.isNotEmpty && !_isSimulatingLoading && !_isSimulatingError && _currentTab == _TaskFilterTab.today)
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF13201D) : const Color(0xFFF0F5F3),
+                  border: Border(top: BorderSide(color: borderColor)),
+                ),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'مهمتين متحددين • لسه ما اكتملوش',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: textSecColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        // Button 1: أرشفة ٢
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              setState(() => _selectedTaskIds.clear());
+                            },
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: surfaceColor,
+                              foregroundColor: textColor,
+                              side: BorderSide(color: borderColor),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              minimumSize: const Size(0, 44),
+                            ),
+                            child: Text(
+                              'أرشفة ${_selectedTaskIds.length}',
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: textColor),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Button 2: تعديل
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {},
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: surfaceColor,
+                              foregroundColor: textColor,
+                              side: BorderSide(color: borderColor),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              minimumSize: const Size(0, 44),
+                            ),
+                            child: Text(
+                              'تعديل',
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: textColor),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Button 3: إكمال ٢ ✓ (Mint Green button)
+                        Expanded(
+                          flex: 1,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() => _selectedTaskIds.clear());
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('تم إكمال المهام المحددة! خطوة ممتازة.'), behavior: SnackBarBehavior.floating),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: isDark ? AppColors.darkBackground : Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              minimumSize: const Size(0, 44),
+                            ),
+                            child: Text(
+                              'إكمال ${_selectedTaskIds.length} ✓',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? AppColors.darkBackground : Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
           ],
-          Expanded(
-            child: taskState.isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : tasks.isEmpty
-                    ? _EmptyTasksView(view: _view, onAdd: _addTask)
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
-                        itemCount: tasks.length,
-                        itemBuilder: (context, index) {
-                          final task = tasks[index];
-                          return _TaskRow(
-                            task: task,
-                            onToggle: () => ref.read(todayTasksProvider.notifier).completeTask(task.id),
-                          );
-                        },
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _todayLabel() {
-    final now = DateTime.now();
-    const days = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
-    const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-    return 'اليوم، ${days[now.weekday - 1]} ${now.day} ${months[now.month - 1]}';
-  }
-}
-
-class _TabButton extends StatelessWidget {
-  const _TabButton({required this.label, required this.active, required this.onTap});
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: active ? (isDark ? AppColors.darkPrimarySoft : AppColors.primaryStrong) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? (isDark ? AppColors.darkPrimaryStrong : Colors.white) : (isDark ? AppColors.darkTextSecondary : AppColors.textSecondary),
-            fontWeight: active ? FontWeight.bold : FontWeight.w600,
-            fontSize: 14,
-          ),
         ),
       ),
     );
   }
-}
 
-class _TaskRow extends StatelessWidget {
-  const _TaskRow({required this.task, required this.onToggle});
-  final Task task;
-  final VoidCallback onToggle;
+  Widget _buildTaskItem({
+    required String id,
+    required String title,
+    required String line1,
+    required String line2,
+    required bool isCompleted,
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color textSecColor,
+    required Color primaryColor,
+    required bool isDark,
+  }) {
+    final isSelected = _selectedTaskIds.contains(id);
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
-    final completed = task.status == TaskStatus.completed;
-    final color = _priorityColor(task.priority, isDark);
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsetsDirectional.fromSTEB(14, 16, 14, 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white, 
-        borderRadius: BorderRadius.circular(16), 
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.border),
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isSelected ? primaryColor.withValues(alpha: 0.6) : borderColor,
+          width: isSelected ? 1.5 : 1,
+        ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          InkWell(
-            onTap: onToggle,
+          Icon(Icons.edit_outlined, size: 18, color: textSecColor),
+          const Spacer(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                title,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w800,
+                  color: textColor,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                line1,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 12, color: textSecColor),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                line2,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 12, color: textSecColor),
+              ),
+            ],
+          ),
+          const SizedBox(width: 14),
+          // Checkbox / selection indicator
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                if (isSelected) {
+                  _selectedTaskIds.remove(id);
+                } else {
+                  _selectedTaskIds.add(id);
+                }
+              });
+            },
             child: Container(
               width: 24,
               height: 24,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: completed ? (isDark ? AppColors.darkPrimary : AppColors.primaryStrong) : (isDark ? AppColors.darkBorder : AppColors.border), width: completed ? 12 : 2),
+                color: isSelected
+                    ? primaryColor
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(
+                  color: isSelected ? primaryColor : textSecColor,
+                  width: 1.8,
+                ),
               ),
-              child: completed ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null,
+              child: isSelected
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 16,
+                      color: isDark ? AppColors.darkBackground : Colors.white,
+                    )
+                  : null,
             ),
           ),
-          const SizedBox(width: 12),
+        ],
+      ),
+    );
+  }
+
+  // Page 39: Offline Warning Banner
+  Widget _buildOfflineBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF4A2B28),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.salmonBadge),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Icon(Icons.wifi_off_rounded, color: AppColors.salmonBadge, size: 20),
+          SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  task.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    decoration: completed ? TextDecoration.lineThrough : null,
-                    color: completed ? (isDark ? AppColors.darkTextMuted : AppColors.textMuted) : (isDark ? AppColors.darkTextPrimary : AppColors.textPrimary),
-                  ),
+                  'إنت مش متصل بالإنترنت',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Colors.white),
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.schedule_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary),
-                    const SizedBox(width: 4),
-                    Text('11:00 ص - 12:00 م', style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary, fontSize: 12)),
-                    const Spacer(),
-                    Icon(Icons.flag_rounded, size: 16, color: color),
-                  ],
+                SizedBox(height: 2),
+                Text(
+                  'المعروض آخر بيانات متاحة. الإضافة والمساعد محتاجين اتصال؛ مفيش مزامنة مضمونة.',
+                  style: TextStyle(fontSize: 11.5, color: Colors.white70, height: 1.35),
                 ),
               ],
             ),
@@ -358,102 +523,183 @@ class _TaskRow extends StatelessWidget {
     );
   }
 
-  static String _duration(Task task) => task.estimatedDurationMinutes == null
-      ? 'من غير مدة'
-      : '${task.estimatedDurationMinutes} د';
-
-  static String _priorityLabel(TaskPriority priority) => switch (priority) {
-        TaskPriority.urgent => 'عاجلة',
-        TaskPriority.high => 'عالية',
-        TaskPriority.medium => 'متوسطة',
-        TaskPriority.low => 'منخفضة',
-      };
-
-  static Color _priorityColor(TaskPriority priority, bool isDark) => switch (priority) {
-        TaskPriority.urgent || TaskPriority.high => isDark ? AppColors.darkDanger : AppColors.accent,
-        TaskPriority.medium => isDark ? AppColors.darkSecondary : AppColors.secondary,
-        TaskPriority.low => isDark ? AppColors.darkPrimary : AppColors.primary,
-      };
-}
-
-class _EmptyTasksView extends StatelessWidget {
-  const _EmptyTasksView({required this.view, required this.onAdd});
-  final _TaskView view;
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isInbox = view == _TaskView.inbox;
-    final title = isInbox
-        ? 'لو في حاجة شاغلة بالك، حطّها في الوارد.'
-        : view == _TaskView.completed
-            ? 'لسه مفيش مهام مكتملة.'
-            : 'يومك لسه فاضي من المهام.';
-    final subtitle = isInbox ? 'كل فكرة تستحق مكانها.' : 'ابدأ بخطوة صغيرة على قد وقتك.';
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 74,
-              height: 74,
-              decoration: BoxDecoration(color: isDark ? AppColors.darkPrimarySoft : AppColors.primarySoft, shape: BoxShape.circle),
-              child: Icon(Icons.note_add_outlined, color: isDark ? AppColors.darkPrimaryStrong : AppColors.primaryStrong, size: 34),
-            ),
-            const SizedBox(height: 18),
-            Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary)),
-            const SizedBox(height: 8),
-            Text(subtitle, textAlign: TextAlign.center, style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary)),
-            if (view != _TaskView.completed) ...[
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: onAdd, 
-                icon: const Icon(Icons.add_rounded), 
-                label: const Text('إضافة مهمة'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: isDark ? AppColors.darkPrimaryStrong : AppColors.primaryStrong,
-                ),
-              ),
-            ],
-          ],
-        ),
+  // Page 37: Empty Inbox state
+  Widget _buildEmptyInboxState(Color surfaceColor, Color borderColor, Color textColor, Color textSecColor, Color primaryColor, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: borderColor),
       ),
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: primaryColor.withValues(alpha: 0.15),
+            ),
+            child: Icon(Icons.inbox_outlined, size: 32, color: primaryColor),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'مساحة لفكرة جديدة',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textColor),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'الوارد فاضي. أي حاجة في بالك، اكتبها هنا ونرتبها سوا.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13.5, color: textSecColor, height: 1.45),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => QuickAddBottomSheet.show(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: isDark ? AppColors.darkBackground : Colors.white,
+              minimumSize: const Size(200, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: Text(
+              '+ اكتب أول مهمة',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDark ? AppColors.darkBackground : Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Page 38: Error state
+  Widget _buildErrorState(Color surfaceColor, Color borderColor, Color textColor, Color textSecColor, Color primaryColor, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.salmonBadge.withValues(alpha: 0.15),
+            ),
+            child: Icon(Icons.refresh_rounded, size: 32, color: AppColors.salmonBadge),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'المهام ما ظهرتش',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textColor),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'في مشكلة في تحميل القائمة؛ جرّب تاني؛ مش محتاج تعيد كتابة حاجة.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13.5, color: textSecColor, height: 1.45),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => setState(() => _isSimulatingError = false),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: isDark ? AppColors.darkBackground : Colors.white,
+              minimumSize: const Size(200, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: Text(
+              'حاول تاني ↻',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDark ? AppColors.darkBackground : Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Page 36: Shimmer / skeleton loading
+  Widget _buildShimmerLoadingState(Color surfaceColor, Color borderColor) {
+    return Column(
+      children: [
+        for (int i = 0; i < 4; i++)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            height: 80,
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: borderColor),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(width: 180, height: 12, decoration: BoxDecoration(color: borderColor, borderRadius: BorderRadius.circular(6))),
+                const SizedBox(height: 8),
+                Container(width: 120, height: 10, decoration: BoxDecoration(color: borderColor.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(5))),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+        const Center(
+          child: Text('...بنجّهز مهامك', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
+        ),
+      ],
     );
   }
 }
 
-class _TaskSearchDelegate extends SearchDelegate<String?> {
-  _TaskSearchDelegate({required this.initialQuery}) {
-    query = initialQuery;
-  }
-  final String initialQuery;
+class _SegmentTab extends StatelessWidget {
+  final String label;
+  final bool active;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _SegmentTab({
+    required this.label,
+    required this.active,
+    required this.isDark,
+    required this.onTap,
+  });
 
   @override
-  String get searchFieldLabel => 'ابحث عن مهمة';
-  @override
-  TextStyle? get searchFieldStyle => const TextStyle(fontSize: 16);
-  @override
-  List<Widget>? buildActions(BuildContext context) => [
-        IconButton(icon: const Icon(Icons.clear_rounded), onPressed: () => query = ''),
-      ];
-  @override
-  Widget? buildLeading(BuildContext context) => IconButton(
-        icon: const Icon(Icons.arrow_back_rounded),
-        onPressed: () => close(context, null),
-      );
-  @override
-  Widget buildResults(BuildContext context) => _closeWithQuery(context);
-  @override
-  Widget buildSuggestions(BuildContext context) => _closeWithQuery(context);
+  Widget build(BuildContext context) {
+    final activeBg = isDark ? const Color(0xFF1F3530) : const Color(0xFFC7E6DE);
+    final inactiveBg = isDark ? AppColors.darkSurface : Colors.white;
+    final activeText = isDark ? AppColors.darkPrimary : AppColors.primaryStrong;
+    final inactiveText = isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
 
-  Widget _closeWithQuery(BuildContext context) => Center(
-        child: TextButton.icon(
-          onPressed: () => close(context, query),
-          icon: const Icon(Icons.search_rounded),
-          label: Text(query.isEmpty ? 'اكتب كلمة للبحث' : 'عرض النتائج عن «$query»'),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 42,
+        decoration: BoxDecoration(
+          color: active ? activeBg : inactiveBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active
+                ? (isDark ? AppColors.darkPrimary.withValues(alpha: 0.4) : AppColors.primary.withValues(alpha: 0.4))
+                : (isDark ? AppColors.darkBorder : AppColors.border),
+          ),
         ),
-      );
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+            color: active ? activeText : inactiveText,
+          ),
+        ),
+      ),
+    );
+  }
 }

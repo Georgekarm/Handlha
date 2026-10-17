@@ -1,26 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
-
-enum NotificationCategory { reminder, encouragement, focus, important }
-
-class NotificationItem {
-  final String id;
-  final String title;
-  final String body;
-  final NotificationCategory category;
-  final DateTime time;
-  bool isRead;
-
-  NotificationItem({
-    required this.id,
-    required this.title,
-    required this.body,
-    required this.category,
-    required this.time,
-    this.isRead = false,
-  });
-}
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -29,407 +10,197 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  bool _quietHoursEnabled = true;
-
-  final List<NotificationItem> _notifications = [
-    NotificationItem(
-      id: '1',
-      title: 'خطوة صغيرة قادمة',
-      body: 'فاضل نص ساعة على موعد مراجعة العرض. جاهز تبدأ بهدوء؟',
-      category: NotificationCategory.reminder,
-      time: DateTime.now().subtract(const Duration(minutes: 20)),
-    ),
-    NotificationItem(
-      id: '2',
-      title: 'الله ينور عليك ',
-      body: 'خلصت مهمتين أساسيتين في أول النهار. استراحة 5 دقائق تستحقها!',
-      category: NotificationCategory.encouragement,
-      time: DateTime.now().subtract(const Duration(hours: 2)),
-      isRead: true,
-    ),
-    NotificationItem(
-      id: '3',
-      title: 'جلسة تركيز مقترحة',
-      body: 'فترة ما بعد الظهر مناسبة لجلسة تركيز هادئة مدتها 25 دقيقة.',
-      category: NotificationCategory.focus,
-      time: DateTime.now().subtract(const Duration(hours: 4)),
-      isRead: true,
-    ),
-    NotificationItem(
-      id: '4',
-      title: 'مهمة تحتاج إعادة ترتيب',
-      body: 'مفيش مشكلة، نعيد ترتيب موعد مهمة "مكالمة المهندس" على قد وقتك المتاح.',
-      category: NotificationCategory.important,
-      time: DateTime.now().subtract(const Duration(days: 1)),
-      isRead: true,
-    ),
-  ];
-
-  int _selectedTab = 0; // 0=الكل, 1=تذكير, 2=تركيز
-
-  List<NotificationItem> get _filtered {
-    if (_selectedTab == 0) return _notifications;
-    final cat = [
-      null,
-      NotificationCategory.reminder,
-      NotificationCategory.focus,
-    ][_selectedTab];
-    return _notifications.where((n) => n.category == cat).toList();
-  }
-
-  void _markAllRead() {
-    setState(() {
-      for (final n in _notifications) {
-        n.isRead = true;
-      }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تم تعليم كل التنبيهات كـ مقروءة بنجاح'),
-        backgroundColor: AppColors.primaryDark,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(
-      () => setState(() => _selectedTab = _tabController.index),
-    );
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  int _tabIndex = 0; // 0: الكل, 1: غير المقروءة ٢
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final unreadCount = _notifications.where((n) => !n.isRead).length;
-    final quietHoursLabel = _quietHoursEnabled ? 'مفعّلة' : 'متوقفة';
-
     final isDark = theme.brightness == Brightness.dark;
-    final primaryColor = isDark ? AppColors.darkPrimary : AppColors.primary;
-    final surfaceColor = isDark ? AppColors.darkSurface : AppColors.surface;
+
+    final bgColor = isDark ? AppColors.darkBackground : AppColors.background;
+    final surfaceColor = isDark ? AppColors.darkSurface : Colors.white;
     final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+    final textColor = isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+    final textSecColor = isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+    final primaryColor = isDark ? AppColors.darkPrimary : AppColors.primary;
 
     return Scaffold(
-      appBar: AppBar(
-            automaticallyImplyLeading: true,
-        title: Row(
+      backgroundColor: bgColor,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
           children: [
-            const Text('تنبيهاتك'),
-            if (unreadCount > 0) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.darkPrimarySoft
-                      : AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '$unreadCount',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          if (unreadCount > 0)
-            TextButton(
-              onPressed: _markAllRead,
-              style: TextButton.styleFrom(foregroundColor: primaryColor),
-              child: const Text('تعليم الكل كمقروء'),
-            ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: TabBar(
-            controller: _tabController,
-            labelColor: primaryColor,
-            unselectedLabelColor: isDark
-                ? AppColors.darkTextSecondary
-                : AppColors.textSecondary,
-            indicatorColor: primaryColor,
-            indicatorSize: TabBarIndicatorSize.label,
-            labelStyle: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-            tabs: const [
-              Tab(text: 'الكل'),
-              Tab(text: 'تذكير'),
-              Tab(text: 'تركيز'),
-            ],
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          // شريط ساعات الهدوء (Quiet Hours)
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: borderColor),
-            ),
-            child: Row(
+            // Top App Bar
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(
-                  Icons.nightlight_round_outlined,
-                  color: primaryColor,
-                  size: 20,
+                IconButton(
+                  icon: Icon(Icons.done_all_rounded, color: textSecColor),
+                  onPressed: () {},
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'ساعات الهدوء: $quietHoursLabel',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? AppColors.darkTextPrimary
-                              : AppColors.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        'مش هتوصلك إشعارات بين 10:00 م و7:00 ص',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: isDark
-                              ? AppColors.darkTextMuted
-                              : AppColors.textMuted,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
+                Column(
+                  children: [
+                    Text(
+                      'الإشعارات',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textColor),
+                    ),
+                    Text(
+                      'تذكير في وقته، مش طول الوقت',
+                      style: TextStyle(fontSize: 12, color: textSecColor),
+                    ),
+                  ],
                 ),
-                Switch(
-                  value: _quietHoursEnabled,
-                  activeThumbColor: primaryColor,
-                  onChanged: (v) => setState(() => _quietHoursEnabled = v),
+                IconButton(
+                  icon: Icon(Icons.chevron_right_rounded, color: textSecColor, size: 26),
+                  onPressed: () => context.pop(),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 18),
 
-          // قائمة التنبيهات
-          Expanded(
-            child: _filtered.isEmpty
-                ? _EmptyNotifView()
-                : ListView.builder(
-                    padding: EdgeInsetsDirectional.fromSTEB(
-                      16,
-                      8,
-                      16,
-                      MediaQuery.of(context).padding.bottom + 100,
-                    ),
-                    itemCount: _filtered.length,
-                    itemBuilder: (context, i) => _NotificationCard(
-                      notif: _filtered[i],
-                      onTap: () {
-                        setState(() {
-                          _filtered[i].isRead = true;
-                        });
-                      },
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// بطاقة التنبيه بألوان الهوية الهادئة (Calm Notification Card)
-// ---------------------------------------------------------------------------
-class _NotificationCard extends StatelessWidget {
-  final NotificationItem notif;
-  final VoidCallback onTap;
-
-  const _NotificationCard({required this.notif, required this.onTap});
-
-  // ألوان الحالات حسب نظام Calm Productivity
-  Color _badgeBgColor(bool isDark) {
-    if (isDark) {
-      return switch (notif.category) {
-        NotificationCategory.reminder => AppColors.darkWarning.withValues(alpha: 0.18),
-        NotificationCategory.encouragement => AppColors.darkSuccess.withValues(alpha: 0.18),
-        NotificationCategory.focus => AppColors.darkSecondary.withValues(alpha: 0.18),
-        NotificationCategory.important => AppColors.darkDanger.withValues(alpha: 0.18),
-      };
-    }
-    return switch (notif.category) {
-      NotificationCategory.reminder => AppColors.warningSoft,
-      NotificationCategory.encouragement => AppColors.successSoft,
-      NotificationCategory.focus => AppColors.focusSoft,
-      NotificationCategory.important => AppColors.dangerSoft,
-    };
-  }
-
-  Color _badgeTextColor(bool isDark) {
-    if (isDark) {
-      return switch (notif.category) {
-        NotificationCategory.reminder => AppColors.darkWarning,
-        NotificationCategory.encouragement => AppColors.darkSuccess,
-        NotificationCategory.focus => AppColors.darkSecondary,
-        NotificationCategory.important => AppColors.darkDanger,
-      };
-    }
-    return switch (notif.category) {
-      NotificationCategory.reminder => AppColors.warning,
-      NotificationCategory.encouragement => AppColors.success,
-      NotificationCategory.focus => AppColors.focus,
-      NotificationCategory.important => AppColors.danger,
-    };
-  }
-
-  IconData _icon() {
-    return switch (notif.category) {
-      NotificationCategory.reminder => Icons.notifications_none_rounded,
-      NotificationCategory.encouragement => Icons.favorite_border_rounded,
-      NotificationCategory.focus => Icons.spa_outlined,
-      NotificationCategory.important => Icons.info_outline_rounded,
-    };
-  }
-
-  String _categoryLabel() {
-    return switch (notif.category) {
-      NotificationCategory.reminder => 'تذكير لطيف',
-      NotificationCategory.encouragement => 'تشجيع',
-      NotificationCategory.focus => 'تركيز',
-      NotificationCategory.important => 'تنبيه مهم',
-    };
-  }
-
-  String _timeLabel() {
-    final diff = DateTime.now().difference(notif.time);
-    if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes} دقيقة';
-    if (diff.inHours < 24) return 'منذ ${diff.inHours} ساعة';
-    return 'البارحة';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.darkSurface : AppColors.surface;
-    final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
-    final primaryColor = isDark ? AppColors.darkPrimary : AppColors.primary;
-    final textPrimary =
-        isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
-    final textSecondary =
-        isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: surfaceColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: notif.isRead
-                ? borderColor
-                : primaryColor.withValues(alpha: 0.35),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: (isDark ? Colors.black : AppColors.textPrimary)
-                  .withValues(alpha: isDark ? 0.2 : 0.02),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+            // Tabs: [الكل] [غير المقروءة ٢]
+            Row(
+              children: [
+                Expanded(
+                  child: _buildNotificationTab('غير المقروءة ٢', _tabIndex == 1, () {
+                    setState(() => _tabIndex = 1);
+                  }, isDark, surfaceColor, borderColor, primaryColor, textColor),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildNotificationTab('الكل', _tabIndex == 0, () {
+                    setState(() => _tabIndex = 0);
+                  }, isDark, surfaceColor, borderColor, primaryColor, textColor),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: _badgeBgColor(isDark),
-                borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 18),
+
+            // Date & Clear Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                InkWell(
+                  onTap: () {},
+                  child: Text('مسح الكل', style: TextStyle(fontSize: 12.5, color: textSecColor, fontWeight: FontWeight.bold)),
+                ),
+                Text(
+                  'النهارده، ١٦ أكتوبر',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textSecColor),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Notification Card 1: خطوتك الأولى جاهزة
+            _buildNotificationCard(
+              icon: Icons.access_time_rounded,
+              title: 'خطوتك الأولى جاهزة',
+              subtitle: 'مراجعة تدفق المهام وتجربة المستخدم • تبدأ ١٢:٠٠ م',
+              timeAndStatus: 'من ٥ دقائق • غير مقروء',
+              isUnread: true,
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              textColor: textColor,
+              textSecColor: textSecColor,
+              primaryColor: primaryColor,
+            ),
+            const SizedBox(height: 10),
+
+            // Notification Card 2: باقي ١٥ يوم على إطلاق هندلها
+            _buildNotificationCard(
+              icon: Icons.folder_outlined,
+              title: 'باقي ١٥ يوم على إطلاق هندلها',
+              subtitle: 'المشروع على المسار • ٦ من ١٢ مهمة مكتملة',
+              timeAndStatus: '٩:٠٠ ص • غير مقروء',
+              isUnread: true,
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              textColor: textColor,
+              textSecColor: textSecColor,
+              primaryColor: primaryColor,
+            ),
+            const SizedBox(height: 10),
+
+            // Notification Card 3: جلسة امبارح كانت خطوة كويسة
+            if (_tabIndex == 0) ...[
+              _buildNotificationCard(
+                icon: Icons.timer_outlined,
+                title: 'جلسة امبارح كانت خطوة كويسة',
+                subtitle: '٢٥ دقيقة تركيز. اختار خطوة مناسبة لطاقتك النهارده.',
+                timeAndStatus: '٨:٣٠ ص • مقروء',
+                isUnread: false,
+                surfaceColor: surfaceColor,
+                borderColor: borderColor,
+                textColor: textColor,
+                textSecColor: textSecColor,
+                primaryColor: primaryColor,
               ),
-              child: Icon(_icon(), color: _badgeTextColor(isDark), size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
+              const SizedBox(height: 18),
+            ],
+
+            // Info Card: ليه الإشعار ده؟
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.assistantPurpleSoft : const Color(0xFFF3F0FA),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: borderColor),
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _badgeBgColor(isDark),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _categoryLabel(),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: _badgeTextColor(isDark),
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
                       Text(
-                        _timeLabel(),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: isDark
-                              ? AppColors.darkTextMuted
-                              : AppColors.textMuted,
-                          fontSize: 11,
-                        ),
+                        'ليه الإشعار ده؟',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: textColor),
                       ),
+                      const SizedBox(width: 8),
+                      Icon(Icons.auto_awesome_rounded, color: AppColors.darkSecondary, size: 18),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    notif.title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: notif.isRead
-                          ? FontWeight.w500
-                          : FontWeight.w700,
-                      color: textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    notif.body,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: textSecondary,
-                      height: 1.4,
-                    ),
+                    'بنقترح التذكير حسب الموعد اللي اخترته وأولوية المهمة، من غير إضافة مهام أو تغيير خطتك.',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 12.5, color: textSecColor, height: 1.45),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Quiet Hours Bar
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'وقت الهدوء: ١٠:٠٠ م - ٨:٠٠ ص',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textSecColor),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(Icons.nightlight_round_outlined, color: textSecColor, size: 18),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Demo button to test permission modal (Page 33)
+            Center(
+              child: TextButton.icon(
+                onPressed: () => _showPermissionModal(context),
+                icon: const Icon(Icons.settings_outlined, size: 16),
+                label: const Text('معاينة طلب إذن الإشعارات'),
               ),
             ),
           ],
@@ -437,45 +208,202 @@ class _NotificationCard extends StatelessWidget {
       ),
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// الحالة الفارغة (Empty State)
-// ---------------------------------------------------------------------------
-class _EmptyNotifView extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  Widget _buildNotificationTab(
+    String label,
+    bool active,
+    VoidCallback onTap,
+    bool isDark,
+    Color surfaceColor,
+    Color borderColor,
+    Color primaryColor,
+    Color textColor,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 40,
+        decoration: BoxDecoration(
+          color: active
+              ? (isDark ? const Color(0xFF1F3530) : const Color(0xFFC7E6DE))
+              : surfaceColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: active ? primaryColor : borderColor),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+            color: active ? primaryColor : textColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String timeAndStatus,
+    required bool isUnread,
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color textSecColor,
+    required Color primaryColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: AppColors.primarySoft,
-              shape: BoxShape.circle,
+          if (isUnread)
+            Container(
+              margin: const EdgeInsets.only(top: 4),
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
             ),
-            child: const Icon(
-              Icons.notifications_none_rounded,
-              color: AppColors.primaryDark,
-              size: 36,
-            ),
+          const Spacer(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                title,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: textColor),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 12.5, color: textSecColor),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                timeAndStatus,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 11, color: textSecColor),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            'مفيش تنبيهات جديدة',
-            style: Theme.of(context).textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'كل شيء هادئ ومنظم. يومك ماشي بسلاسة',
-            style: Theme.of(context).textTheme.bodyMedium
-                ?.copyWith(color: AppColors.textSecondary),
-            textAlign: TextAlign.center,
-          ),
+          const SizedBox(width: 12),
+          Icon(icon, size: 22, color: primaryColor),
         ],
       ),
+    );
+  }
+
+  // Page 33: Notification Permission Modal
+  void _showPermissionModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        final bgColor = isDark ? AppColors.darkSurface : Colors.white;
+        final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+        final textColor = isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+        final textSecColor = isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+        final primaryColor = isDark ? AppColors.darkPrimary : AppColors.primary;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 32),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.darkSurface2 : const Color(0xFFEFF5F3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.notifications_none_rounded, color: primaryColor, size: 36),
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                Text(
+                  'نفتكرك في الوقت المناسب؟',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textColor),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'اسمح بالإشعارات عشان مواعيد المهام وجلسات التركيز. تقدر تغيّر اختيارك في أي وقت من إعدادات الموبايل.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13.5, color: textSecColor, height: 1.45),
+                ),
+                const SizedBox(height: 20),
+
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurface2 : const Color(0xFFF4F8F6),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.nightlight_round_outlined, size: 20, color: primaryColor),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'وقت الهدوء محفوظ: من ١٠:٠٠ م لـ ٨:٠٠ ص • مش هنبعت تذكيرات في الفترة دي.',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(fontSize: 12, color: textColor, height: 1.35),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: isDark ? AppColors.darkBackground : Colors.white,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: Text('السماح بالإشعارات', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDark ? AppColors.darkBackground : Colors.white)),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: textSecColor,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    side: BorderSide(color: borderColor),
+                  ),
+                  child: const Text('مش دلوقتي', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

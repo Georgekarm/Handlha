@@ -1,5 +1,5 @@
 /// Pure-Dart core of the AI voice agent (no Flutter plugins needed).
-library ai_assistant;
+library;
 
 export 'src/controller/ai_assistant_controller.dart';
 export 'src/llm/conversation_manager.dart';

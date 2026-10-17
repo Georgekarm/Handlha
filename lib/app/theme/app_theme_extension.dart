@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// ThemeExtension لتوفير الألوان الدلالية (Semantic Colors) المخصصة
-/// في تطبيقي Light و Dark من خلال Theme.of(context).extension<AppThemeExtension>()
+/// في تطبيقي Light و Dark من خلال `Theme.of(context).extension<AppThemeExtension>()`
 class AppThemeExtension extends ThemeExtension<AppThemeExtension> {
   // --- Backgrounds & Surfaces ---
   final Color background;

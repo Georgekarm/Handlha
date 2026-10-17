@@ -84,10 +84,10 @@ class SpeechToTextPackageService implements SpeechToTextService {
     _lastWords = '';
     await _speech.listen(
       onResult: _onResult,
-      localeId: _locale,
-      listenFor: config.listenFor,
-      pauseFor: config.pauseFor,
       listenOptions: stt.SpeechListenOptions(
+        localeId: _locale,
+        listenFor: config.listenFor,
+        pauseFor: config.pauseFor,
         partialResults: true,
         cancelOnError: true,
         listenMode: stt.ListenMode.dictation,

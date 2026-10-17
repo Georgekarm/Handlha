@@ -65,7 +65,6 @@ class _AppLoadingViewState extends State<AppLoadingView>
       case LoadingContext.aiProposal:
         return 'بنجهز اقتراحات مناسبة';
       case LoadingContext.general:
-      default:
         return 'جاري التحضير...';
     }
   }
@@ -88,7 +87,6 @@ class _AppLoadingViewState extends State<AppLoadingView>
       case LoadingContext.aiProposal:
         return 'بنحلل الوضع الحالي ونقترح أفضل الخيارات.';
       case LoadingContext.general:
-      default:
         return 'لحظات ونبدأ معًا';
     }
   }

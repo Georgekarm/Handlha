@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
 
-/// علامة «هندلها» المتجهة: ورقتان صغيرتان تنموان من خطوة واحدة.
+/// علامة «هندلها» الرسمية: السهم والمنحنى الدائري مع علامة الإنجاز
 class HandelhaMark extends StatelessWidget {
   const HandelhaMark({super.key, this.size = 42, this.dark = false});
 
@@ -10,10 +10,18 @@ class HandelhaMark extends StatelessWidget {
   final bool dark;
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
+  Widget build(BuildContext context) {
+    return Image.asset(
+      'assets/images/logo.png',
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) => CustomPaint(
         size: Size.square(size),
         painter: _HandelhaMarkPainter(dark: dark),
-      );
+      ),
+    );
+  }
 }
 
 class HandelhaLogo extends StatelessWidget {
@@ -35,18 +43,35 @@ class HandelhaLogo extends StatelessWidget {
     final foreground = dark ? AppColors.darkTextPrimary : AppColors.textPrimary;
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         HandelhaMark(size: markSize, dark: dark),
         if (showWordmark) ...[
-          const SizedBox(width: 7),
-          Text(
-            'هندلها',
-            style: TextStyle(
-              color: foreground,
-              fontSize: fontSize,
-              fontWeight: FontWeight.w800,
-              height: 1.05,
-            ),
+          const SizedBox(width: 8),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'هندلها',
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w800,
+                  height: 1.1,
+                ),
+              ),
+              Text(
+                'HANDELHA',
+                style: TextStyle(
+                  color: dark ? AppColors.darkTextMuted : AppColors.textMuted,
+                  fontSize: fontSize * 0.45,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.2,
+                  height: 1.1,
+                ),
+              ),
+            ],
           ),
         ],
       ],

@@ -75,7 +75,7 @@ class HttpLLMService implements LLMService {
       } catch (e) {
         last = LlmException(LlmErrorKind.network, e.toString());
       }
-      _logger.log(LogLevel.warning, 'LLM attempt $attempt failed: ${last?.kind.name}');
+      _logger.log(LogLevel.warning, 'LLM attempt $attempt failed: ${last.kind.name}');
       if (attempt < maxAttempts) {
         await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
       }

@@ -1,232 +1,122 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
-import '../../../shared/widgets/auth_background.dart';
-import '../../../shared/widgets/handelha_brand.dart';
-import '../../../shared/widgets/handelha_illustration.dart';
-import '../../../shared/widgets/primary_button.dart';
-import '../../authentication/domain/app_user.dart';
-import '../../authentication/presentation/auth_providers.dart';
 
-class OnboardingScreen extends ConsumerStatefulWidget {
+class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
+
   @override
-  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  final _pageController = PageController();
-  final _nameCtrl = TextEditingController();
-  int _page = 0;
-  OnboardingUsageType _usage = OnboardingUsageType.mixed;
-  String _activity = 'morning';
-  String _notifications = 'gentle';
-  AssistantTone _tone = AssistantTone.friendly;
-  bool _finishing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final name = ref.read(authNotifierProvider).value?.displayName;
-    if (name != null && name.isNotEmpty) _nameCtrl.text = name;
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    _nameCtrl.dispose();
-    super.dispose();
-  }
-
-  void _next() {
-    if (_page < 4) {
-      _pageController.nextPage(duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
-    } else {
-      _finish();
-    }
-  }
-
-  Future<void> _finish() async {
-    if (_finishing) return;
-    setState(() => _finishing = true);
-    await ref.read(authNotifierProvider.notifier).markOnboardingComplete();
-    if (!mounted) return;
-    context.go('/home');
-  }
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  int _currentStep = 1; // 1 or 2
+  final Set<int> _selectedGoals = {0}; // Step 1 goals
+  int _energyLevel = 1; // 0: قليلة, 1: متوسطة, 2: عالية
+  int _assistantTone = 0; // 0: بهدوء ومن غير ضغط, 1: مختصر ومباشر
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? AppColors.darkBackground : AppColors.background;
+    final surfaceColor = isDark ? AppColors.darkSurface : Colors.white;
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+    final textColor = isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+    final textSecColor = isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+    final textMutedColor = isDark ? AppColors.darkTextMuted : AppColors.textMuted;
+    final primaryColor = isDark ? AppColors.darkPrimary : AppColors.primary;
+
     return Scaffold(
-      body: AuthBackground(
-        child: SafeArea(
+      backgroundColor: bgColor,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             children: [
-              if (_page == 0 || _page > 2)
-                Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(20, 8, 20, 10),
-                  child: Row(
-                    children: [
-                      if (_page == 3) ...[
-                        Text('${_page + 1} من ٥', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: _finish, 
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('تخطي', style: TextStyle(fontWeight: FontWeight.bold)),
-                              Icon(Icons.chevron_left_rounded, size: 20),
-                            ],
-                          )
-                        ),
-                      ] else ...[
-                        Text('${_page + 1} من ٥', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
-                        const Spacer(),
-                        TextButton(onPressed: _finish, child: const Text('تخطي', style: TextStyle(fontWeight: FontWeight.bold))),
-                      ],
-                    ],
+              // Top Navigation: "تخطي" on left, "الخطوة ١ من ٢" in center, back chevron on right if step 2
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () => context.go('/home'),
+                    child: Text('تخطي', style: TextStyle(color: textSecColor, fontSize: 13)),
                   ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(20, 8, 20, 10),
-                  child: Row(
-                    children: [
-                      const HandelhaLogo(markSize: 24, fontSize: 16),
-                      const Spacer(),
-                      Row(
-                        children: List.generate(5, (index) {
-                          final num = 5 - index; // RTL 5 to 1
-                          final active = num == (_page + 1);
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                            child: Row(
-                              children: [
-                                if (index > 0)
-                                  Container(
-                                    width: 16,
-                                    height: 1,
-                                    color: AppColors.border,
-                                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                                  ),
-                                Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: active ? AppColors.primaryStrong : AppColors.primarySoft,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Text('$num', style: TextStyle(color: active ? Colors.white : AppColors.primaryStrong, fontSize: 12, fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                      ),
-                      const Spacer(),
-                      TextButton(onPressed: _finish, child: const Text('تخطي', style: TextStyle(fontWeight: FontWeight.bold))),
-                    ],
+                  Text(
+                    'الخطوة $_currentStep من ٢',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textSecColor),
                   ),
+                  if (_currentStep == 2)
+                    IconButton(
+                      icon: Icon(Icons.chevron_right_rounded, color: textSecColor),
+                      onPressed: () => setState(() => _currentStep = 1),
+                    )
+                  else
+                    const SizedBox(width: 40),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Progress Bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: _currentStep == 1 ? 0.5 : 1.0,
+                  minHeight: 4,
+                  backgroundColor: isDark ? AppColors.darkDivider : AppColors.divider,
+                  valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
                 ),
-              if (_page == 0 || _page > 2)
-                Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(20, 0, 20, 2),
-                  child: Row(
-                    children: List.generate(5, (index) {
-                      final active = index <= _page;
-                      return Expanded(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          margin: const EdgeInsetsDirectional.only(end: 6),
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: active ? AppColors.primaryStrong : (isDark ? AppColors.darkBorder : AppColors.primarySoft),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ),
+              ),
+              const SizedBox(height: 28),
+
               Expanded(
-                child: PageView(
-                  controller: _pageController,
-                  physics: const NeverScrollableScrollPhysics(),
-                  onPageChanged: (index) => setState(() => _page = index),
+                child: SingleChildScrollView(
+                  child: _currentStep == 1
+                      ? _buildStep1(surfaceColor, borderColor, textColor, textSecColor, primaryColor, isDark)
+                      : _buildStep2(surfaceColor, borderColor, textColor, textSecColor, textMutedColor, primaryColor, isDark),
+                ),
+              ),
+
+              // Bottom Button
+              ElevatedButton(
+                onPressed: () {
+                  if (_currentStep == 1) {
+                    setState(() => _currentStep = 2);
+                  } else {
+                    context.go('/home');
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: isDark ? AppColors.darkBackground : Colors.white,
+                  elevation: 0,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _StepPage(
-                      title: 'أهلاً بيك، تحب نناديك بإيه؟',
-                      subtitle: 'هنساعدك ترتّب يومك بهدوء، ونناديك بالاسم اللي تحبه.',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 16),
-                          const Text('اسمك الأول أو اللقب المفضل', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _nameCtrl,
-                            textInputAction: TextInputAction.done,
-                            decoration: const InputDecoration(
-                              hintText: 'اكتب هنا...', 
-                              filled: true,
-                              fillColor: Colors.white,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      _currentStep == 1 ? 'كمّل' : 'تمام، نرتّب يومي',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: isDark ? AppColors.darkBackground : Colors.white,
                       ),
                     ),
-                    _StepPage(
-                      title: 'إيه أكتر مجال محتاج ترتبه ؟',
-                      subtitle: 'سنقترح عليك خططًا واقعية تناسب طبيعة يومك.',
-                      child: Column(children: [
-                        _ChoiceCard(icon: Icons.work_rounded, title: 'العمل والمشاريع المهنية', subtitle: 'متابعة المهام ومواعيد التسليم', selected: _usage == OnboardingUsageType.work, onTap: () => setState(() => _usage = OnboardingUsageType.work)),
-                        _ChoiceCard(icon: Icons.school_rounded, title: 'الدراسة والتعلم', subtitle: 'تنظيم أوقات المذاكرة والأبحاث', selected: _usage == OnboardingUsageType.study, onTap: () => setState(() => _usage = OnboardingUsageType.study)),
-                        _ChoiceCard(icon: Icons.home_rounded, title: 'الحياة اليومية والراحة', subtitle: 'ترتيب الأولويات الشخصية والصحية', selected: _usage == OnboardingUsageType.personal, onTap: () => setState(() => _usage = OnboardingUsageType.personal)),
-                        _ChoiceCard(icon: Icons.grid_view_rounded, title: 'مزيج متوازن من كل شيء', subtitle: 'تنظيم شامل للحياة والعمل', selected: _usage == OnboardingUsageType.mixed, onTap: () => setState(() => _usage = OnboardingUsageType.mixed)),
-                      ]),
-                    ),
-                    _StepPage(
-                      title: 'ما هي أفضل أوقات نشاطك؟',
-                      subtitle: 'لتحديد فترات تركيزك وحماية أوقات راحتك من أي تشتيت.',
-                      child: Column(children: [
-                        _ChoiceCard(icon: Icons.wb_sunny_rounded, title: 'صباحي بامتياز', subtitle: 'أعلى طاقتي بين ٨ صباحًا و ٢ ظهرًا', selected: _activity == 'morning', onTap: () => setState(() => _activity = 'morning')),
-                        _ChoiceCard(icon: Icons.nightlight_round, title: 'مسائي وهادئ', subtitle: 'أفضّل التركيز بين ٢ ظهرًا و ٨ مساءً', selected: _activity == 'afternoon', onTap: () => setState(() => _activity = 'afternoon')),
-                        _ChoiceCard(icon: Icons.dashboard_customize_rounded, title: 'أوقات مرنة', subtitle: 'طاقتي تتغير حسب جدول اليوم', selected: _activity == 'flexible', onTap: () => setState(() => _activity = 'flexible')),
-                      ]),
-                    ),
-                    _StepPage(
-                      title: 'طريقة التنبيهات المريحة لك',
-                      subtitle: 'تطبيقنا مبني على فلسفة الهدوء وعدم الإزعاج أو التشتيت.',
-                      child: Column(children: [
-                        _ChoiceCard(radioRight: true, title: 'تذكير لطيف قبل المهام فقط', subtitle: 'إشعار واحد هادئ عند اقتراب الموعد', selected: _notifications == 'gentle', onTap: () => setState(() => _notifications = 'gentle')),
-                        _ChoiceCard(radioRight: true, title: 'ملخص يومي خفيف', subtitle: 'رسالة واحدة صباحاً بأهم أولويات اليوم', selected: _notifications == 'summaryOnly', onTap: () => setState(() => _notifications = 'summaryOnly')),
-                        _ChoiceCard(radioRight: true, title: 'صامت وبدون إشعارات', subtitle: 'أفتح التطبيق وقتما أريد دون إزعاج', selected: _notifications == 'silent', onTap: () => setState(() => _notifications = 'silent')),
-                      ]),
-                    ),
-                    _StepPage(
-                      title: 'نبرة المساعد التي تفضلها',
-                      subtitle: 'اختر كيف يتحدث معك المساعد داخل المحادثة وأثناء الترتيب.',
-                      child: Column(children: [
-                        _ChoiceCard(radioRight: true, title: 'ودودة ومصرية', subtitle: 'صباح الفل، نبدأ بإيه الأول النهارده؟ خلينا ناخدها\nخطوة صغيرة.', selected: _tone == AssistantTone.friendly, onTap: () => setState(() => _tone = AssistantTone.friendly)),
-                        _ChoiceCard(radioRight: true, title: 'عربية فصحى هادئة', subtitle: 'مرحبًا بك، دعنا نرتب أولويات يومك بهدوء ووضوح.', selected: _tone == AssistantTone.formal, onTap: () => setState(() => _tone = AssistantTone.formal)),
-                        _ChoiceCard(radioRight: true, title: 'موجزة ومباشرة', subtitle: 'تم ترتيب المهمة، الخطوة التالية بعد ١٥ دقيقة.', selected: _tone == AssistantTone.brief, onTap: () => setState(() => _tone = AssistantTone.brief)),
-                      ]),
-                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_rounded, size: 20, color: isDark ? AppColors.darkBackground : Colors.white),
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(20, 5, 20, 18),
-                child: PrimaryButton(
-                  text: _page == 4 ? 'ابدأ يومك بهدوء' : 'المتابعة',
-                  icon: _page >= 3 ? const Icon(Icons.arrow_back_rounded) : null,
-                  isLoading: _finishing,
-                  onPressed: _next,
-                ),
+              const SizedBox(height: 14),
+
+              // Footer Note
+              Text(
+                _currentStep == 1
+                    ? 'اختياراتك بتساعدنا نبدأ، مش بتقيدك'
+                    : 'اختياراتك قابلة للتغيير من الإعدادات',
+                style: TextStyle(fontSize: 11.5, color: textMutedColor),
               ),
             ],
           ),
@@ -234,94 +124,323 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       ),
     );
   }
-}
 
-class _StepPage extends StatelessWidget {
-  const _StepPage({required this.title, required this.subtitle, required this.child});
-  final String title;
-  final String subtitle;
-  final Widget child;
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.fromSTEB(22, 24, 22, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, height: 1.2), textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(subtitle, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary, fontWeight: FontWeight.normal, height: 1.4), textAlign: TextAlign.center),
-          const SizedBox(height: 32),
-          child,
-        ],
+  // Step 1: تحب هندلها يساعدك في إيه؟ (Page 13)
+  Widget _buildStep1(
+    Color surfaceColor,
+    Color borderColor,
+    Color textColor,
+    Color textSecColor,
+    Color primaryColor,
+    bool isDark,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'تحب هندلها يساعدك في إيه؟',
+          textAlign: TextAlign.right,
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'اختار اللي شبهك؛ ممكن تختار أكثر من حاجة. مفيش طريقة واحدة صح.',
+          textAlign: TextAlign.right,
+          style: TextStyle(fontSize: 13.5, color: textSecColor, height: 1.45),
+        ),
+        const SizedBox(height: 24),
+
+        _buildOptionCard(
+          index: 0,
+          title: 'أنظّم يومي',
+          subtitle: 'أولويات واضحة، بدل قائمة بتطوّل',
+          icon: Icons.checklist_rounded,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          textSecColor: textSecColor,
+          primaryColor: primaryColor,
+        ),
+        const SizedBox(height: 14),
+
+        _buildOptionCard(
+          index: 1,
+          title: 'أتابع مشاريعي',
+          subtitle: 'أقسّم الهدف لخطوات أقدر أبدأها',
+          icon: Icons.folder_outlined,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          textSecColor: textSecColor,
+          primaryColor: primaryColor,
+        ),
+        const SizedBox(height: 14),
+
+        _buildOptionCard(
+          index: 2,
+          title: 'أفضّي اللي في دماغي',
+          subtitle: 'أكتب بطريقتي، وهندلها يساعدني أرتّب',
+          icon: Icons.edit_note_rounded,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          textSecColor: textSecColor,
+          primaryColor: primaryColor,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOptionCard({
+    required int index,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color textSecColor,
+    required Color primaryColor,
+  }) {
+    final selected = _selectedGoals.contains(index);
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          if (selected) {
+            _selectedGoals.remove(index);
+          } else {
+            _selectedGoals.add(index);
+          }
+        });
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? primaryColor : borderColor,
+            width: selected ? 1.8 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: selected ? primaryColor.withValues(alpha: 0.15) : Colors.transparent,
+                border: Border.all(color: selected ? primaryColor : borderColor, width: 1.8),
+              ),
+              child: selected ? Icon(Icons.check_rounded, size: 16, color: primaryColor) : null,
+            ),
+            const Spacer(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textColor),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 12.5, color: textSecColor),
+                ),
+              ],
+            ),
+            const SizedBox(width: 14),
+            Icon(icon, size: 24, color: textSecColor),
+          ],
+        ),
       ),
     );
   }
-}
 
-class _ChoiceCard extends StatelessWidget {
-  const _ChoiceCard({this.icon, this.radioRight = false, required this.title, required this.subtitle, required this.selected, required this.onTap});
-  final IconData? icon;
-  final bool radioRight;
-  final String title;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    final content = Column(
-      crossAxisAlignment: radioRight ? CrossAxisAlignment.start : CrossAxisAlignment.end,
-      mainAxisAlignment: MainAxisAlignment.center,
+  // Step 2: على قد طاقتك، وبطريقتك (Page 14)
+  Widget _buildStep2(
+    Color surfaceColor,
+    Color borderColor,
+    Color textColor,
+    Color textSecColor,
+    Color textMutedColor,
+    Color primaryColor,
+    bool isDark,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-        const SizedBox(height: 4),
-        Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary)),
+        Text(
+          'على قد طاقتك، وبطريقتك',
+          textAlign: TextAlign.right,
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'مش كل الأيام زي بعض. نبدأ بإعداد مريح، وتقدر تغيّره في أي وقت.',
+          textAlign: TextAlign.right,
+          style: TextStyle(fontSize: 13.5, color: textSecColor, height: 1.45),
+        ),
+        const SizedBox(height: 26),
+
+        // Section 1: طاقتك غالبًا في بداية اليوم؟
+        Text(
+          'طاقتك غالبًا في بداية اليوم؟',
+          textAlign: TextAlign.right,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textColor),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            _buildEnergyChip(2, 'عالية', surfaceColor, borderColor, textColor, primaryColor),
+            const SizedBox(width: 10),
+            _buildEnergyChip(1, 'متوسطة', surfaceColor, borderColor, textColor, primaryColor),
+            const SizedBox(width: 10),
+            _buildEnergyChip(0, 'قليلة', surfaceColor, borderColor, textColor, primaryColor),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            'هنقترح خطوات تناسب وقتك وطاقتك، مش أكتر.',
+            style: TextStyle(fontSize: 12, color: textMutedColor),
+          ),
+        ),
+        const SizedBox(height: 28),
+
+        // Section 2: تحب المساعد يتكلم إزاي؟
+        Text(
+          'تحب المساعد يتكلم إزاي؟',
+          textAlign: TextAlign.right,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textColor),
+        ),
+        const SizedBox(height: 14),
+
+        _buildToneCard(
+          index: 0,
+          title: 'بهدوء ومن غير ضغط',
+          subtitle: 'خطوات صغيرة، وتشجيع على قدّك',
+          icon: Icons.auto_awesome_rounded,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          textSecColor: textSecColor,
+          primaryColor: primaryColor,
+        ),
+        const SizedBox(height: 12),
+
+        _buildToneCard(
+          index: 1,
+          title: 'مختصر ومباشر',
+          subtitle: 'اقتراح واضح ومن غير كلام كتير',
+          icon: Icons.menu_rounded,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          textSecColor: textSecColor,
+          primaryColor: primaryColor,
+        ),
       ],
     );
+  }
 
-    final radioButton = Icon(selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: selected ? AppColors.primaryStrong : AppColors.textMuted, size: 26);
-    
-    Widget leadingWidget;
-    Widget trailingWidget;
-    
-    if (radioRight) {
-      leadingWidget = radioButton;
-      trailingWidget = const SizedBox.shrink();
-    } else {
-      leadingWidget = icon != null ? Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(color: selected ? AppColors.primaryStrong : (isDark ? AppColors.darkSurface2 : AppColors.primarySoft), borderRadius: BorderRadius.circular(10)),
-        child: Icon(icon, color: selected ? Colors.white : AppColors.primaryStrong, size: 26),
-      ) : const SizedBox.shrink();
-      trailingWidget = radioButton;
-    }
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: selected ? (isDark ? AppColors.darkPrimarySoft : AppColors.primarySoft.withValues(alpha: 0.5)) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: selected ? AppColors.primaryStrong : (isDark ? AppColors.darkBorder : AppColors.border), width: 1.5),
-      ),
+  Widget _buildEnergyChip(
+    int index,
+    String label,
+    Color surfaceColor,
+    Color borderColor,
+    Color textColor,
+    Color primaryColor,
+  ) {
+    final active = _energyLevel == index;
+    return Expanded(
       child: InkWell(
-        onTap: onTap,
+        onTap: () => setState(() => _energyLevel = index),
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              leadingWidget,
-              const SizedBox(width: 16),
-              Expanded(child: content),
-              if (!radioRight) const SizedBox(width: 16),
-              if (!radioRight) trailingWidget,
-            ],
+        child: Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: active ? primaryColor.withValues(alpha: 0.2) : surfaceColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: active ? primaryColor : borderColor,
+              width: active ? 1.8 : 1,
+            ),
           ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+              color: active ? primaryColor : textColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToneCard({
+    required int index,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color textSecColor,
+    required Color primaryColor,
+  }) {
+    final selected = _assistantTone == index;
+
+    return InkWell(
+      onTap: () => setState(() => _assistantTone = index),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? primaryColor : borderColor,
+            width: selected ? 1.8 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: selected ? primaryColor.withValues(alpha: 0.15) : Colors.transparent,
+                border: Border.all(color: selected ? primaryColor : borderColor, width: 1.8),
+              ),
+              child: selected ? Icon(Icons.check_rounded, size: 16, color: primaryColor) : null,
+            ),
+            const Spacer(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: textColor),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 12, color: textSecColor),
+                ),
+              ],
+            ),
+            const SizedBox(width: 14),
+            Icon(icon, size: 22, color: textSecColor),
+          ],
         ),
       ),
     );

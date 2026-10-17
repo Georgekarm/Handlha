@@ -78,7 +78,7 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
       'start': _startDate,
       'end': _endDate,
       'weeklyHours': _weeklyHours,
-      'color': _projectColors[_selectedColor].value,
+      'color': _projectColors[_selectedColor].toARGB32(),
     });
   }
 
@@ -318,13 +318,16 @@ class _ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = destructive ? AppColors.danger : AppColors.textSecondary;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: color),
-      title: Text(title, style: TextStyle(color: destructive ? color : null, fontWeight: FontWeight.w700)),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_left_rounded, color: AppColors.textMuted),
-      onTap: onTap,
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon, color: color),
+        title: Text(title, style: TextStyle(color: destructive ? color : null, fontWeight: FontWeight.w700)),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_left_rounded, color: AppColors.textMuted),
+        onTap: onTap,
+      ),
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sekretairak/app/theme/app_theme.dart';
 import 'package:sekretairak/features/home/presentation/home_screen.dart';
@@ -34,45 +35,37 @@ Widget _buildTestApp(Widget home) {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  FlutterSecureStorage.setMockInitialValues({});
+
   group('Calm Productivity 2.0 Screen Tests', () {
-    testWidgets('1. HomeScreen renders calm header, smart input, chips, and inbox', (tester) async {
+    testWidgets('1. HomeScreen renders calm header, next task, and priorities', (tester) async {
       await tester.pumpWidget(_buildTestApp(const HomeScreen()));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Header
-      expect(find.textContaining('خلي يومك أهدى وأسهل'), findsOneWidget);
-
-      // Smart Input prompt
-      expect(find.text('مش محتاج ترتب كلامك قبل ما تقوله'), findsOneWidget);
-
-      // Chips
-      expect(find.text('خطط على قد طاقتك'), findsOneWidget);
-      expect(find.text('إيه الطريقة اللي تريحك؟'), findsOneWidget);
-      expect(find.text('تحب تتكلم معاك إزاي؟'), findsOneWidget);
-      expect(find.text('قول أول حاجة شاغلاك'), findsOneWidget);
-
-      // Inbox
-      expect(find.textContaining('صباح الفل يا يوسف'), findsOneWidget);
-      expect(find.textContaining('مراجعة أول 5 شرائح'), findsOneWidget);
+      expect(find.textContaining('نخلّص خطوة واحدة دلوقتي.'), findsOneWidget);
+      expect(find.textContaining('أولويات النهار'), findsOneWidget);
     });
 
-    testWidgets('2. ProjectWorkspaceScreen renders Header and 4 Tabs', (tester) async {
+    testWidgets('2. ProjectWorkspaceScreen renders Header and 5 Tabs', (tester) async {
       await tester.pumpWidget(_buildTestApp(const ProjectWorkspaceScreen()));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('مشروع تطبيق Flutter'), findsWidgets);
-      expect(find.textContaining('إطلاق أول نسخة تجريبية من التطبيق'), findsOneWidget);
-      expect(find.textContaining('١ سبتمبر ٢٠٢٦ - ٣١ أكتوبر ٢٠٢٦'), findsOneWidget);
+      expect(find.text('إطلاق نسخة هندلها'), findsWidgets);
+      expect(find.textContaining('تجربة مريحة لتنظيم اليوم'), findsOneWidget);
 
-      // 4 tabs
+      // 5 tabs
       expect(find.text('نظرة عامة'), findsOneWidget);
       expect(find.text('المهام'), findsOneWidget);
       expect(find.text('المراحل'), findsOneWidget);
       expect(find.text('النشاط'), findsOneWidget);
-      expect(find.byType(Tab), findsNWidgets(4));
+      expect(find.text('التحليلات'), findsOneWidget);
     });
 
-    testWidgets('3. OverviewTabView renders full state and toggle to empty state', (tester) async {
+    testWidgets('3. OverviewTabView renders goal and due date', (tester) async {
       await tester.pumpWidget(_buildTestApp(Scaffold(
         body: OverviewTabView(
           onOpenTasksTab: () {},
@@ -81,45 +74,19 @@ void main() {
       )));
       await tester.pumpAndSettle();
 
-      // Full State elements
-      expect(find.text('62%'), findsOneWidget);
-      expect(find.text('ماشي كويس، لكن في 3 مهام محتاجة ترتيب'), findsOneWidget);
-      expect(find.textContaining('18 من 29 مهمة مكتملة'), findsOneWidget);
-      expect(find.text('أنت متقدم عن الأسبوع اللي فات بـ 8%'), findsOneWidget);
-      expect(find.text('اقتراح ذكي'), findsOneWidget);
-      expect(find.text('إنهاء شاشة تسجيل الدخول'), findsOneWidget);
-      expect(find.text('ابدأ الآن'), findsOneWidget);
-      expect(find.text('صحة المشروع ومسار الوقت'), findsOneWidget);
-      expect(find.text('15س'), findsOneWidget);
-      expect(find.text('في مهمتين مستنيين قرار منك'), findsOneWidget);
-
-      // Toggle to empty state
-      await tester.tap(find.text('فارغة'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('نبدأ المشروع على مهلك؟'), findsOneWidget);
-      expect(find.text('قسم المشروع بالذكاء الاصطناعي'), findsOneWidget);
+      expect(find.textContaining('نشر نسخة تجريبية قابلة للاستخدام'), findsOneWidget);
+      expect(find.text('تاريخ الاستحقاق'), findsOneWidget);
+      expect(find.text('20 أكتوبر 2026'), findsOneWidget);
+      expect(find.text('حالة المشروع'), findsOneWidget);
     });
 
-    testWidgets('4. TasksTabView renders search, filters, and 3 view modes', (tester) async {
+    testWidgets('4. TasksTabView renders project tasks', (tester) async {
       await tester.pumpWidget(_buildTestApp(const Scaffold(body: TasksTabView())));
       await tester.pumpAndSettle();
 
-      expect(find.text('29 مهمة إجمالية'), findsOneWidget);
-      expect(find.text('قائمة'), findsOneWidget);
-      expect(find.text('لوحة'), findsOneWidget);
-      expect(find.text('الخط الزمني'), findsOneWidget);
-
-      // Switch to Kanban Board view
-      await tester.tap(find.text('لوحة'));
-      await tester.pumpAndSettle();
-      expect(find.text('جاهزة'), findsWidgets);
-      expect(find.text('مكتملة'), findsWidgets);
-
-      // Switch to Timeline view
-      await tester.tap(find.text('الخط الزمني'));
-      await tester.pumpAndSettle();
-      expect(find.byType(ListView), findsOneWidget);
+      expect(find.text('تحديث نظام الألوان الهادئ'), findsOneWidget);
+      expect(find.text('ضبط تدفق الشات والمقترحات'), findsOneWidget);
+      expect(find.text('إعداد جلسة التركيز التفاعلية'), findsOneWidget);
     });
 
     testWidgets('5. PhasesTabView renders vertical phases and open detail view', (tester) async {
@@ -203,6 +170,11 @@ void main() {
     });
 
     testWidgets('10. ProjectSettingsScreen renders settings and danger zone', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       await tester.pumpWidget(_buildTestApp(const ProjectSettingsScreen()));
       await tester.pumpAndSettle();
 

@@ -14,378 +14,515 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  bool _loggingOut = false;
-  bool _taskReminders = true;
-  bool _focusReminders = true;
-  bool _dailySummary = false;
-
-  Future<void> _logout() async {
-    final confirmed = await _confirm(
-      title: 'تسجيل الخروج؟',
-      message: 'تقدر ترجع لحسابك في أي وقت بتسجيل الدخول من جديد.',
-      confirmLabel: 'تسجيل الخروج',
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _loggingOut = true);
-    await ref.read(authNotifierProvider.notifier).signOut();
-    if (mounted) setState(() => _loggingOut = false);
-  }
-
-  Future<void> _deleteAccount() async {
-    final confirmed = await _confirm(
-      title: 'حذف الحساب',
-      message: 'حذف الحساب إجراء نهائي. هل أنت متأكد من رغبتك في المتابعة؟',
-      confirmLabel: 'متابعة',
-      destructive: true,
-    );
-    if (confirmed != true || !mounted) return;
-    _message('تم استلام طلب حذف الحساب وسيتم مراجعته.');
-  }
-
-  Future<bool?> _confirm({
-    required String title,
-    required String message,
-    required String confirmLabel,
-    bool destructive = false,
-  }) => showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: destructive ? AppColors.danger : AppColors.primaryStrong,
-              ),
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(confirmLabel),
-            ),
-          ],
-        ),
-      );
-
-  void _message(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text), behavior: SnackBarBehavior.floating),
-    );
-  }
-
-  void _showTonePicker() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(20, 4, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('اختار أسلوب هندلها', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 10),
-              for (final tone in const ['ودودة ومصرية هادئة', 'مختصرة ومباشرة', 'رسمية'])
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.chat_bubble_outline_rounded, color: AppColors.primaryStrong),
-                  title: Text(tone),
-                  trailing: tone == 'ودودة ومصرية هادئة'
-                      ? const Icon(Icons.check_circle_rounded, color: AppColors.primary)
-                      : null,
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _message('تم اختيار: $tone');
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  bool _notificationsEnabled = true;
+  String _assistantTone = 'هادي ومشجّع';
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final user = ref.watch(authNotifierProvider).value;
-    final themeMode = ref.watch(themeModeProvider);
-    final avatarUrl = user?.avatarUrl;
-    final name = (user?.displayName?.trim().isNotEmpty ?? false)
-        ? user!.displayName!.trim()
-        : 'حساب هندلها';
+
+    final bgColor = isDark ? AppColors.darkBackground : AppColors.background;
+    final surfaceColor = isDark ? AppColors.darkSurface : Colors.white;
+    final surface2 = isDark ? AppColors.darkSurface2 : const Color(0xFFF3F7F5);
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+    final textColor = isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+    final textSecColor = isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+    final primaryColor = isDark ? AppColors.darkPrimary : AppColors.primary;
+
+    final currentThemeMode = ref.watch(themeModeProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('إعداداتك'),
-        leading: IconButton(
-          tooltip: 'رجوع',
-          onPressed: () => context.pop(),
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsetsDirectional.fromSTEB(18, 8, 18, 32),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkSurface : AppColors.surface,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.border),
-            ),
-            child: Row(
+      backgroundColor: bgColor,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+          children: [
+            // Top App Bar
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                CircleAvatar(
-                  radius: 29,
-                  backgroundColor: isDark ? AppColors.darkPrimarySoft : AppColors.primarySoft,
-                  backgroundImage: avatarUrl == null || avatarUrl.isEmpty ? null : NetworkImage(avatarUrl),
-                  child: avatarUrl == null || avatarUrl.isEmpty
-                      ? Text(name.substring(0, 1), style: const TextStyle(color: AppColors.primaryStrong, fontSize: 22, fontWeight: FontWeight.w800))
-                      : null,
+                IconButton(
+                  icon: Icon(Icons.tune_rounded, color: textSecColor),
+                  onPressed: () {},
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'على طريقتك',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: textColor,
+                      ),
+                    ),
+                    Text(
+                      'الإعدادات',
+                      style: TextStyle(fontSize: 12.5, color: textSecColor),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: Icon(Icons.chevron_right_rounded, color: textSecColor, size: 26),
+                  onPressed: () => context.pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Profile Card
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: borderColor),
+              ),
+              child: Row(
+                children: [
+                  const Spacer(),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                      Row(
+                        children: [
+                          Text('الملف الشخصي', style: TextStyle(fontSize: 12, color: textSecColor)),
+                          const SizedBox(width: 14),
+                          Text(
+                            'أحمد',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textColor),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
-                      Text(user?.email ?? 'إدارة حسابك وتفضيلاتك', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: isDark ? AppColors.darkTextSecondary : AppColors.textSecondary)),
+                      Text(
+                        'ahmed@handelha.app',
+                        style: TextStyle(fontSize: 13, color: textSecColor),
+                      ),
                     ],
                   ),
-                ),
-                const Icon(Icons.chevron_left_rounded, color: AppColors.textMuted),
+                  const SizedBox(width: 14),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: surface2,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.person_outline_rounded, color: primaryColor, size: 22),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Section 1: التجربة اللي تناسبك
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'التجربة اللي تناسبك',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textColor),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Container(
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                children: [
+                  // نبرة المساعد
+                  _buildSettingRow(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    title: 'نبرة المساعد',
+                    trailing: Text(_assistantTone, style: TextStyle(fontSize: 13, color: textSecColor)),
+                    textColor: textColor,
+                    textSecColor: textSecColor,
+                    borderColor: borderColor,
+                    onTap: () => _pickTone(context),
+                  ),
+                  Divider(color: borderColor, height: 1),
+
+                  // المظهر (فاتح / داكن / النظام)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text('المظهر', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: textColor)),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            _buildThemeSegment('النظام', currentThemeMode == ThemeMode.system, () {
+                              ref.read(themeModeProvider.notifier).setMode(ThemeMode.system);
+                            }, isDark, primaryColor, borderColor, textColor),
+                            const SizedBox(width: 8),
+                            _buildThemeSegment('داكن', currentThemeMode == ThemeMode.dark, () {
+                              ref.read(themeModeProvider.notifier).setMode(ThemeMode.dark);
+                            }, isDark, primaryColor, borderColor, textColor),
+                            const SizedBox(width: 8),
+                            _buildThemeSegment('فاتح', currentThemeMode == ThemeMode.light, () {
+                              ref.read(themeModeProvider.notifier).setMode(ThemeMode.light);
+                            }, isDark, primaryColor, borderColor, textColor),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(color: borderColor, height: 1),
+
+                  // الإشعارات
+                  _buildSettingRow(
+                    icon: Icons.notifications_none_rounded,
+                    title: 'الإشعارات',
+                    trailing: Text(_notificationsEnabled ? 'مفعّلة' : 'متوقفة', style: TextStyle(fontSize: 13, color: textSecColor)),
+                    textColor: textColor,
+                    textSecColor: textSecColor,
+                    borderColor: borderColor,
+                    onTap: () => setState(() => _notificationsEnabled = !_notificationsEnabled),
+                  ),
+                  Divider(color: borderColor, height: 1),
+
+                  // وقت الهدوء
+                  _buildSettingRow(
+                    icon: Icons.nightlight_round_outlined,
+                    title: 'وقت الهدوء',
+                    trailing: Text('١٠:٠٠ م - ٨:٠٠ ص', style: TextStyle(fontSize: 13, color: textSecColor)),
+                    textColor: textColor,
+                    textSecColor: textSecColor,
+                    borderColor: borderColor,
+                    onTap: () {},
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Section 2: الخصوصية والبيانات
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'الخصوصية والبيانات',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textColor),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Container(
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                children: [
+                  _buildSettingRow(
+                    icon: Icons.info_outline_rounded,
+                    title: 'عن هندلها',
+                    trailing: Text('الإصدار ١.٠', style: TextStyle(fontSize: 13, color: textSecColor)),
+                    textColor: textColor,
+                    textSecColor: textSecColor,
+                    borderColor: borderColor,
+                    onTap: () {},
+                  ),
+                  Divider(color: borderColor, height: 1),
+                  _buildSettingRow(
+                    icon: Icons.file_download_outlined,
+                    title: 'تصدير بياناتي',
+                    textColor: textColor,
+                    textSecColor: textSecColor,
+                    borderColor: borderColor,
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('تم تصدير نسخة من بياناتك بنجاح.'), behavior: SnackBarBehavior.floating),
+                      );
+                    },
+                  ),
+                  Divider(color: borderColor, height: 1),
+                  _buildSettingRow(
+                    icon: Icons.logout_rounded,
+                    title: 'تسجيل الخروج',
+                    textColor: textColor,
+                    textSecColor: textSecColor,
+                    borderColor: borderColor,
+                    onTap: () async {
+                      await ref.read(authNotifierProvider.notifier).signOut();
+                      if (context.mounted) context.go('/login');
+                    },
+                  ),
+                  Divider(color: borderColor, height: 1),
+                  _buildSettingRow(
+                    icon: Icons.delete_outline_rounded,
+                    title: 'حذف الحساب',
+                    titleColor: AppColors.salmonBadge,
+                    textColor: textColor,
+                    textSecColor: textSecColor,
+                    borderColor: borderColor,
+                    onTap: () => _showDeleteAccountModal(context),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThemeSegment(String label, bool active, VoidCallback onTap, bool isDark, Color primaryColor, Color borderColor, Color textColor) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: 38,
+          decoration: BoxDecoration(
+            color: active
+                ? (isDark ? const Color(0xFF1F3530) : const Color(0xFFC7E6DE))
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: active ? primaryColor : borderColor,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+              color: active ? primaryColor : textColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingRow({
+    required IconData icon,
+    required String title,
+    Widget? trailing,
+    Color? titleColor,
+    required Color textColor,
+    required Color textSecColor,
+    required Color borderColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            ?trailing,
+            const Spacer(),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: titleColor ?? textColor,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(icon, size: 20, color: titleColor ?? textSecColor),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _pickTone(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('نبرة المساعد', textAlign: TextAlign.right, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                for (final tone in ['هادي ومشجّع', 'مختصر ومباشر'])
+                  ListTile(
+                    title: Text(tone, textAlign: TextAlign.right),
+                    trailing: tone == _assistantTone ? const Icon(Icons.check_rounded, color: AppColors.darkPrimary) : null,
+                    onTap: () {
+                      setState(() => _assistantTone = tone);
+                      Navigator.pop(sheetContext);
+                    },
+                  ),
               ],
             ),
           ),
-          const SizedBox(height: 25),
-          const _SectionTitle('أسلوب هندلها'),
-          _SettingsCard(children: [
-            _SettingsRow(
-              icon: Icons.chat_bubble_outline_rounded,
-              title: 'نبرة المساعد',
-              subtitle: 'ودودة ومصرية هادئة',
-              onTap: _showTonePicker,
-            ),
-            const _RowDivider(),
-            _SettingsRow(
-              icon: Icons.translate_rounded,
-              title: 'اللغة واللهجة',
-              subtitle: 'العربية المصرية',
-              onTap: () => _message('العربية المصرية هي اللغة الحالية.'),
-            ),
-          ]),
-          const SizedBox(height: 24),
-          const _SectionTitle('المظهر'),
-          _ThemeChoiceCard(
-            selected: themeMode,
-            onSelected: (mode) => ref.read(themeModeProvider.notifier).setMode(mode),
-          ),
-          const SizedBox(height: 24),
-          const _SectionTitle('التنبيهات'),
-          _SettingsCard(children: [
-            _SettingsRow(
-              icon: Icons.nightlight_outlined,
-              title: 'ساعات الهدوء',
-              subtitle: '١٠ مساءً – ٨ صباحًا',
-              onTap: () => context.push('/notifications'),
-            ),
-            const _RowDivider(),
-            _SwitchRow(
-              icon: Icons.notifications_none_rounded,
-              title: 'تذكير بالمهام القادمة',
-              value: _taskReminders,
-              onChanged: (value) => setState(() => _taskReminders = value),
-            ),
-            const _RowDivider(),
-            _SwitchRow(
-              icon: Icons.self_improvement_rounded,
-              title: 'تذكير بجلسات التركيز',
-              value: _focusReminders,
-              onChanged: (value) => setState(() => _focusReminders = value),
-            ),
-            const _RowDivider(),
-            _SwitchRow(
-              icon: Icons.done_all_rounded,
-              title: 'ملخص الإنجاز اليومي',
-              value: _dailySummary,
-              onChanged: (value) => setState(() => _dailySummary = value),
-            ),
-          ]),
-          const SizedBox(height: 24),
-          const _SectionTitle('الخصوصية والبيانات'),
-          _SettingsCard(children: [
-            _SettingsRow(
-              icon: Icons.download_outlined,
-              title: 'تصدير بياناتي',
-              onTap: () => _message('جاري تجهيز بياناتك للتصدير.'),
-            ),
-            const _RowDivider(),
-            _SettingsRow(
-              icon: Icons.verified_user_outlined,
-              title: 'الخصوصية وحماية البيانات',
-              onTap: () => _message('سياسة الخصوصية'),
-            ),
-          ]),
-          const SizedBox(height: 24),
-          _SettingsCard(children: [
-            _SettingsRow(
-              icon: Icons.logout_rounded,
-              title: _loggingOut ? 'جارٍ تسجيل الخروج…' : 'تسجيل الخروج',
-              destructive: false,
-              onTap: _loggingOut ? null : _logout,
-            ),
-            const _RowDivider(),
-            _SettingsRow(
-              icon: Icons.delete_outline_rounded,
-              title: 'حذف الحساب',
-              destructive: true,
-              onTap: _deleteAccount,
-            ),
-          ]),
-          const SizedBox(height: 23),
-          Center(
-            child: Text(
-              'هندلها • من الزحمة للخطوة الجاية • v1.0.0',
-              style: theme.textTheme.bodySmall?.copyWith(color: isDark ? AppColors.darkTextMuted : AppColors.textMuted),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
+    );
+  }
+
+  // Page 35: Delete Account Confirmation
+  void _showDeleteAccountModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const DeleteAccountSheet(),
     );
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title);
-  final String title;
+class DeleteAccountSheet extends StatefulWidget {
+  const DeleteAccountSheet({super.key});
+
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsetsDirectional.only(start: 4, bottom: 10),
-        child: Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-      );
+  State<DeleteAccountSheet> createState() => _DeleteAccountSheetState();
 }
 
-class _SettingsCard extends StatelessWidget {
-  const _SettingsCard({required this.children});
-  final List<Widget> children;
+class _DeleteAccountSheetState extends State<DeleteAccountSheet> {
+  final _confirmCtrl = TextEditingController();
+
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.border),
-      ),
-      child: Column(children: children),
-    );
+  void dispose() {
+    _confirmCtrl.dispose();
+    super.dispose();
   }
-}
 
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({required this.icon, required this.title, this.subtitle, this.onTap, this.destructive = false});
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final VoidCallback? onTap;
-  final bool destructive;
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = destructive ? (isDark ? AppColors.darkDanger : AppColors.danger) : (isDark ? AppColors.darkPrimary : AppColors.primaryStrong);
-    return ListTile(
-      minVerticalPadding: 9,
-      leading: Icon(icon, color: color),
-      title: Text(title, style: TextStyle(color: destructive ? color : null, fontWeight: FontWeight.w600)),
-      subtitle: subtitle == null ? null : Text(subtitle!),
-      trailing: const Icon(Icons.chevron_left_rounded, size: 21, color: AppColors.textMuted),
-      onTap: onTap,
-    );
-  }
-}
+    final bgColor = isDark ? AppColors.darkSurface : Colors.white;
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+    final textColor = isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+    final textSecColor = isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+    final primaryColor = isDark ? AppColors.darkPrimary : AppColors.primary;
 
-class _SwitchRow extends StatelessWidget {
-  const _SwitchRow({required this.icon, required this.title, required this.value, required this.onChanged});
-  final IconData icon;
-  final String title;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  @override
-  Widget build(BuildContext context) => SwitchListTile(
-        contentPadding: const EdgeInsetsDirectional.only(start: 16, end: 12),
-        secondary: Icon(icon, color: AppColors.primaryStrong),
-        title: Text(title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-        value: value,
-        activeColor: AppColors.primary,
-        onChanged: onChanged,
-      );
-}
+    final isConfirmed = _confirmCtrl.text.trim() == 'حذف';
 
-class _RowDivider extends StatelessWidget {
-  const _RowDivider();
-  @override
-  Widget build(BuildContext context) => Divider(height: 1, indent: 58, endIndent: 16, color: Theme.of(context).brightness == Brightness.dark ? AppColors.darkDivider : AppColors.divider);
-}
-
-class _ThemeChoiceCard extends StatelessWidget {
-  const _ThemeChoiceCard({required this.selected, required this.onSelected});
-  final ThemeMode selected;
-  final ValueChanged<ThemeMode> onSelected;
-  @override
-  Widget build(BuildContext context) => Row(
-        children: [
-          for (final entry in const [
-            (ThemeMode.system, 'تلقائي', Icons.brightness_auto_rounded),
-            (ThemeMode.light, 'فاتح', Icons.light_mode_outlined),
-            (ThemeMode.dark, 'داكن', Icons.dark_mode_outlined),
-          ]) ...[
-            Expanded(
-              child: _ThemeChoice(
-                mode: entry.$1,
-                label: entry.$2,
-                icon: entry.$3,
-                selected: selected == entry.$1,
-                onTap: () => onSelected(entry.$1),
-              ),
-            ),
-            if (entry.$1 != ThemeMode.dark) const SizedBox(width: 9),
-          ],
-        ],
-      );
-}
-
-class _ThemeChoice extends StatelessWidget {
-  const _ThemeChoice({required this.mode, required this.label, required this.icon, required this.selected, required this.onTap});
-  final ThemeMode mode;
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 7),
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
         decoration: BoxDecoration(
-          color: selected ? (isDark ? AppColors.darkPrimarySoft : AppColors.primarySoft) : (isDark ? AppColors.darkSurface : AppColors.surface),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? AppColors.primary : (isDark ? AppColors.darkBorder : AppColors.border), width: selected ? 1.5 : 1),
+          color: bgColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
-        child: Column(
-          children: [
-            Icon(icon, color: selected ? AppColors.primaryStrong : AppColors.textSecondary, size: 22),
-            const SizedBox(height: 6),
-            Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: selected ? FontWeight.w800 : FontWeight.w500)),
-          ],
+        padding: const EdgeInsets.fromLTRB(22, 16, 22, 32),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkDivider : AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Center(
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4A2B28),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.delete_outline_rounded, color: AppColors.salmonBadge, size: 32),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Text(
+                'متأكد يا أحمد؟',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textColor),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'حذف الحساب هيشيل مهامك ومشاريعك وسجل محادثاتك نهائيًا. مش هتقدر ترجعهم بعد التأكيد.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: textSecColor, height: 1.45),
+              ),
+              const SizedBox(height: 14),
+
+              Center(
+                child: Text(
+                  'صدّر بياناتك الأول',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: primaryColor),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '«للتأكيد، اكتب «حذف',
+                  style: TextStyle(fontSize: 12.5, color: textSecColor, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _confirmCtrl,
+                textAlign: TextAlign.center,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'حذف',
+                  prefixIcon: Icon(Icons.edit_outlined, color: textSecColor, size: 18),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: isDark ? AppColors.darkBackground : Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text('لا، خلّي حسابي', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDark ? AppColors.darkBackground : Colors.white)),
+              ),
+              const SizedBox(height: 10),
+
+              OutlinedButton(
+                onPressed: isConfirmed
+                    ? () {
+                        Navigator.pop(context);
+                        context.go('/login');
+                      }
+                    : null,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.salmonBadge,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  side: BorderSide(color: isConfirmed ? AppColors.salmonBadge : borderColor),
+                ),
+                child: const Text('تأكيد الحذف النهائي', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
         ),
       ),
     );

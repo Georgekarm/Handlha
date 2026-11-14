@@ -1,0 +1,5 @@
+# Example local.properties (DO NOT commit real machine paths to Git)
+# Flutter automatically generates android/local.properties during `flutter pub get` or `flutter build`.
+# Copy to android/local.properties only if configuring manually:
+# sdk.dir=/path/to/Android/Sdk
+# flutter.sdk=/path/to/flutter

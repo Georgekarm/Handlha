@@ -1,0 +1,438 @@
+{
+  "now": "2026-10-04T18:00:00+03:00",
+  "_calendar": "Sunday 2026-10-04 | بكرة 2026-10-05 Mon | الخميس 2026-10-08 | الأحد الجاي 2026-10-11 | امبارح 2026-10-03",
+  "cases": [
+    {
+      "id": "create-basic",
+      "turns": [
+        "ضيفلي تاسك أذاكر ML بكرة."
+      ],
+      "expect": {
+        "tools": [
+          "create_task"
+        ],
+        "args": {
+          "create_task": {
+            "date": "2026-10-05"
+          }
+        },
+        "contains": {
+          "create_task": {
+            "title": [
+              "ML"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "create-evening",
+      "turns": [
+        "ضيفلي تاسك أذاكر Neural Networks بكرة الساعة 8 بالليل."
+      ],
+      "expect": {
+        "tools": [
+          "create_task"
+        ],
+        "args": {
+          "create_task": {
+            "date": "2026-10-05",
+            "time": "20:00"
+          }
+        },
+        "contains": {
+          "create_task": {
+            "title": [
+              "Neural Networks"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "create-arabic-digits",
+      "turns": [
+        "ضيفلي مذاكرة الفيزياء بكرة الساعة ٨ بالليل"
+      ],
+      "expect": {
+        "tools": [
+          "create_task"
+        ],
+        "args": {
+          "create_task": {
+            "date": "2026-10-05",
+            "time": "20:00"
+          }
+        }
+      }
+    },
+    {
+      "id": "create-time-only-today",
+      "turns": [
+        "حطلي مذاكرة Deep Learning الساعة 8."
+      ],
+      "expect": {
+        "tools": [
+          "create_task"
+        ],
+        "args": {
+          "create_task": {
+            "date": "2026-10-04",
+            "time": "20:00"
+          }
+        }
+      }
+    },
+    {
+      "id": "statement-creates-event",
+      "turns": [
+        "عندي محاضرة بكرة الساعة 10."
+      ],
+      "expect": {
+        "tools": [
+          "create_task"
+        ],
+        "args": {
+          "create_task": {
+            "date": "2026-10-05",
+            "time": "10:00"
+          }
+        }
+      }
+    },
+    {
+      "id": "mixed-language-create",
+      "turns": [
+        "ضيفلي task أخلص فيها my ML assignment بكرة."
+      ],
+      "expect": {
+        "tools": [
+          "create_task"
+        ],
+        "args": {
+          "create_task": {
+            "date": "2026-10-05"
+          }
+        },
+        "contains": {
+          "create_task": {
+            "title": [
+              "ML"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-time-asks",
+      "turns": [
+        "ضيفلي مذاكرة Deep Learning"
+      ],
+      "expect": {
+        "noWrites": true
+      }
+    },
+    {
+      "id": "missing-title-asks",
+      "turns": [
+        "ضيفلي Task وذكرني بيها بكرة."
+      ],
+      "expect": {
+        "noWrites": true
+      }
+    },
+    {
+      "id": "clarification-then-create",
+      "turns": [
+        "ضيفلي مذاكرة Deep Learning.",
+        "بكرة الساعة 7."
+      ],
+      "expect": {
+        "tools": [
+          "create_task"
+        ],
+        "args": {
+          "create_task": {
+            "date": "2026-10-05"
+          }
+        },
+        "contains": {
+          "create_task": {
+            "title": [
+              "Deep Learning"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "reminder-before-lecture-context",
+      "turns": [
+        "ضيفلي محاضرة Neural Networks الأحد الساعة 10.",
+        "فكرني قبلها بنص ساعة."
+      ],
+      "expect": {
+        "tools": [
+          "create_reminder"
+        ]
+      }
+    },
+    {
+      "id": "reminder-relative",
+      "turns": [
+        "فكرني أكلم ماما بعد ساعتين."
+      ],
+      "expect": {
+        "tools": [
+          "create_reminder"
+        ],
+        "args": {
+          "create_reminder": {
+            "in_minutes": 120
+          }
+        }
+      }
+    },
+    {
+      "id": "reminder-weekday",
+      "turns": [
+        "فكرني يوم الخميس الساعة 5 أروح الجيم."
+      ],
+      "expect": {
+        "tools": [
+          "create_reminder"
+        ],
+        "args": {
+          "create_reminder": {
+            "date": "2026-10-08",
+            "time": "17:00"
+          }
+        }
+      }
+    },
+    {
+      "id": "reminder-no-referent-asks",
+      "turns": [
+        "remind me قبل المحاضرة بنص ساعة."
+      ],
+      "expect": {
+        "noWrites": true
+      }
+    },
+    {
+      "id": "multi-action",
+      "turns": [
+        "بكرة عندي محاضرة الساعة 10، فكرني قبلها بنص ساعة وحطلي مذاكرة Neural Networks الساعة 8."
+      ],
+      "expect": {
+        "tools": [
+          "create_reminder",
+          "create_task"
+        ],
+        "args": {
+          "create_reminder": {
+            "date": "2026-10-05",
+            "time": "09:30"
+          }
+        }
+      }
+    },
+    {
+      "id": "update-time",
+      "turns": [
+        "ضيفلي مذاكرة Deep Learning بكرة الساعة 5.",
+        "خليها الساعة 7 بدل 5."
+      ],
+      "expect": {
+        "tools": [
+          "update_task"
+        ],
+        "args": {
+          "update_task": {
+            "time": "19:00"
+          }
+        },
+        "forbidden": [
+          "create_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "update-no-referent-asks",
+      "turns": [
+        "أجلها لبكرة."
+      ],
+      "expect": {
+        "noWrites": true
+      }
+    },
+    {
+      "id": "delete-yesterday",
+      "turns": [
+        "امسح اللي ضفته امبارح."
+      ],
+      "expect": {
+        "tools": [
+          "delete_task"
+        ],
+        "args": {
+          "delete_task": {
+            "created_on": "2026-10-03"
+          }
+        }
+      }
+    },
+    {
+      "id": "delete-no-referent-asks",
+      "turns": [
+        "امسح التاسك دي."
+      ],
+      "expect": {
+        "noWrites": true
+      }
+    },
+    {
+      "id": "complete-past",
+      "turns": [
+        "أنا خلصت Machine Learning."
+      ],
+      "expect": {
+        "tools": [
+          "complete_task"
+        ],
+        "contains": {
+          "complete_task": {
+            "query": [
+              "Machine Learning"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "NOT-complete-future",
+      "turns": [
+        "أنا لسه هخلص Machine Learning بكرة."
+      ],
+      "expect": {
+        "forbidden": [
+          "complete_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "complete-no-referent",
+      "turns": [
+        "خلصت التاسك."
+      ],
+      "expect": {
+        "forbidden": [
+          "create_task",
+          "delete_task",
+          "update_task"
+        ]
+      }
+    },
+    {
+      "id": "whats-today",
+      "turns": [
+        "إيه اللي ورايا النهارده؟"
+      ],
+      "expect": {
+        "either": [
+          "get_tasks",
+          "get_schedule",
+          "get_daily_summary",
+          "get_upcoming_tasks"
+        ]
+      }
+    },
+    {
+      "id": "plan-my-day",
+      "turns": [
+        "رتبلي يومي بكرة."
+      ],
+      "expect": {
+        "either": [
+          "get_schedule",
+          "get_tasks"
+        ],
+        "forbidden": [
+          "update_task",
+          "create_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "question-is-not-create",
+      "turns": [
+        "هو ينفع أضيف مذاكرة AI بكرة؟"
+      ],
+      "expect": {
+        "forbidden": [
+          "create_task",
+          "update_task",
+          "delete_task"
+        ]
+      }
+    },
+    {
+      "id": "explicit-negation-no-delete",
+      "turns": [
+        "ما تمسحش تاسك المذاكرة بتاعة بكرة."
+      ],
+      "expect": {
+        "forbidden": [
+          "delete_task",
+          "delete_reminder"
+        ]
+      }
+    },
+    {
+      "id": "arabic-dialect-create",
+      "turns": [
+        "حطلي تاسك أراجع الداتابيز بكرة الساعة ٨ الصبح"
+      ],
+      "expect": {
+        "tools": [
+          "create_task"
+        ],
+        "args": {
+          "create_task": {
+            "date": "2026-10-05",
+            "time": "08:00"
+          }
+        },
+        "contains": {
+          "create_task": {
+            "title": [
+              "داتابيز"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "question-schedule-no-write",
+      "turns": [
+        "عندي إيه بكرة؟"
+      ],
+      "expect": {
+        "either": [
+          "get_tasks",
+          "get_schedule",
+          "get_daily_summary",
+          "get_upcoming_tasks"
+        ],
+        "forbidden": [
+          "create_task",
+          "delete_task",
+          "update_task"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# Example Play App Signing upload keystore configuration (DO NOT commit key.properties or *.jks)
+# Copy this file to android/key.properties and fill in your upload keystore details,
+# or pass UPLOAD_STORE_FILE, UPLOAD_STORE_PASSWORD, UPLOAD_KEY_ALIAS, UPLOAD_KEY_PASSWORD in CI.
+storePassword=CHANGE_ME_STORE_PASSWORD
+keyPassword=CHANGE_ME_KEY_PASSWORD
+keyAlias=upload
+storeFile=../upload-keystore.jks

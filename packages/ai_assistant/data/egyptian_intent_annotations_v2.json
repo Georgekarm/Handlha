@@ -1,0 +1,275 @@
+{
+  "schema_version": "2.0",
+  "dataset_version": "egyptian-intent-v2",
+  "purpose": "Specialized closed-domain Egyptian Arabic productivity command dataset for from-scratch training and held-out evaluation.",
+  "split_policy": "Disjoint template_family values across train, dev, and test; zero paraphrase family crosses splits.",
+  "train": [
+    {"id":"tr-001","text":"ضيفلي مذاكرة الفيزياء بكرة الساعة 8","intent":"create_task","family":"add_study_explicit","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-002","text":"ضيف تاسك أذاكر ML بكرة الصبح","intent":"create_task","family":"add_study_explicit","source":"authored-template","input":"text","locale":"ar-EG+en"},
+    {"id":"tr-003","text":"حطلي assignment بكرة الساعة 6","intent":"create_task","family":"put_assignment","source":"authored-template","input":"text","locale":"ar-EG+en"},
+    {"id":"tr-004","text":"سجلي اجتماع العميل يوم الخميس الساعة 11","intent":"create_task","family":"record_meeting","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-005","text":"عندي امتحان عربي بكرة وامتحان انجليزي بعد بكرة","intent":"create_task","family":"implicit_exam_pair","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-006","text":"عندي محاضرة Neural Networks يوم الحد الساعة 10","intent":"create_task","family":"implicit_lecture","source":"authored-template","input":"text","locale":"ar-EG+en"},
+    {"id":"tr-007","text":"ورايا تسليم شيت البرمجة يوم التلات","intent":"create_task","family":"implicit_deadline","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-008","text":"لازم أخلص تقرير المبيعات النهارده العصر","intent":"create_task","family":"implicit_must_finish","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-009","text":"عااوز أضيف كورس Flutter يوم الاتنين بالليل","intent":"create_task","family":"elongated_want_add","source":"voice-noisy-synthetic","input":"voice-transcript","locale":"ar-EG+en"},
+    {"id":"tr-010","text":"اكتبلي مهمة شراء مستلزمات البيت النهارده","intent":"create_task","family":"write_task","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-011","text":"بكرة الساعة 5 العصر عندي كشف دكتور","intent":"create_task","family":"front_time_commitment","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-012","text":"بص يعني ضيفلي مراجعة كيمياء بكرة","intent":"create_task","family":"voice_filler_add","source":"voice-noisy-synthetic","input":"voice-transcript","locale":"ar-EG"},
+
+    {"id":"tr-020","text":"أجلها لبكرة","intent":"update_task","family":"postpone_pronoun","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"tr-021","text":"خليها الخميس بدل الأربعاء","intent":"update_task","family":"swap_weekday","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-022","text":"انقل ميعاد المحاضرة للساعة 7 بالليل","intent":"update_task","family":"move_time","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-023","text":"عدل موعد المذاكرة خليه بعد بكرة","intent":"update_task","family":"edit_date","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-024","text":"غير أولوية التقرير لعالية","intent":"update_task","family":"change_priority","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-025","text":"أجّل مهمة الدكتور يومين","intent":"update_task","family":"postpone_days","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-026","text":"خليها الساعة 9 بدل 7","intent":"update_task","family":"swap_hour","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"tr-027","text":"قدم تسليم المشروع ليوم التلات","intent":"update_task","family":"move_earlier","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-030","text":"خلصت المذاكرة","intent":"complete_task","family":"finished_noun","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-031","text":"أنا خلصت Machine Learning","intent":"complete_task","family":"finished_english","source":"authored-template","input":"text","locale":"ar-EG+en"},
+    {"id":"tr-032","text":"علمها خلصت","intent":"complete_task","family":"mark_done_pronoun","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"tr-033","text":"أنجزت تقرير العميل خلاص","intent":"complete_task","family":"accomplished_task","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-034","text":"اقفل مهمة مراجعة التصميم تمت","intent":"complete_task","family":"close_done_task","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-035","text":"عملت واجب الانجليزي خلاص","intent":"complete_task","family":"did_homework","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-040","text":"امسح مهمة المشروع","intent":"delete_task","family":"erase_task","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-041","text":"شيل الاجتماع من الجدول","intent":"delete_task","family":"remove_meeting","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-042","text":"احذف اللي ضفته امبارح","intent":"delete_task","family":"delete_created_yesterday","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"tr-043","text":"الغي ميعاد الجيم بكرة","intent":"delete_task","family":"cancel_appointment","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-044","text":"امسحلي تاسك الداتابيز","intent":"delete_task","family":"erase_me_task","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-045","text":"شيل المذاكرة التانية","intent":"delete_task","family":"remove_second","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+
+    {"id":"tr-050","text":"إيه اللي ورايا النهارده","intent":"list_tasks","family":"whats_on_my_plate","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-051","text":"وريني مهام بكرة","intent":"list_tasks","family":"show_day_tasks","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-052","text":"عندي إيه بكرة؟","intent":"list_tasks","family":"what_do_i_have_q","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-053","text":"ايه المهام المفتوحة الأسبوع ده","intent":"list_tasks","family":"open_week_tasks","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-054","text":"اعرضلي كل المهام المهمة","intent":"list_tasks","family":"display_high_tasks","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-055","text":"دور على مهمة العرض التقديمي","intent":"list_tasks","family":"find_task","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-060","text":"لخص يومي","intent":"summary","family":"summarize_day","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-061","text":"انجزت كام النهارده","intent":"summary","family":"how_much_done","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-062","text":"ملخص مهامي وأدائي النهارده","intent":"summary","family":"performance_summary","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-063","text":"اديني تقرير مختصر عن جدولي","intent":"summary","family":"short_report","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-064","text":"فاضلي قد إيه وأخلص شغل اليوم","intent":"summary","family":"remaining_today","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+
+    {"id":"tr-070","text":"رتبلي يومي","intent":"schedule","family":"arrange_day","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-071","text":"رتّب معايا أولويات مهامي النهارده","intent":"schedule","family":"prioritize_today","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-072","text":"نظملي الجدول والمواعيد","intent":"schedule","family":"organize_schedule","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-073","text":"أبدأ بإيه دلوقتي؟","intent":"schedule","family":"where_to_start","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-074","text":"عندي امتحان ومشروع ومش عارف أبدأ منين","intent":"schedule","family":"overwhelmed_start","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-075","text":"اعمل لي خطة أمشي عليها النهارده","intent":"schedule","family":"make_plan","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-076","text":"قسّملي مذاكرة المادة دي لخطوات","intent":"schedule","family":"split_goal_plan","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-080","text":"فكرني قبل المحاضرة بنص ساعة","intent":"reminder","family":"remind_before","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-081","text":"عايز تذكير الساعة 9 الصبح","intent":"reminder","family":"want_reminder","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-082","text":"ذكرني أجيب الدواء بعد ساعتين","intent":"reminder","family":"remind_after_duration","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-083","text":"نبهني يوم الخميس الساعة 5 الجيم","intent":"reminder","family":"alert_weekday","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-084","text":"خليني أفتكر أكلم أحمد بكرة","intent":"reminder","family":"help_remember","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+
+    {"id":"tr-090","text":"بكرة الساعة 7 بالليل","intent":"clarification_answer","family":"date_time_reply","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"tr-091","text":"يوم الخميس الصبح","intent":"clarification_answer","family":"weekday_period_reply","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-092","text":"التانية لو سمحت","intent":"clarification_answer","family":"ordinal_choice_reply","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-093","text":"من غير ميعاد محدد","intent":"clarification_answer","family":"no_deadline_reply","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-094","text":"متاحلي 3 ساعات من 6 لـ 9 بالليل","intent":"clarification_answer","family":"availability_reply","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-095","text":"أيوة اعتمد المسودة","intent":"clarification_answer","family":"approve_draft_reply","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-100","text":"اهلا","intent":"greeting","family":"hello_simple","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-101","text":"ازيك يا هندلها","intent":"greeting","family":"how_are_you","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-102","text":"صباح الخير عامل إيه","intent":"greeting","family":"morning_greet","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-103","text":"السلام عليكم","intent":"greeting","family":"salam_greet","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-104","text":"مساء النور شكرا ليك","intent":"greeting","family":"evening_thanks","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-110","text":"احكيلي نكتة تضحك","intent":"out_of_scope","family":"joke_request","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-111","text":"اعمل لي صورة بالذكاء الاصطناعي","intent":"out_of_scope","family":"image_gen","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-112","text":"الطقس عامل إيه النهارده في القاهرة","intent":"out_of_scope","family":"weather_query","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-113","text":"كام سعر الدولار اليوم","intent":"out_of_scope","family":"currency_query","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-114","text":"ماتش الأهلي الساعة كام","intent":"out_of_scope","family":"sports_query","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-120","text":"ينفع أضيف مهمة جديدة هنا؟","intent":"unknown","family":"question_can_add","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-121","text":"ما تمسحش مهمة المشروع","intent":"unknown","family":"negated_delete","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-122","text":"هخلص المذاكرة بكرة إن شاء الله","intent":"unknown","family":"future_completion_statement","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-123","text":"صاحبي قالي أضيف مراجعة الفرنساوي","intent":"unknown","family":"quoted_indirect","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-124","text":"كنت بفكر ممكن أذاكر شوية بعدين","intent":"unknown","family":"tentative_musing","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-125","text":"بلاش تحذف الاجتماع ده خالص","intent":"unknown","family":"dont_erase","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+
+    {"id":"tr-201","text":"ضيف العربي","intent":"create_task","family":"bare_subject_add","source":"user-observed-real","input":"text","locale":"ar-EG"},
+    {"id":"tr-202","text":"عاوز اذاكر فرنساوي","intent":"create_task","family":"bare_want_study","source":"user-observed-real","input":"text","locale":"ar-EG"},
+    {"id":"tr-203","text":"ضيفلي task مراجعة السلايدز","intent":"create_task","family":"add_eng_task","source":"authored-template","input":"text","locale":"ar-EG+en"},
+    {"id":"tr-204","text":"محتاج اسجل شغل الفوتوشوب","intent":"create_task","family":"need_record_bare","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-205","text":"حطلي تاسك دفع الفواتير النهارده","intent":"create_task","family":"put_bill_today","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-206","text":"سجلي كورس الباك اند الأسبوع الجاي","intent":"create_task","family":"record_course_week","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-207","text":"ضيف مذاكرة الجبر والهندسة","intent":"create_task","family":"add_two_subjects_bare","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-208","text":"معايا معاد تجديد البطاقة يوم التلات","intent":"create_task","family":"with_me_errand_tue","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-211","text":"اجل معاد التمرين ساعة كمان","intent":"update_task","family":"delay_workout_hour","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-212","text":"خلي التاسك بتاع التصميم يوم الجمعة","intent":"update_task","family":"move_design_friday","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-213","text":"زوّد أولوية دفع الإيجار لـ مهم جدا","intent":"update_task","family":"raise_rent_prio","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-214","text":"عدّل اسم المهمة دي لكتابة الكود","intent":"update_task","family":"rename_task_code","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-215","text":"بدّل ميعاد العيادة ليوم الإثنين بدري","intent":"update_task","family":"swap_clinic_mon","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-219","text":"خلصت شيت الإلكترونيات","intent":"complete_task","family":"done_elec_sheet","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-220","text":"شطّبت على قراية الكتاب خلاص","intent":"complete_task","family":"crossed_off_book","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"tr-221","text":"المهمة بتاعة الباك اب اتعملت","intent":"complete_task","family":"passive_done_backup","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-222","text":"تم تنفيذ مراجعة السلايدز بنجاح","intent":"complete_task","family":"formal_done_slides","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-225","text":"احذف تاسك المشوار خلاص اتلغى","intent":"delete_task","family":"del_errand_canceled","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-226","text":"امسح الشغلة القديمة دي من الجدول","intent":"delete_task","family":"erase_old_chore","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-227","text":"الغي مكالمة النهارده مش هعملها","intent":"delete_task","family":"cancel_call_today","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-228","text":"شيل معاد القهوة بتاع بالليل","intent":"delete_task","family":"remove_coffee_night","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-231","text":"عندي جدول إيه بكرة الصبح","intent":"list_tasks","family":"whats_schedule_morn","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-232","text":"اعرضلي الشغل المتأخر والفات ميعاده","intent":"list_tasks","family":"display_overdue_past","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-233","text":"وريني المهام اللي لسه مفتوحة","intent":"list_tasks","family":"show_open_tasks","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-236","text":"وصلت لفين في إنجاز الأسبوع ده","intent":"summary","family":"progress_where_week","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-237","text":"نسبة شغلي المنجز النهارده كام في المية","intent":"summary","family":"percent_done_today","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-238","text":"احسبلي عدد المهام المخلصة اليوم","intent":"summary","family":"count_finished_day","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-241","text":"رتبلي جدولي على حسب الأهمية والوقت","intent":"schedule","family":"sort_by_prio_time","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-242","text":"خططلي مواعيد الشغل الفاضية النهارده","intent":"schedule","family":"plan_free_slots_day","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-243","text":"اقترحلي ترتيب ذكي لمذاكرة المواد","intent":"schedule","family":"smart_order_subjects","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-246","text":"اعمللي منبه صغير قبل الدرس بساعة","intent":"reminder","family":"alarm_before_lesson","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-247","text":"نبّهني أول ما تيجي الساعة 6 المغرب","intent":"reminder","family":"ping_six_maghrib","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-248","text":"اديني جرس تنبيه وقت العشا عشان الدوا","intent":"reminder","family":"bell_esha_meds","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+
+    {"id":"tr-250","text":"لأ مش النهارده خليها بكرة بالليل","intent":"clarification_answer","family":"no_not_today_tonight","source":"authored-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"tr-251","text":"مش موافق غيّر الميعاد لـ 7 مساءً","intent":"clarification_answer","family":"disagree_change_seven","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-252","text":"موافق على الترتيب ده خلاص اعتمده","intent":"clarification_answer","family":"agree_confirm_draft","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-255","text":"أهلين يا صاحبي عامل إيه","intent":"greeting","family":"ahlan_buddy","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-256","text":"متشكر جدا ربنا يخليك","intent":"greeting","family":"thanks_bless","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-258","text":"اترجملي الصفحة دي للإسباني","intent":"out_of_scope","family":"translate_spanish","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-259","text":"ابعتلي إيميل رسمي للمدير","intent":"out_of_scope","family":"send_email_boss","source":"authored-template","input":"text","locale":"ar-EG"},
+
+    {"id":"tr-262","text":"ممكن تسجل حاجة ولا لأ؟","intent":"unknown","family":"train_perm_record_q","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-263","text":"ما تضيفش أي تاسك دلوقتي استنى","intent":"unknown","family":"train_neg_dont_add","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-264","text":"لسه هخلّص واجب الكيميا بعدين","intent":"unknown","family":"train_future_not_done","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-265","text":"الأستاذ قالنا اكتبوا \"سلم البحث\" على السبورة","intent":"unknown","family":"train_quoted_board","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-266","text":"لو كنت لغيت الاجتماع كان حصل مشاكل","intent":"unknown","family":"train_if_cancelled","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-267","text":"هو النظام ده بيشتغل من غير نت إزاي؟","intent":"unknown","family":"train_how_offline_q","source":"adversarial-hard-negative","input":"text","locale":"ar-EG","must_not_execute":true},
+
+    {"id":"en-tr-001","text":"add a task to review calculus tomorrow at 7 pm","intent":"create_task","family":"en_add_review","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-002","text":"create a new task study algorithms Friday morning","intent":"create_task","family":"en_create_study","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-003","text":"schedule a meeting with the design team tomorrow at 10","intent":"create_task","family":"en_sched_meeting","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-004","text":"I need to prepare slides for Monday presentation","intent":"create_task","family":"en_need_prepare","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-005","text":"new task submit tax forms high priority","intent":"create_task","family":"en_new_task","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-006","text":"add Deep Learning homework at 8 tonight","intent":"create_task","family":"en_add_homework","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-007","text":"move the physics review to Thursday evening","intent":"update_task","family":"en_move_task","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-008","text":"reschedule dentist appointment to next Monday at 5","intent":"update_task","family":"en_reschedule","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-009","text":"change report priority to high","intent":"update_task","family":"en_change_prio","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-010","text":"push the client call back two hours","intent":"update_task","family":"en_push_call","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-011","text":"mark chemistry homework as done","intent":"complete_task","family":"en_mark_done","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-012","text":"I finished the presentation slides","intent":"complete_task","family":"en_finished","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-013","text":"check off grocery shopping completed","intent":"complete_task","family":"en_check_off","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-014","text":"done with workout session","intent":"complete_task","family":"en_done_with","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-015","text":"delete the old standup task","intent":"delete_task","family":"en_delete_old","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-016","text":"remove dentist appointment from my list","intent":"delete_task","family":"en_remove_list","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-017","text":"cancel tomorrow afternoon meeting task","intent":"delete_task","family":"en_cancel_task","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-018","text":"drop the optional reading task","intent":"delete_task","family":"en_drop_task","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-019","text":"show me my tasks for today","intent":"list_tasks","family":"en_show_today","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-020","text":"what tasks do I have due tomorrow","intent":"list_tasks","family":"en_what_tasks","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-021","text":"list all high priority tasks","intent":"list_tasks","family":"en_list_high","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-022","text":"show overdue incomplete tasks","intent":"list_tasks","family":"en_show_overdue","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-023","text":"give me a summary of my productivity this week","intent":"summary","family":"en_summary_week","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-024","text":"how many tasks have I completed so far","intent":"summary","family":"en_how_many_done","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-025","text":"summarize my progress today","intent":"summary","family":"en_summarize_prog","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-026","text":"show my completion rate stats","intent":"summary","family":"en_stats_rate","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-027","text":"plan my day from 9 am to 5 pm","intent":"schedule","family":"en_plan_day","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-028","text":"help me organize and prioritize my tasks for tomorrow","intent":"schedule","family":"en_prioritize_tmr","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-029","text":"build a study schedule for my pending tasks","intent":"schedule","family":"en_build_sched","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-030","text":"arrange my workload by deadline and duration","intent":"schedule","family":"en_arrange_work","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-031","text":"remind me at 6 pm to call mom","intent":"reminder","family":"en_remind_at","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-032","text":"set an alarm for medicine after two hours","intent":"reminder","family":"en_set_alarm","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-033","text":"ping me in 30 minutes to stretch","intent":"reminder","family":"en_ping_in","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-034","text":"notify me every morning at 8 am","intent":"reminder","family":"en_notify_every","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-035","text":"tomorrow at 7 pm works for me","intent":"clarification_answer","family":"en_clar_time","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-036","text":"make it the second one","intent":"clarification_answer","family":"en_clar_second","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-037","text":"no specific date leave it open","intent":"clarification_answer","family":"en_clar_nodate","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-038","text":"30 minutes high priority","intent":"clarification_answer","family":"en_clar_dur","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-039","text":"hello assistant good morning","intent":"greeting","family":"en_hello","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-040","text":"hi there thanks for the help","intent":"greeting","family":"en_thanks","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-041","text":"hey how is it going today","intent":"greeting","family":"en_hey","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-042","text":"what is the weather forecast outside today","intent":"out_of_scope","family":"en_oos_weather","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-043","text":"write me a python script to sort a list","intent":"out_of_scope","family":"en_oos_code","source":"authored-bilingual","input":"text","locale":"en-US"},
+    {"id":"en-tr-044","text":"translate this paragraph into French please","intent":"out_of_scope","family":"en_oos_trans","source":"authored-bilingual","input":"text","locale":"en-US"},
+
+    {"id":"en-tr-045","text":"do not delete any tasks right now","intent":"unknown","family":"en_neg_del","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true},
+    {"id":"en-tr-046","text":"don't add that meeting tomorrow","intent":"unknown","family":"en_neg_add","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true},
+    {"id":"en-tr-047","text":"if you had scheduled it at 5 it would clash","intent":"unknown","family":"en_hyp_clash","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true},
+    {"id":"en-tr-048","text":"can you create reminders without internet?","intent":"unknown","family":"en_q_offline","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true},
+    {"id":"en-tr-049","text":"the email said \"finish the report tomorrow\"","intent":"unknown","family":"en_quote_email","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true}
+  ],
+  "dev": [
+    {"id":"dev-001","text":"محتاج أسجل مراجعة UI بكرة بعد الضهر","intent":"create_task","family":"dev_need_record","source":"held-out-template","input":"text","locale":"ar-EG+en"},
+    {"id":"dev-002","text":"تاسك كتابة البروبوزال يوم الجمعة الصبح","intent":"create_task","family":"dev_bare_task_date","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-003","text":"حط معاد دكتور الأسنان بعد بكرة الساعة 6","intent":"create_task","family":"dev_put_doctor","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"dev-004","text":"عدّل ميعاد الجلسة ليوم السبت","intent":"update_task","family":"dev_edit_session","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-005","text":"انقلها للأحد الجاي الساعة 4","intent":"update_task","family":"dev_move_sunday","source":"held-out-template","input":"voice-transcript","locale":"ar-EG"},
+
+    {"id":"dev-006","text":"تم إنهاء مهمة الشراء","intent":"complete_task","family":"dev_completed_formal","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-007","text":"قفل تاسك التقرير خلاص خلصته","intent":"complete_task","family":"dev_close_report","source":"held-out-template","input":"voice-transcript","locale":"ar-EG"},
+
+    {"id":"dev-008","text":"امسحلي ميعاد المكالمة بتاعة بكرة","intent":"delete_task","family":"dev_erase_call","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-009","text":"إيه المهام المتبقية يوم الأربعاء","intent":"list_tasks","family":"dev_remaining_wed","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-010","text":"إجمالي اللي اتعمل النهارده كام","intent":"summary","family":"dev_total_today","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-011","text":"جدوللي أولويات الأسبوع ده بهدوء","intent":"schedule","family":"dev_prioritize_week","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-012","text":"اعمل تنبيه قبل الاجتماع بـ 15 دقيقة","intent":"reminder","family":"dev_alert_before","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-013","text":"لأ خليها الساعة 8 بليل أحسن","intent":"clarification_answer","family":"dev_self_correct_evening","source":"held-out-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"dev-014","text":"أهلًا بيك يا بطل","intent":"greeting","family":"dev_greet_pal","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-015","text":"اكتبلي قصيدة حب طويلة","intent":"out_of_scope","family":"dev_poem","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-016","text":"هل ينفع تخلصي لي شغلي كله بالنيابة عني؟","intent":"unknown","family":"dev_hypothetical_q","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true}
+  ],
+  "test": [
+    {"id":"te-001","text":"ضيفلي assignment بكرة الساعة ٩ بالليل","intent":"create_task","family":"te_add_eng_arabic_num","source":"held-out-template","input":"text","locale":"ar-EG+en"},
+    {"id":"te-002","text":"عندي امتحان بكره عربي و بعده انجليزي","intent":"create_task","family":"te_two_exams_connector","source":"user-observed-real","input":"text","locale":"ar-EG"},
+    {"id":"te-003","text":"مضطر أروح البنك يوم الاتنين الصبح","intent":"create_task","family":"te_must_errand","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-004","text":"سجللي سكشن الشبكات بعد بكرة الساعة 12","intent":"create_task","family":"te_record_section","source":"held-out-template","input":"voice-transcript","locale":"ar-EG"},
+
+    {"id":"te-005","text":"خلي المذاكرة بعد بكرة بدل بكرة","intent":"update_task","family":"te_swap_relative_day","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-006","text":"ارفع أولوية تسليم البحث لعالية","intent":"update_task","family":"te_raise_priority","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-007","text":"خلصت امتحان العربي الحمد لله","intent":"complete_task","family":"te_finished_exam","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-008","text":"تم تسليم الشيت الأول","intent":"complete_task","family":"te_submitted_sheet","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-009","text":"احذف مهمة التمرين من قايمتي","intent":"delete_task","family":"te_delete_from_list","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-010","text":"الغي الكورس القديم خلاص","intent":"delete_task","family":"te_cancel_course","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-011","text":"وريني جدول يوم الخميس الجاي","intent":"list_tasks","family":"te_show_thursday_list","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-012","text":"ايه الحاجات المتأخرة عليا","intent":"list_tasks","family":"te_overdue_query","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-013","text":"عملت كام مهمة الأسبوع ده لحد دلوقتي","intent":"summary","family":"te_week_count_summary","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-014","text":"اديني نبذة سريعة عن إنجازي اليوم","intent":"summary","family":"te_today_brief","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-015","text":"مزنوق في الشغل رتبلي أبدأ بإيه الأول","intent":"schedule","family":"te_swamped_prioritize","source":"held-out-template","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"te-016","text":"عايز أنظّم جدولي ومذاكرتي للامتحانات","intent":"schedule","family":"te_plan_exams","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-017","text":"اديني تنبيه بعد نص ساعة عشان الميتنج","intent":"reminder","family":"te_alert_half_hour","source":"held-out-template","input":"voice-transcript","locale":"ar-EG+en"},
+    {"id":"te-018","text":"فكّرني يوم السبت 10 الصبح بمراجعة الكود","intent":"reminder","family":"te_remind_saturday","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-019","text":"لأ قصدي الخميس مش الأربعاء","intent":"clarification_answer","family":"te_self_correct_day","source":"adversarial-held-out","input":"voice-transcript","locale":"ar-EG"},
+    {"id":"te-020","text":"تمام مش موافق على الميعاد خليه 8 بليل","intent":"clarification_answer","family":"te_reject_and_counter","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-021","text":"يا هلا منور يا سيدي","intent":"greeting","family":"te_colloquial_greet","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-022","text":"اقترحلي فيلم أكشن أتفرج عليه","intent":"out_of_scope","family":"te_movie_oos","source":"held-out-template","input":"text","locale":"ar-EG"},
+
+    {"id":"te-023","text":"ممكن تضيف تاسك لو حبيت؟","intent":"unknown","family":"te_neg_permission_q","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"te-024","text":"ما تحذفش ميعاد الدكتور لو سمحت","intent":"unknown","family":"te_neg_dont_delete","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"te-025","text":"لسه هخلّص كورس البايثون الأسبوع الجاي","intent":"unknown","family":"te_neg_future_intent","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"te-026","text":"المدرس قال أكتب \"امسح الورقة\" في الدفتر","intent":"unknown","family":"te_neg_quoted_cmd","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"te-027","text":"لو كنت مسحت المهمة دي كان حصل إيه","intent":"unknown","family":"te_neg_hypothetical_if","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true}
+  ]
+}

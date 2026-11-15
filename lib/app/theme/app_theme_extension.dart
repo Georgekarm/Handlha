@@ -199,4 +199,34 @@ extension AppThemeExtensionX on BuildContext {
       );
 
   bool get isDark => Theme.of(this).brightness == Brightness.dark;
+
+  Color get heroBannerBackground =>
+      isDark ? const Color(0xFF13382F) : const Color(0xFF143F35);
+
+  Color get heroBannerBorder =>
+      isDark ? const Color(0xFF204F43) : Colors.transparent;
+
+  Color get heroPillBackground => const Color(0xFF1E5447);
+
+  Color get limeAccent => const Color(0xFFC8F383);
+
+  Color get limeAccentInk => const Color(0xFF0C211C);
+
+  Color get ctaBackground =>
+      isDark ? const Color(0xFFC8F383) : const Color(0xFF185447);
+
+  Color get ctaForeground =>
+      isDark ? const Color(0xFF0C211C) : Colors.white;
+
+  Color get activeFieldBorder =>
+      isDark ? const Color(0xFF8CD557) : appColors.primary;
+
+  Color get softControlSurface =>
+      isDark ? const Color(0xFF1A342D) : const Color(0xFFE7EFEC);
+
+  Color get segmentedTrackBackground =>
+      isDark ? const Color(0xFF112923) : const Color(0xFFE4ECE8);
+
+  Color get segmentedActiveBackground =>
+      isDark ? const Color(0xFF183830) : appColors.surface;
 }

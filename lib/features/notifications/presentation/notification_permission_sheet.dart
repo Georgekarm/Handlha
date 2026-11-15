@@ -3,9 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/app_theme_extension.dart';
 import '../alarm_reminder_store.dart';
+import '../native_alarm_bridge.dart';
 
-/// Requests OS notification (and optionally exact alarm) permissions with a
-/// friendly Handelha explanation sheet first, only when not yet granted.
+/// Requests OS notification (and optionally exact alarm + overlay) permissions
+/// with a friendly Handelha explanation sheet first, only when not yet granted.
 Future<bool> ensureHandelhaNotificationPermission(
   BuildContext context,
   WidgetRef ref, {
@@ -16,8 +17,14 @@ Future<bool> ensureHandelhaNotificationPermission(
   final notifier = ref.read(alarmReminderProvider.notifier);
   await notifier.refreshPermissions();
   final state = ref.read(alarmReminderProvider);
-  if (state.permissionGranted &&
-      (!includeExactAlarm || state.exactAlarmGranted)) {
+  final caps = includeExactAlarm
+      ? await NativeAlarmBridge.instance.checkCapabilities()
+      : const NativeAlarmCapabilities();
+  final needsNotification = !state.permissionGranted;
+  final needsExactAlarm = includeExactAlarm && !state.exactAlarmGranted;
+  final needsOverlay = includeExactAlarm && !caps.canDrawOverlays;
+
+  if (!needsNotification && !needsExactAlarm && !needsOverlay) {
     return true;
   }
   if (!context.mounted) return false;
@@ -29,8 +36,9 @@ Future<bool> ensureHandelhaNotificationPermission(
     backgroundColor: Colors.transparent,
     builder: (sheetContext) => _HandelhaPermissionSheet(
       includeExactAlarm: includeExactAlarm,
-      needsNotification: !state.permissionGranted,
-      needsExactAlarm: includeExactAlarm && !state.exactAlarmGranted,
+      needsNotification: needsNotification,
+      needsExactAlarm: needsExactAlarm,
+      needsOverlay: needsOverlay,
       reasonAr: reasonAr,
       reasonEn: reasonEn,
     ),
@@ -43,6 +51,7 @@ class _HandelhaPermissionSheet extends ConsumerStatefulWidget {
     required this.includeExactAlarm,
     required this.needsNotification,
     required this.needsExactAlarm,
+    required this.needsOverlay,
     this.reasonAr,
     this.reasonEn,
   });
@@ -50,6 +59,7 @@ class _HandelhaPermissionSheet extends ConsumerStatefulWidget {
   final bool includeExactAlarm;
   final bool needsNotification;
   final bool needsExactAlarm;
+  final bool needsOverlay;
   final String? reasonAr;
   final String? reasonEn;
 
@@ -69,12 +79,22 @@ class _HandelhaPermissionSheetState
     final isDark = theme.brightness == Brightness.dark;
     final isEn = Directionality.of(context) == TextDirection.ltr;
     final cardBg = isDark ? c.surface : Colors.white;
+    final overlayOnly =
+        !widget.needsNotification && !widget.needsExactAlarm && widget.needsOverlay;
 
-    final subtitle = isEn
-        ? (widget.reasonEn ??
-            'Allow notifications and exact alarms so Handelha can alert you right on time for study sessions and exams.')
-        : (widget.reasonAr ??
-            'اسمح لهندلها بالإشعارات والمنبه عشان نقدر نفكرك في ميعاد المذاكرة أو الامتحان بالضبط حتى لو الشاشة مقفولة.');
+    final title = overlayOnly
+        ? (isEn ? 'Allow Display Over Apps' : 'السماح بالظهور فوق التطبيقات')
+        : (isEn ? 'Enable Reminders & Alarms' : 'تفعيل إذن الإشعارات والمنبه');
+
+    final subtitle = overlayOnly
+        ? (isEn
+            ? 'Allow Handelha to display over other apps so your ringing alarm pops up on top, just like a built-in external alarm.'
+            : 'فعّل إذن الظهور فوق التطبيقات عشان لما تختار منبه يرن، يفتحلك الشاشة الكاملة فوق أي تطبيق زي أي منبه خارجي.')
+        : isEn
+            ? (widget.reasonEn ??
+                'Allow notifications and exact alarms so Handelha can alert you right on time for study sessions and exams.')
+            : (widget.reasonAr ??
+                'اسمح لهندلها بالإشعارات والمنبه والظهور فوق التطبيقات عشان يرن في ميعاده بالضبط زي أي منبه خارجي.');
 
     return SafeArea(
       child: Padding(
@@ -133,9 +153,7 @@ class _HandelhaPermissionSheetState
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  isEn
-                      ? 'Enable Reminders & Alarms'
-                      : 'تفعيل إذن الإشعارات والمنبه',
+                  title,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 19,
@@ -174,7 +192,8 @@ class _HandelhaPermissionSheetState
                               ? 'Timely banners for upcoming tasks and reviews.'
                               : 'تنبيهات مريحة في شريط الإشعارات لمهامك اليومية.',
                         ),
-                      if (widget.needsNotification && widget.needsExactAlarm)
+                      if (widget.needsNotification &&
+                          (widget.needsExactAlarm || widget.needsOverlay))
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           child: Divider(height: 1, color: c.border),
@@ -190,6 +209,22 @@ class _HandelhaPermissionSheetState
                               ? 'Full-screen ringtone & vibration when you choose an alarm.'
                               : 'شاشة منبه كاملة بصوت واهتزاز للامتحانات والمواعيد المهمة.',
                         ),
+                      if (widget.needsExactAlarm && widget.needsOverlay)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(height: 1, color: c.border),
+                        ),
+                      if (widget.needsOverlay)
+                        _PermissionItemRow(
+                          icon: Icons.layers_outlined,
+                          color: c.primary,
+                          title: isEn
+                              ? 'Display over other apps'
+                              : 'الظهور فوق التطبيقات للمنبه الخارجي',
+                          subtitle: isEn
+                              ? 'Lets the alarm open above any active app, just like an external clock alarm.'
+                              : 'يخلي شاشة المنبه الخارجي تفتح فوق أي تطبيق تاني زي أي منبه خارجي.',
+                        ),
                     ],
                   ),
                 ),
@@ -201,11 +236,23 @@ class _HandelhaPermissionSheetState
                         ? null
                         : () async {
                             setState(() => _busy = true);
-                            final ok = await ref
-                                .read(alarmReminderProvider.notifier)
-                                .requestPermission(
-                                  includeExactAlarm: widget.includeExactAlarm,
-                                );
+                            var ok = true;
+                            if (widget.needsNotification ||
+                                widget.needsExactAlarm) {
+                              ok = await ref
+                                  .read(alarmReminderProvider.notifier)
+                                  .requestPermission(
+                                    includeExactAlarm: widget.includeExactAlarm,
+                                  );
+                            }
+                            if (widget.includeExactAlarm) {
+                              final caps = await NativeAlarmBridge.instance
+                                  .checkCapabilities();
+                              if (!caps.canDrawOverlays) {
+                                await NativeAlarmBridge.instance
+                                    .requestOverlayPermission();
+                              }
+                            }
                             if (!context.mounted) return;
                             Navigator.of(context, rootNavigator: true).pop(ok);
                           },
@@ -228,7 +275,13 @@ class _HandelhaPermissionSheetState
                         : const Icon(Icons.check_circle_outline_rounded,
                             size: 20),
                     label: Text(
-                      isEn ? 'Allow Notifications' : 'السماح وتفعيل التنبيهات',
+                      overlayOnly
+                          ? (isEn
+                              ? 'Allow Over Other Apps'
+                              : 'السماح بالظهور فوق التطبيقات')
+                          : (isEn
+                              ? 'Allow Notifications'
+                              : 'السماح وتفعيل التنبيهات'),
                       style: const TextStyle(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w800,

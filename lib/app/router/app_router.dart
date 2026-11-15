@@ -268,12 +268,21 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/focus-session',
         pageBuilder: (context, state) {
-          final data = state.extra is Map ? (state.extra as Map).cast<String, String>() : const <String, String>{};
-          final taskTitle = data['title'] ?? (state.extra is String ? state.extra as String : 'مهمة بدون عنوان');
+          final data = state.extra is Map
+              ? (state.extra as Map).cast<String, String>()
+              : const <String, String>{};
+          final taskTitle = data['title'] ??
+              (state.extra is String
+                  ? state.extra as String
+                  : 'جلسة تركيز هادئة');
           return _buildCalmTransition(
             context: context,
             state: state,
-            child: HandelhaFocusSessionScreen(taskTitle: taskTitle, taskId: data['id']),
+            child: HandelhaFocusSessionScreen(
+              taskTitle: taskTitle,
+              taskId: data['id'],
+              openTreeTab: data['tab'] == 'tree',
+            ),
           );
         },
       ),

@@ -18,25 +18,29 @@ import '../../tasks/domain/task.dart';
 import '../../tasks/presentation/task_providers.dart';
 import '../domain/focus_session.dart';
 import 'project_providers.dart';
+import 'widgets/focus_timer_widgets.dart';
+import 'widgets/focus_tree_canvas.dart';
 
 enum _FocusPhase { active, paused, completed, onBreak }
 
-enum _FocusViewTab { timer, progress }
+enum _FocusViewTab { timer, tree }
 
-/// شاشة جلسة التركيز المطورة:
-/// - تعديل مرن للوقت والمدة (١٠ / ١٥ / ٢٥ / ٤٥ / ٦٠ / ٩٠ / ١٢٠ دقيقة + مؤشر مخصص)
-/// - أصوات طبيعة هادئة للتركيز (أمواج البحر، هدوء الليل، مطر هادئ، نسيم الغابة، ضوضاء دافئة)
-/// - صفحة متابعة وإنجاز خاصة بجلسات التركيز مربوطة ومسمّعة في كل شاشات البرنامج
+/// شاشة جلسة التركيز المطوّرة:
+/// - مؤقت حديث بحركة سلسة وشريط تفاعلي لاختيار المدة (٥ - ١٢٠ دقيقة)
+/// - أصوات طبيعة هادئة للتركيز بتصميم عصري بدون تعقيد
+/// - صفحة «شجرتك» التي تنمو وتكتمل وتُزهر مع كل جلسة تركيز منجزة
 class HandelhaFocusSessionScreen extends ConsumerStatefulWidget {
   final String taskTitle;
   final String? taskId;
   final int initialMinutes;
+  final bool openTreeTab;
 
   const HandelhaFocusSessionScreen({
     super.key,
     required this.taskTitle,
     this.taskId,
     this.initialMinutes = 25,
+    this.openTreeTab = false,
   });
 
   @override
@@ -46,20 +50,21 @@ class HandelhaFocusSessionScreen extends ConsumerStatefulWidget {
 
 class _HandelhaFocusSessionScreenState
     extends ConsumerState<HandelhaFocusSessionScreen> {
+  static const double _defaultAmbientVolume = 0.65;
+
   int _selectedFocusMinutes = 25;
   int _selectedBreakMinutes = 5;
 
   late int _focusSecondsTotal;
   late int _remainingSeconds;
   _FocusPhase _phase = _FocusPhase.active;
-  _FocusViewTab _viewTab = _FocusViewTab.timer;
+  late _FocusViewTab _viewTab;
   Timer? _timer;
   DateTime? _startedAt;
   bool _sessionRecorded = false;
   int _lastCompletedMinutes = 25;
 
   AmbientSoundscape _ambient = AmbientSoundscape.silent;
-  double _volume = 0.65;
   bool _usedAmbientSound = false;
   List<FocusSession> _history = const [];
 
@@ -69,6 +74,7 @@ class _HandelhaFocusSessionScreenState
     _selectedFocusMinutes = widget.initialMinutes;
     _focusSecondsTotal = _selectedFocusMinutes * 60;
     _remainingSeconds = _focusSecondsTotal;
+    _viewTab = widget.openTreeTab ? _FocusViewTab.tree : _FocusViewTab.timer;
     _startedAt = DateTime.now();
     _startTicker();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadFocusHistory());
@@ -113,24 +119,16 @@ class _HandelhaFocusSessionScreenState
     });
   }
 
-  void _setDurationPreset(int minutes) {
+  void _setDurationMinutes(int minutes) {
+    final clamped = minutes.clamp(
+      FocusDurationRulerBar.minMinutes,
+      FocusDurationRulerBar.maxMinutes,
+    );
     setState(() {
-      _selectedFocusMinutes = minutes;
-      _focusSecondsTotal = minutes * 60;
+      _selectedFocusMinutes = clamped;
+      _focusSecondsTotal = clamped * 60;
       _remainingSeconds = _focusSecondsTotal;
       _sessionRecorded = false;
-    });
-  }
-
-  void _adjustRemainingMinutes(int deltaMinutes) {
-    final deltaSec = deltaMinutes * 60;
-    setState(() {
-      final nextRem = (_remainingSeconds + deltaSec).clamp(60, 180 * 60);
-      _remainingSeconds = nextRem;
-      if (_remainingSeconds > _focusSecondsTotal) {
-        _focusSecondsTotal = _remainingSeconds;
-      }
-      _selectedFocusMinutes = (_focusSecondsTotal / 60).round();
     });
   }
 
@@ -141,7 +139,10 @@ class _HandelhaFocusSessionScreenState
         _usedAmbientSound = true;
       }
     });
-    HandelhaSoundEngine.instance.playAmbient(sound, volume: _volume);
+    HandelhaSoundEngine.instance.playAmbient(
+      sound,
+      volume: _defaultAmbientVolume,
+    );
   }
 
   void _pause() {
@@ -179,7 +180,6 @@ class _HandelhaFocusSessionScreenState
       completed: completed,
     );
 
-    // Accumulate focus time onto the linked task if present.
     if (widget.taskId != null) {
       final allTasks = ref.read(allTasksProvider).value ?? const <Task>[];
       final linked = allTasks.where((t) => t.id == widget.taskId).firstOrNull;
@@ -192,7 +192,6 @@ class _HandelhaFocusSessionScreenState
       }
     }
 
-    // Sync across all app screens (Dashboard, Tasks, Projects, Tracking)
     ref.invalidate(todayTasksProvider);
     ref.invalidate(allTasksProvider);
     ref.invalidate(projectsProvider);
@@ -261,8 +260,9 @@ class _HandelhaFocusSessionScreenState
   }
 
   Future<bool> _confirmExitIfRunning() async {
-    if (_phase == _FocusPhase.completed) return true;
-    if (_phase == _FocusPhase.onBreak) return true;
+    if (_phase == _FocusPhase.completed || _phase == _FocusPhase.onBreak) {
+      return true;
+    }
     final elapsed = _focusSecondsTotal - _remainingSeconds;
     if (elapsed < 5) return true;
 
@@ -280,13 +280,32 @@ class _HandelhaFocusSessionScreenState
     return shouldLeave ?? false;
   }
 
+  double get _liveSessionElapsedFraction {
+    if (_phase == _FocusPhase.onBreak) return 0.0;
+    if (_phase == _FocusPhase.completed) return 1.0;
+    if (_focusSecondsTotal <= 0) return 0.0;
+    return ((_focusSecondsTotal - _remainingSeconds) / _focusSecondsTotal)
+        .clamp(0.0, 1.0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.appColors;
     final isEn = Directionality.of(context) == TextDirection.ltr;
     final user = ref.watch(authNotifierProvider).value;
-    final cleanTitle = ArabicFormatters.trData(widget.taskTitle);
-    final breakSecondsTotal = _selectedBreakMinutes * 60;
+    final sessions = ref.watch(focusSessionsProvider).value ?? _history;
+    final treeProgress = FocusTreeProgress.compute(
+      sessions: sessions,
+      activeSessionFraction: _liveSessionElapsedFraction,
+      justCompleted: _phase == _FocusPhase.completed,
+    );
+
+    final headerTitle = switch (_phase) {
+      _FocusPhase.active => isEn ? 'Focus Session' : 'جلسة التركيز',
+      _FocusPhase.paused => isEn ? 'Focus Paused' : 'التركيز متوقف',
+      _FocusPhase.onBreak => isEn ? 'Break Time' : 'وقت الاستراحة',
+      _FocusPhase.completed => isEn ? 'Well Done' : 'أحسنت',
+    };
 
     return PopScope(
       canPop: false,
@@ -300,115 +319,122 @@ class _HandelhaFocusSessionScreenState
       child: Scaffold(
         extendBody: true,
         body: HandelhaAmbientBackground(
-          child: SafeArea(
-            bottom: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 114),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_phase == _FocusPhase.completed)
-                    _buildCompletedView(
-                      context,
-                      c: c,
-                      firstName: ArabicFormatters.trData(
-                        user?.firstName ?? (isEn ? 'Friend' : 'صديقي'),
+          child: Stack(
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: HandelhaHeader(
+                        title: headerTitle,
+                        padding: const EdgeInsets.fromLTRB(0, 8, 0, 10),
+                        onBack: () async {
+                          if (_phase == _FocusPhase.completed) {
+                            _exitScreen();
+                            return;
+                          }
+                          final allow = await _confirmExitIfRunning();
+                          if (allow && mounted) _exitScreen();
+                        },
                       ),
-                    )
-                  else ...[
-                    switch (_phase) {
-                      _FocusPhase.active => _buildTimerView(
-                          context,
-                          c: c,
+                    ),
+                    if (_phase != _FocusPhase.completed)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                        child: FocusTabSwitcher(
+                          isTreeTab: _viewTab == _FocusViewTab.tree,
+                          completedTreesCount: treeProgress.completedTrees,
                           isEn: isEn,
-                          headerTitle:
-                              isEn ? 'Focus Session' : 'جلسة التركيز',
-                          headline: isEn
-                              ? 'One thing. Your full focus on it.'
-                              : 'حاجة واحدة. تركيزك كله ليها.',
-                          badgeText: cleanTitle,
-                          badgeFill: c.surface,
-                          badgeTextColor: c.textSecondary,
-                          ringColor: c.primary,
-                          timerSub: isEn
-                              ? 'minutes for you and your task'
-                              : 'دقيقة لنفسك ولمهمتك',
-                          caption: isEn
-                              ? 'Turn off distractions, and leave the rest to us.'
-                              : 'اقفل المشتتات، وسيب الباقي علينا.',
-                          primaryLabel: isEn ? 'Pause' : 'إيقاف مؤقت',
-                          onPrimary: _pause,
-                          secondaryLabel:
-                              isEn ? 'End Session' : 'إنهاء الجلسة',
-                          onSecondary: _endSessionManually,
-                          progress: _focusSecondsTotal == 0
-                              ? 1
-                              : _remainingSeconds / _focusSecondsTotal,
+                          onSelectTimer: () =>
+                              setState(() => _viewTab = _FocusViewTab.timer),
+                          onSelectTree: () {
+                            ref.read(focusSessionsProvider.notifier).refresh();
+                            _loadFocusHistory();
+                            setState(() => _viewTab = _FocusViewTab.tree);
+                          },
                         ),
-                      _FocusPhase.paused => _buildTimerView(
-                          context,
-                          c: c,
-                          isEn: isEn,
-                          headerTitle:
-                              isEn ? 'Focus Paused' : 'التركيز متوقف',
-                          headline: isEn
-                              ? 'Take your time, no rush.'
-                              : 'خد وقتك، مفيش استعجال.',
-                          badgeText: cleanTitle,
-                          badgeFill: c.surface,
-                          badgeTextColor: c.textSecondary,
-                          ringColor: c.lavenderAccent,
-                          timerSub: isEn
-                              ? 'minutes for you and your task'
-                              : 'دقيقة لنفسك ولمهمتك',
-                          caption: isEn
-                              ? 'Your progress is saved. Resume whenever you are ready.'
-                              : 'كل اللي عملته محفوظ. نكمّل لما تحب.',
-                          primaryLabel:
-                              isEn ? 'Resume Session' : 'كمّل الجلسة',
-                          onPrimary: _resume,
-                          secondaryLabel:
-                              isEn ? 'End Session' : 'إنهاء الجلسة',
-                          onSecondary: _endSessionManually,
-                          progress: _focusSecondsTotal == 0
-                              ? 1
-                              : _remainingSeconds / _focusSecondsTotal,
-                        ),
-                      _FocusPhase.onBreak => _buildTimerView(
-                          context,
-                          c: c,
-                          isEn: isEn,
-                          headerTitle: isEn ? 'Break Time' : 'وقت الاستراحة',
-                          headline: isEn
-                              ? 'A short break makes a big difference.'
-                              : 'استراحة صغيرة، تفرق كتير.',
-                          badgeText:
-                              isEn ? 'Time for yourself' : 'وقت لنفسك',
-                          badgeFill: c.primarySoft,
-                          badgeTextColor: c.primary,
-                          ringColor: c.primary,
-                          timerSub: isEn
-                              ? 'Drink water and take a breath'
-                              : 'اشرب ميّه وخد نفس',
-                          caption: isEn
-                              ? 'Stretch your back, work can wait.'
-                              : 'قوم افرد ضهرك، الشغل هيستناك.',
-                          primaryLabel:
-                              isEn ? 'Back to Focus' : 'رجوع للتركيز',
-                          onPrimary: _restartFocusFromBreak,
-                          secondaryLabel:
-                              isEn ? 'End Break' : 'إنهاء الاستراحة',
-                          onSecondary: _exitScreen,
-                          progress: breakSecondsTotal == 0
-                              ? 1
-                              : _remainingSeconds / breakSecondsTotal,
-                        ),
-                      _FocusPhase.completed => const SizedBox.shrink(),
-                    },
+                      ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 6, 20, 132),
+                        child: _phase == _FocusPhase.completed
+                            ? _buildCompletedView(
+                                context,
+                                c: c,
+                                isEn: isEn,
+                                firstName: ArabicFormatters.trData(
+                                  user?.firstName ?? (isEn ? 'Friend' : 'صديقي'),
+                                ),
+                                treeProgress: treeProgress,
+                                sessions: sessions,
+                              )
+                            : AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 280),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: (child, anim) =>
+                                    FadeTransition(
+                                  opacity: anim,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0, 0.03),
+                                      end: Offset.zero,
+                                    ).animate(anim),
+                                    child: child,
+                                  ),
+                                ),
+                                child: _viewTab == _FocusViewTab.tree
+                                    ? KeyedSubtree(
+                                        key: const ValueKey<String>('tree_tab'),
+                                        child: _buildYourTreeTabView(
+                                          context,
+                                          c: c,
+                                          isEn: isEn,
+                                          treeProgress: treeProgress,
+                                          sessions: sessions,
+                                        ),
+                                      )
+                                    : KeyedSubtree(
+                                        key:
+                                            const ValueKey<String>('timer_tab'),
+                                        child: _buildTimerTabContent(
+                                          context,
+                                          c: c,
+                                          isEn: isEn,
+                                          treeProgress: treeProgress,
+                                        ),
+                                      ),
+                              ),
+                      ),
+                    ),
                   ],
-                ],
+                ),
               ),
-            ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 108,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          c.background.withValues(alpha: 0.0),
+                          c.background.withValues(alpha: 0.88),
+                          c.background,
+                        ],
+                        stops: const [0.0, 0.45, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         bottomNavigationBar: const HandelhaBottomNav(currentIndex: 0),
@@ -416,330 +442,446 @@ class _HandelhaFocusSessionScreenState
     );
   }
 
-  Widget _buildTimerView(
+  Widget _buildTimerTabContent(
     BuildContext context, {
     required AppThemeExtension c,
     required bool isEn,
-    required String headerTitle,
-    required String headline,
-    required String badgeText,
-    required Color badgeFill,
-    required Color badgeTextColor,
-    required Color ringColor,
-    required String timerSub,
-    required String caption,
-    required String primaryLabel,
-    required VoidCallback onPrimary,
-    required String secondaryLabel,
-    required VoidCallback onSecondary,
-    required double progress,
+    required FocusTreeProgress treeProgress,
   }) {
-    return Column(
-      children: [
-        HandelhaHeader(
-          title: headerTitle,
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 10),
-          onBack: () async {
-            final allow = await _confirmExitIfRunning();
-            if (allow && mounted) _exitScreen();
-          },
+    final cleanTitle = ArabicFormatters.trData(widget.taskTitle);
+    final breakSecondsTotal = _selectedBreakMinutes * 60;
+
+    final config = switch (_phase) {
+      _FocusPhase.active => (
+          headline: isEn
+              ? 'One thing. Your full focus on it.'
+              : 'حاجة واحدة. تركيزك كله ليها.',
+          badgeText: cleanTitle,
+          badgeFill: c.surface,
+          badgeTextColor: c.textSecondary,
+          ringColor: c.primary,
+          phaseBadge: isEn ? 'Deep Focus' : 'تركيز عميق',
+          timerSub: isEn
+              ? 'minutes for you and your task'
+              : 'دقيقة لنفسك ولمهمتك',
+          caption: isEn
+              ? 'Turn off distractions, and leave the rest to us.'
+              : 'اقفل المشتتات، وسيب الباقي علينا.',
+          primaryLabel: isEn ? 'Pause' : 'إيقاف مؤقت',
+          primaryIcon: Icons.pause_rounded,
+          onPrimary: _pause,
+          secondaryLabel: isEn ? 'End Session' : 'إنهاء الجلسة',
+          onSecondary: _endSessionManually,
+          progress: _focusSecondsTotal == 0
+              ? 1.0
+              : _remainingSeconds / _focusSecondsTotal,
+          isRunning: true,
         ),
+      _FocusPhase.paused => (
+          headline: isEn
+              ? 'Take your time, no rush.'
+              : 'خد وقتك، مفيش استعجال.',
+          badgeText: cleanTitle,
+          badgeFill: c.surface,
+          badgeTextColor: c.textSecondary,
+          ringColor: c.lavenderAccent,
+          phaseBadge: isEn ? 'Paused' : 'متوقف',
+          timerSub: isEn
+              ? 'minutes for you and your task'
+              : 'دقيقة لنفسك ولمهمتك',
+          caption: isEn
+              ? 'Your progress is saved. Resume whenever you are ready.'
+              : 'كل اللي عملته محفوظ. نكمّل لما تحب.',
+          primaryLabel: isEn ? 'Resume Session' : 'كمّل الجلسة',
+          primaryIcon: Icons.play_arrow_rounded,
+          onPrimary: _resume,
+          secondaryLabel: isEn ? 'End Session' : 'إنهاء الجلسة',
+          onSecondary: _endSessionManually,
+          progress: _focusSecondsTotal == 0
+              ? 1.0
+              : _remainingSeconds / _focusSecondsTotal,
+          isRunning: false,
+        ),
+      _FocusPhase.onBreak => (
+          headline: isEn
+              ? 'A short break makes a big difference.'
+              : 'استراحة صغيرة، تفرق كتير.',
+          badgeText: isEn ? 'Time for yourself' : 'وقت لنفسك',
+          badgeFill: c.primarySoft,
+          badgeTextColor: c.primary,
+          ringColor: c.primary,
+          phaseBadge: isEn ? 'Calm Break' : 'استراحة',
+          timerSub: isEn
+              ? 'Drink water and take a breath'
+              : 'اشرب ميّه وخد نفس',
+          caption: isEn
+              ? 'Stretch your back, work can wait.'
+              : 'قوم افرد ضهرك، الشغل هيستناك.',
+          primaryLabel: isEn ? 'Back to Focus' : 'رجوع للتركيز',
+          primaryIcon: Icons.play_arrow_rounded,
+          onPrimary: _restartFocusFromBreak,
+          secondaryLabel: isEn ? 'End Break' : 'إنهاء الاستراحة',
+          onSecondary: _exitScreen,
+          progress: breakSecondsTotal == 0
+              ? 1.0
+              : _remainingSeconds / breakSecondsTotal,
+          isRunning: true,
+        ),
+      _FocusPhase.completed => (
+          headline: '',
+          badgeText: cleanTitle,
+          badgeFill: c.surface,
+          badgeTextColor: c.textSecondary,
+          ringColor: c.primary,
+          phaseBadge: '',
+          timerSub: '',
+          caption: '',
+          primaryLabel: '',
+          primaryIcon: Icons.check_rounded,
+          onPrimary: _exitScreen,
+          secondaryLabel: '',
+          onSecondary: _exitScreen,
+          progress: 1.0,
+          isRunning: false,
+        ),
+    };
 
-        // View Tab Switcher: المؤقت والأصوات | متابعة وإنجاز التركيز
-        (() {
-          final syncedHistory =
-              ref.watch(focusSessionsProvider).value ?? _history;
-          return Container(
-          padding: const EdgeInsets.all(4),
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: c.surfaceSoft,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: c.border),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: _FocusTabPill(
-                  label: isEn ? 'Timer & Sounds' : 'المؤقت والأصوات',
-                  selected: _viewTab == _FocusViewTab.timer,
-                  onTap: () => setState(() => _viewTab = _FocusViewTab.timer),
-                ),
-              ),
-              Expanded(
-                child: _FocusTabPill(
-                  label: isEn
-                      ? 'Focus Progress (${syncedHistory.length})'
-                      : 'إنجاز التركيز (${ArabicFormatters.toArabicDigits(syncedHistory.length)})',
-                  selected: _viewTab == _FocusViewTab.progress,
-                  onTap: () {
-                    ref.read(focusSessionsProvider.notifier).refresh();
-                    _loadFocusHistory();
-                    setState(() => _viewTab = _FocusViewTab.progress);
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-        })(),
+    final treeGrowthPct =
+        (treeProgress.visualGrowth * 100).round().clamp(5, 100);
 
-        if (_viewTab == _FocusViewTab.progress) ...[
-          _buildFocusProgressAndAchievementsView(context, c, isEn),
-          const SizedBox(height: 16),
-        ],
-
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 4),
         Text(
-          headline,
+          config.headline,
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 19,
             fontWeight: FontWeight.w800,
             color: c.textPrimary,
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          constraints: const BoxConstraints(minWidth: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          decoration: BoxDecoration(
-            color: badgeFill,
-            borderRadius: BorderRadius.circular(999),
-            border: badgeFill == c.surface ? Border.all(color: c.border) : null,
-          ),
-          child: Text(
-            badgeText,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              color: badgeTextColor,
+        Center(
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 140, maxWidth: 320),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+            decoration: BoxDecoration(
+              color: config.badgeFill,
+              borderRadius: BorderRadius.circular(999),
+              border: config.badgeFill == c.surface
+                  ? Border.all(color: c.border)
+                  : null,
+            ),
+            child: Text(
+              config.badgeText,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: config.badgeTextColor,
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: 168,
-          height: 168,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 168,
-                height: 168,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: c.surface,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
+        const SizedBox(height: 14),
+
+        // Modern Animated Dial
+        ModernFocusDial(
+          remainingSeconds: _remainingSeconds,
+          progress: config.progress,
+          ringColor: config.ringColor,
+          phaseLabel: config.phaseBadge,
+          subLabel: config.timerSub,
+          isRunning: config.isRunning,
+          treeProgressPercent:
+              _phase == _FocusPhase.onBreak ? null : treeGrowthPct,
+          isEn: isEn,
+        ),
+        const SizedBox(height: 16),
+
+        // Primary & Secondary Controls right below the dial for immediate access
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: config.onPrimary,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: c.primary,
+                    foregroundColor: c.textOnPrimary,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 160,
-                height: 160,
-                child: CircularProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  strokeWidth: 7.5,
-                  strokeCap: StrokeCap.round,
-                  backgroundColor: ringColor.withValues(alpha: 0.16),
-                  color: ringColor,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        ArabicFormatters.toArabicDigits(
-                          ArabicFormatters.timerMmSs(_remainingSeconds),
-                        ),
-                        textDirection: TextDirection.ltr,
-                        style: TextStyle(
-                          fontSize: 40,
-                          fontWeight: FontWeight.w800,
-                          color: ringColor,
-                          height: 1.05,
-                        ),
+                  ),
+                  icon: Icon(config.primaryIcon, size: 20),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      config.primaryLabel,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        color: c.textOnPrimary,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        timerSub,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: c.textSecondary,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        // Time Adjustment & Duration Presets Card
-        if (_phase != _FocusPhase.onBreak) ...[
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: c.surface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: c.border),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.timer_outlined, size: 16, color: c.primary),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        isEn
-                            ? 'Customize Focus Duration & Break'
-                            : 'تعديل وقت ومدة الجلسة والاستراحة',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w800,
-                          color: c.textPrimary,
-                        ),
-                      ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: SizedBox(
+                height: 48,
+                child: FilledButton(
+                  onPressed: config.onSecondary,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.primarySoft,
+                    foregroundColor: c.primary,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    Text(
-                      isEn
-                          ? '$_selectedFocusMinutes min'
-                          : '${ArabicFormatters.toArabicDigits(_selectedFocusMinutes)} د',
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      config.secondaryLabel,
                       style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
                         color: c.primary,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    for (final mins in const [10, 15, 25, 45, 60, 90, 120])
-                      _DurationChip(
-                        label: isEn
-                            ? '${mins}m'
-                            : '${ArabicFormatters.toArabicDigits(mins)} د',
-                        selected: _selectedFocusMinutes == mins,
-                        onTap: () => _setDurationPreset(mins),
-                      ),
-                    _DurationChip(
-                      label: isEn ? '-5m' : '-٥ د',
-                      selected: false,
-                      onTap: () => _adjustRemainingMinutes(-5),
-                    ),
-                    _DurationChip(
-                      label: isEn ? '+5m' : '+٥ د',
-                      selected: false,
-                      onTap: () => _adjustRemainingMinutes(5),
-                    ),
-                    _DurationChip(
-                      label: isEn ? '+10m' : '+١٠ د',
-                      selected: false,
-                      onTap: () => _adjustRemainingMinutes(10),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 4,
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 7,
-                    ),
-                  ),
-                  child: Slider(
-                    value: _selectedFocusMinutes.toDouble().clamp(5, 120),
-                    min: 5,
-                    max: 120,
-                    divisions: 23,
-                    activeColor: c.primary,
-                    label: isEn
-                        ? '$_selectedFocusMinutes min'
-                        : '${ArabicFormatters.toArabicDigits(_selectedFocusMinutes)} د',
-                    onChanged: (v) => _setDurationPreset(v.round()),
                   ),
                 ),
-                Row(
-                  children: [
-                    Text(
-                      isEn ? 'Break:' : 'مدة الاستراحة:',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                        color: c.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          for (final bMin in const [5, 10, 15])
-                            _DurationChip(
-                              label: isEn
-                                  ? '${bMin}m'
-                                  : '${ArabicFormatters.toArabicDigits(bMin)} د',
-                              selected: _selectedBreakMinutes == bMin,
-                              onTap: () =>
-                                  setState(() => _selectedBreakMinutes = bMin),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // Sleek Duration Bar OR Break Switcher
+        if (_phase != _FocusPhase.onBreak)
+          FocusDurationRulerBar(
+            selectedMinutes: _selectedFocusMinutes,
+            selectedBreakMinutes: _selectedBreakMinutes,
+            isEn: isEn,
+            onSelectMinutes: _setDurationMinutes,
+            onSelectBreakMinutes: (b) =>
+                setState(() => _selectedBreakMinutes = b),
+          )
+        else
+          _buildBreakSelectorCard(c, isEn),
+
+        const SizedBox(height: 12),
+
+        // Upgraded Calm Soundscapes (No Volume Slider)
+        FocusSoundscapeSection(
+          selected: _ambient,
+          isEn: isEn,
+          onSelect: _selectAmbient,
+        ),
+
+        const SizedBox(height: 12),
+        Text(
+          config.caption,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w500,
+            color: c.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBreakSelectorCard(AppThemeExtension c, bool isEn) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              isEn ? 'Break Length' : 'مدة الاستراحة',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: c.textPrimary,
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-        ] else ...[
-          // Break duration customization
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            alignment: WrapAlignment.center,
-            children: [
-              for (final bMin in const [5, 10, 15])
-                _DurationChip(
-                  label: isEn
-                      ? 'Break ${bMin}m'
-                      : 'استراحة ${ArabicFormatters.toArabicDigits(bMin)} د',
-                  selected: _selectedBreakMinutes == bMin,
-                  onTap: () => _startBreak(bMin),
+          const SizedBox(width: 8),
+          Flexible(
+            flex: 2,
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final bMin in const [5, 10, 15]) ...[
+                      GestureDetector(
+                        onTap: () => _startBreak(bMin),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _selectedBreakMinutes == bMin
+                                ? c.primary
+                                : c.surfaceSoft,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _selectedBreakMinutes == bMin
+                                  ? c.primary
+                                  : c.border,
+                            ),
+                          ),
+                          child: Text(
+                            isEn
+                                ? '${bMin}m'
+                                : '${ArabicFormatters.toArabicDigits(bMin)} د',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: _selectedBreakMinutes == bMin
+                                  ? c.textOnPrimary
+                                  : c.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (bMin != 15) const SizedBox(width: 6),
+                    ],
+                  ],
                 ),
-            ],
+              ),
+            ),
           ),
-          const SizedBox(height: 10),
         ],
+      ),
+    );
+  }
 
-        // Calm Ambient Soundscape Card (البحر، الليل، المطر، الغابة)
+  Widget _buildYourTreeTabView(
+    BuildContext context, {
+    required AppThemeExtension c,
+    required bool isEn,
+    required FocusTreeProgress treeProgress,
+    required List<FocusSession> sessions,
+  }) {
+    const dailyGoalMinutes = 90;
+    final goalProgress =
+        (treeProgress.todayMinutes / dailyGoalMinutes).clamp(0.0, 1.0);
+    final completedSessions = sessions.where((s) => s.completed).toList();
+
+    final badges = <({String title, String sub, IconData icon, bool unlocked})>[
+      (
+        title: isEn ? 'First Seed Planted' : 'فاتحة خير',
+        sub: isEn
+            ? 'Complete 1st focus session'
+            : 'خلّص أول جلسة تركيز عشان تطلع شجرتك',
+        icon: Icons.eco_rounded,
+        unlocked: treeProgress.completedTrees >= 1,
+      ),
+      (
+        title: isEn ? 'Growing Grove' : 'شدّيت حيلك',
+        sub: isEn
+            ? '3+ sessions or 75+ min'
+            : 'كمّل ٣ جلسات أو ٧٥ دقيقة تركيز',
+        icon: Icons.park_rounded,
+        unlocked:
+            treeProgress.completedTrees >= 3 || treeProgress.totalMinutes >= 75,
+      ),
+      (
+        title: isEn ? 'Focus Champion' : 'بطل التركيز',
+        sub: isEn
+            ? '150+ total focus minutes'
+            : 'وصلت لـ ١٥٠ دقيقة تركيز إجمالية',
+        icon: Icons.emoji_events_rounded,
+        unlocked: treeProgress.totalMinutes >= 150,
+      ),
+      (
+        title: isEn ? 'Calm Focus' : 'رايق ومركّز',
+        sub: isEn
+            ? 'Focus with ambient sounds'
+            : 'شغّل صوت طبيعة هادي وقت التركيز',
+        icon: Icons.spa_rounded,
+        unlocked: _usedAmbientSound || _ambient != AmbientSoundscape.silent,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FocusTreeStageCard(
+          progress: treeProgress,
+          isEn: isEn,
+        ),
+        const SizedBox(height: 12),
+
+        // KPI Summary Cards
+        Row(
+          children: [
+            Expanded(
+              child: _FocusKpiBox(
+                label: isEn ? 'Trees Grown' : 'شجر كملته',
+                value: isEn
+                    ? '${treeProgress.completedTrees}'
+                    : ArabicFormatters.toArabicDigits(
+                        treeProgress.completedTrees,
+                      ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _FocusKpiBox(
+                label: isEn ? 'Today' : 'تركيز النهارده',
+                value: isEn
+                    ? '${treeProgress.todayMinutes}m'
+                    : '${ArabicFormatters.toArabicDigits(treeProgress.todayMinutes)} د',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _FocusKpiBox(
+                label: isEn ? 'Total' : 'إجمالي التركيز',
+                value: isEn
+                    ? '${treeProgress.totalMinutes}m'
+                    : '${ArabicFormatters.toArabicDigits(treeProgress.totalMinutes)} د',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Grove / Completed Trees Shelf & Daily Goal
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(color: c.border),
           ),
           child: Column(
@@ -747,505 +889,294 @@ class _HandelhaFocusSessionScreenState
             children: [
               Row(
                 children: [
-                  Icon(Icons.waves_rounded, size: 17, color: c.primary),
-                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      isEn
-                          ? 'Calm Ambient Soundscapes'
-                          : 'أصوات هادئة للتركيز (البحر والليل والمطر)',
+                      isEn ? 'Your Focus Garden' : 'جنينة شجرك',
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
                         color: c.textPrimary,
                       ),
                     ),
                   ),
+                  Text(
+                    isEn
+                        ? '${treeProgress.todayMinutes}/$dailyGoalMinutes min'
+                        : '${ArabicFormatters.toArabicDigits(treeProgress.todayMinutes)} / ${ArabicFormatters.toArabicDigits(dailyGoalMinutes)} د',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: c.primary,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final sc in AmbientSoundscape.values)
-                    _DurationChip(
-                      icon: _soundscapeIcon(sc),
-                      label: isEn ? sc.labelEn : sc.labelAr,
-                      selected: _ambient == sc,
-                      onTap: () => _selectAmbient(sc),
-                    ),
-                ],
-              ),
-              if (_ambient != AmbientSoundscape.silent) ...[
-                const SizedBox(height: 8),
-                Text(
-                  isEn ? _ambient.subtitleEn : _ambient.subtitleAr,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: goalProgress),
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, val, _) => LinearProgressIndicator(
+                    value: val,
+                    minHeight: 8,
+                    backgroundColor: c.surfaceSoft,
                     color: c.primary,
                   ),
                 ),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.volume_down_rounded,
-                      size: 16,
+              ),
+              const SizedBox(height: 12),
+              if (completedSessions.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: c.surfaceSoft,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    isEn
+                        ? 'Finish your first focus session to grow your sprout and plant your first completed tree.'
+                        : 'خلّص أول جلسة تركيز عشان شجرتك تكبر وتزرع أول شجرة كاملة في جنينتك.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                       color: c.textSecondary,
+                      height: 1.4,
                     ),
-                    Expanded(
-                      child: Slider(
-                        value: _volume,
-                        min: 0.05,
-                        max: 1.0,
-                        activeColor: c.primary,
-                        onChanged: (v) {
-                          setState(() => _volume = v);
-                          HandelhaSoundEngine.instance.setAmbientVolume(v);
-                        },
+                  ),
+                )
+              else ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final s in completedSessions.take(8))
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.primarySoft.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 140),
+                              child: Text(
+                                ArabicFormatters.trData(s.taskTitle),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: c.textPrimary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              isEn
+                                  ? '${s.elapsedMinutes}m'
+                                  : '${ArabicFormatters.toArabicDigits(s.elapsedMinutes)} د',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: c.primary,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Icon(
-                      Icons.volume_up_rounded,
-                      size: 16,
-                      color: c.primary,
-                    ),
                   ],
                 ),
               ],
             ],
           ),
         ),
-        const SizedBox(height: 10),
-
-        Text(
-          caption,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            color: c.textSecondary,
-          ),
-        ),
         const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton(
-            onPressed: onPrimary,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: c.primary,
-              foregroundColor: c.textOnPrimary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-            child: Text(
-              primaryLabel,
-              style: TextStyle(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w700,
-                color: c.textOnPrimary,
-              ),
-            ),
+
+        // Badges Card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: c.border),
           ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: FilledButton(
-            onPressed: onSecondary,
-            style: FilledButton.styleFrom(
-              backgroundColor: c.primarySoft,
-              foregroundColor: c.primary,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                isEn ? 'Tree Milestones & Badges' : 'أوسمة شجرتك',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: c.textPrimary,
+                ),
               ),
-            ),
-            child: Text(
-              secondaryLabel,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: c.primary,
+              const SizedBox(height: 10),
+              for (int i = 0; i < badges.length; i++) ...[
+                _BadgeRowTile(
+                  title: badges[i].title,
+                  subtitle: badges[i].sub,
+                  icon: badges[i].icon,
+                  unlocked: badges[i].unlocked,
+                ),
+                if (i != badges.length - 1) const SizedBox(height: 8),
+              ],
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => GoRouter.maybeOf(context)?.go('/tracking'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.primary,
+                  side: BorderSide(color: c.primary.withValues(alpha: 0.4)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                ),
+                child: Text(
+                  isEn
+                      ? 'Open Full App Progress & Badges'
+                      : 'افتح صفحة «إنجازك» وشوف باقي الأوسمة',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildFocusProgressAndAchievementsView(
-    BuildContext context,
-    AppThemeExtension c,
-    bool isEn,
-  ) {
-    final sessions = ref.watch(focusSessionsProvider).value ?? _history;
-    final totalMinutes =
-        sessions.fold<int>(0, (sum, item) => sum + item.elapsedMinutes);
-    final totalSessions = sessions.length;
-    final todayNow = DateTime.now();
-    final todayMinutes = sessions
-        .where((s) =>
-            s.endedAt.year == todayNow.year &&
-            s.endedAt.month == todayNow.month &&
-            s.endedAt.day == todayNow.day)
-        .fold<int>(0, (sum, s) => sum + s.elapsedMinutes);
-    const dailyGoalMinutes = 90;
-    final goalProgress = (todayMinutes / dailyGoalMinutes).clamp(0.0, 1.0);
-
-    final badges = <({String title, String sub, IconData icon, bool unlocked})>[
-      (
-        title: isEn ? 'Focus Diver' : 'بداية التركيز',
-        sub: isEn ? 'Complete 1st focus session' : 'أول جلسة تركيز مكتملة',
-        icon: Icons.waves_rounded,
-        unlocked: totalSessions >= 1,
-      ),
-      (
-        title: isEn ? 'Steady Momentum' : 'شعلة الانتباه',
-        sub: isEn ? '3+ sessions or 75+ min' : '٣ جلسات أو ٧٥+ دقيقة تركيز',
-        icon: Icons.local_fire_department_rounded,
-        unlocked: totalSessions >= 3 || totalMinutes >= 75,
-      ),
-      (
-        title: isEn ? 'Deep Focus Master' : 'سيد التركيز العميق',
-        sub: isEn ? '150+ total focus minutes' : '١٥٠+ دقيقة تركيز إجمالية',
-        icon: Icons.emoji_events_rounded,
-        unlocked: totalMinutes >= 150,
-      ),
-      (
-        title: isEn ? 'Calm Atmosphere' : 'هدوء وسكون',
-        sub: isEn
-            ? 'Focus with Ocean or Night sounds'
-            : 'التركيز مع أصوات البحر أو الليل',
-        icon: Icons.nights_stay_rounded,
-        unlocked: _usedAmbientSound || _ambient != AmbientSoundscape.silent,
-      ),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: c.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.insights_rounded, color: c.primary, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  isEn
-                      ? 'Focus Sessions Progress & Achievements'
-                      : 'لوحة متابعة وإنجازات جلسات التركيز',
-                  style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w800,
-                    color: c.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // KPI summary row
-          Row(
-            children: [
-              Expanded(
-                child: _FocusKpiBox(
-                  label: isEn ? 'Total Focus' : 'إجمالي التركيز',
-                  value: isEn
-                      ? '$totalMinutes min'
-                      : '${ArabicFormatters.toArabicDigits(totalMinutes)} د',
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _FocusKpiBox(
-                  label: isEn ? 'Sessions Done' : 'الجلسات المكتملة',
-                  value: isEn
-                      ? '$totalSessions'
-                      : ArabicFormatters.toArabicDigits(totalSessions),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _FocusKpiBox(
-                  label: isEn ? 'Today' : 'تركيز النهارده',
-                  value: isEn
-                      ? '$todayMinutes min'
-                      : '${ArabicFormatters.toArabicDigits(todayMinutes)} د',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Daily focus goal progress bar
-          Text(
-            isEn
-                ? 'Daily Focus Goal: $todayMinutes / $dailyGoalMinutes min'
-                : 'هدف التركيز اليومي: ${ArabicFormatters.toArabicDigits(todayMinutes)} من ${ArabicFormatters.toArabicDigits(dailyGoalMinutes)} دقيقة',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: c.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: goalProgress,
-              minHeight: 8,
-              backgroundColor: c.surfaceSoft,
-              color: c.primary,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          Text(
-            isEn ? 'Focus Badges Unlocked' : 'أوسمة التركيز الخاصة بيك',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: c.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final b in badges)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: b.unlocked ? c.primarySoft : c.surfaceSoft,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: b.unlocked
-                          ? c.primary.withValues(alpha: 0.45)
-                          : c.border,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        b.unlocked ? b.icon : Icons.lock_outline_rounded,
-                        size: 15,
-                        color: b.unlocked ? c.primary : c.textSecondary,
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          '${b.title} (${b.sub})',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color:
-                                b.unlocked ? c.textPrimary : c.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-
-          if (sessions.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              isEn ? 'Recent Focus Sessions' : 'آخر جلسات التركيز المسجلة',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: c.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 6),
-            for (final s in sessions.take(6))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: c.surfaceSoft,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.check_circle_rounded,
-                        size: 16,
-                        color: c.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          ArabicFormatters.trData(s.taskTitle),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: c.textPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        isEn
-                            ? '${s.elapsedMinutes}m'
-                            : '${ArabicFormatters.toArabicDigits(s.elapsedMinutes)} د',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          color: c.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => GoRouter.maybeOf(context)?.go('/tracking'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: c.primary,
-              side: BorderSide(color: c.primary.withValues(alpha: 0.4)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.bar_chart_rounded, size: 17),
-            label: Text(
-              isEn
-                  ? 'Open Full App Progress & Badges'
-                  : 'فتح صفحة «إنجازك» والأوسمة الكاملة في البرنامج',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildCompletedView(
     BuildContext context, {
     required AppThemeExtension c,
+    required bool isEn,
     required String firstName,
+    required FocusTreeProgress treeProgress,
+    required List<FocusSession> sessions,
   }) {
-    final isEn = Directionality.of(context) == TextDirection.ltr;
     final mins = _lastCompletedMinutes > 0
         ? _lastCompletedMinutes
         : _selectedFocusMinutes;
     final cleanTitle = ArabicFormatters.trData(widget.taskTitle);
+    final isFullBloom =
+        treeProgress.stageIndex >= FocusTreeProgress.maxStageIndex;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        HandelhaHeader(
-          title: isEn ? 'Well Done' : 'أحسنت',
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
-          onBack: _exitScreen,
-        ),
-        Container(
-          width: 96,
-          height: 96,
-          decoration: BoxDecoration(
-            color: c.primarySoft,
-            borderRadius: BorderRadius.circular(28),
+        Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: c.primarySoft,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              isFullBloom
+                  ? (isEn
+                      ? 'Your tree blossomed!'
+                      : 'عاش! شجرتك كملت وطلّعت ورد!')
+                  : (isEn
+                      ? 'Your tree grew a new stage!'
+                      : 'شجرتك كبرت خطوة جديدة!'),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: c.primary,
+              ),
+            ),
           ),
-          child: Icon(
-            Icons.check_rounded,
-            size: 46,
-            color: c.primary,
-          ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
         Text(
           isEn ? 'Way to go, $firstName!' : 'عاش يا $firstName!',
+          textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 28,
+            fontSize: 25,
             fontWeight: FontWeight.w900,
             color: c.primary,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 3),
         Text(
           isEn
               ? '${ArabicFormatters.durationMinutesFull(mins)} of focus. A real step forward.'
               : '${ArabicFormatters.durationMinutesFull(mins)} تركيز. خطوة حقيقية لقدّام.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 15.5,
+            fontSize: 14,
             fontWeight: FontWeight.w700,
             color: c.textPrimary,
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          isEn
-              ? 'Every time you start, you win.\nTake a short break or continue with another step?'
-              : 'كل مرة بتبدأ فيها، إنت بتكسب.\nنرتاح شوية ولا نكمّل خطوة كمان؟',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            color: c.textSecondary,
-            height: 1.5,
-          ),
+        const SizedBox(height: 10),
+
+        // Compact Animated Growing Tree Celebration
+        FocusTreeStageCard(
+          progress: treeProgress,
+          isEn: isEn,
+          compact: true,
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
+
         Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: c.border),
           ),
           child: Text(
             '$cleanTitle • ${ArabicFormatters.durationMinutesFull(mins)}',
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 14.5,
+              fontSize: 13.5,
               fontWeight: FontWeight.w700,
               color: c.textPrimary,
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // Embedded Focus Achievements & App-Wide Sync Summary
-        _buildFocusProgressAndAchievementsView(context, c, isEn),
-        const SizedBox(height: 12),
-
+        SizedBox(
+          height: 46,
+          child: ElevatedButton(
+            onPressed: _startBreak,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: c.primary,
+              foregroundColor: c.textOnPrimary,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: Text(
+              isEn ? 'Take a Break' : 'خد استراحة',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: c.textOnPrimary,
+              ),
+            ),
+          ),
+        ),
         if (widget.taskId != null) ...[
+          const SizedBox(height: 8),
           SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: OutlinedButton.icon(
+            height: 44,
+            child: OutlinedButton(
               onPressed: () async {
                 await ref
                     .read(allTasksProvider.notifier)
@@ -1267,50 +1198,25 @@ class _HandelhaFocusSessionScreenState
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              icon: const Icon(Icons.task_alt_rounded, size: 18),
-              label: Text(
+              child: Text(
                 isEn
                     ? 'Mark Task Completed in Schedule'
                     : 'علّم المهمة كمكتملة في جدولك',
                 style: const TextStyle(
-                  fontSize: 13.5,
+                  fontSize: 13,
                   fontWeight: FontWeight.w800,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
         ],
-
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton(
-            onPressed: _startBreak,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: c.primary,
-              foregroundColor: c.textOnPrimary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-            child: Text(
-              isEn ? 'Take a Break' : 'خد استراحة',
-              style: TextStyle(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w700,
-                color: c.textOnPrimary,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         TextButton(
           onPressed: _exitScreen,
           child: Text(
             isEn ? 'Back to Home' : 'ارجع للرئيسية',
             style: TextStyle(
-              fontSize: 14.5,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
               color: c.primary,
             ),
@@ -1319,105 +1225,79 @@ class _HandelhaFocusSessionScreenState
       ],
     );
   }
-  IconData _soundscapeIcon(AmbientSoundscape sc) => switch (sc) {
-        AmbientSoundscape.silent => Icons.volume_off_rounded,
-        AmbientSoundscape.ocean => Icons.waves_rounded,
-        AmbientSoundscape.night => Icons.nights_stay_rounded,
-        AmbientSoundscape.rain => Icons.grain_rounded,
-        AmbientSoundscape.forest => Icons.park_outlined,
-        AmbientSoundscape.warmNoise => Icons.graphic_eq_rounded,
-      };
 }
 
-class _FocusTabPill extends StatelessWidget {
-  const _FocusTabPill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
+class _BadgeRowTile extends StatelessWidget {
+  const _BadgeRowTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.unlocked,
   });
 
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool unlocked;
 
   @override
   Widget build(BuildContext context) {
     final c = context.appColors;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        height: 36,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        decoration: BoxDecoration(
-          color: selected ? c.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-            color: selected ? c.primary : c.textSecondary,
-          ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: unlocked ? c.primarySoft.withValues(alpha: 0.55) : c.surfaceSoft,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: unlocked ? c.primary.withValues(alpha: 0.35) : c.border,
         ),
       ),
-    );
-  }
-}
-
-class _DurationChip extends StatelessWidget {
-  const _DurationChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.icon,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.appColors;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? c.primary : c.surfaceSoft,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? c.primary : c.border,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 14,
-                color: selected ? c.textOnPrimary : c.primary,
-              ),
-              const SizedBox(width: 5),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w800,
-                color: selected ? c.textOnPrimary : c.textPrimary,
-              ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: unlocked ? c.primary : c.surfaceMuted,
+              borderRadius: BorderRadius.circular(10),
             ),
-          ],
-        ),
+            child: Icon(
+              unlocked ? icon : Icons.lock_outline_rounded,
+              size: 17,
+              color: unlocked ? c.textOnPrimary : c.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: unlocked ? c.textPrimary : c.textSecondary,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (unlocked)
+            Icon(Icons.check_circle_rounded, size: 18, color: c.primary),
+        ],
       ),
     );
   }
@@ -1436,10 +1316,10 @@ class _FocusKpiBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.appColors;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
       decoration: BoxDecoration(
-        color: c.surfaceSoft,
-        borderRadius: BorderRadius.circular(12),
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: c.border),
       ),
       child: Column(
@@ -1449,12 +1329,12 @@ class _FocusKpiBox extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 14.5,
+              fontSize: 16,
               fontWeight: FontWeight.w900,
               color: c.primary,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             label,
             maxLines: 1,

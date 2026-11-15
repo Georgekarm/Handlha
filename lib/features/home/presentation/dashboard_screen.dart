@@ -14,6 +14,7 @@ import '../../notifications/notification_inbox_store.dart';
 import '../../projects/domain/focus_session.dart';
 import '../../projects/domain/project.dart';
 import '../../projects/presentation/project_providers.dart';
+import '../../projects/presentation/widgets/focus_tree_canvas.dart';
 import '../../tasks/domain/task.dart';
 import '../../tasks/presentation/task_providers.dart';
 
@@ -480,9 +481,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ? ArabicFormatters.trData(heroTask!.title)
                         : (isEn ? 'Calm Focus Session' : 'جلسة تركيز هادئة'),
                     if (heroTask != null) 'id': heroTask.id,
+                    'tab': 'timer',
                   },
                 ),
-                onOpenTracking: () => context.go('/tracking'),
+                onOpenTree: () => context.push(
+                  '/focus-session',
+                  extra: {
+                    'title': heroTask?.title != null
+                        ? ArabicFormatters.trData(heroTask!.title)
+                        : (isEn ? 'Calm Focus Session' : 'جلسة تركيز هادئة'),
+                    if (heroTask != null) 'id': heroTask.id,
+                    'tab': 'tree',
+                  },
+                ),
               ),
               const SizedBox(height: 20),
 
@@ -769,158 +780,291 @@ class _FocusDashboardStripCard extends StatelessWidget {
   const _FocusDashboardStripCard({
     required this.sessions,
     required this.onOpenFocus,
-    required this.onOpenTracking,
+    required this.onOpenTree,
   });
 
   final List<FocusSession> sessions;
   final VoidCallback onOpenFocus;
-  final VoidCallback onOpenTracking;
+  final VoidCallback onOpenTree;
 
   @override
   Widget build(BuildContext context) {
     final c = context.appColors;
     final isEn = Directionality.of(context) == TextDirection.ltr;
-    final now = DateTime.now();
-    final todayMinutes = sessions
-        .where((s) =>
-            s.endedAt.year == now.year &&
-            s.endedAt.month == now.month &&
-            s.endedAt.day == now.day)
-        .fold<int>(0, (sum, s) => sum + s.elapsedMinutes);
-    final totalMinutes =
-        sessions.fold<int>(0, (sum, s) => sum + s.elapsedMinutes);
+    final treeProgress = FocusTreeProgress.compute(sessions: sessions);
     const goalMinutes = 90;
-    final progress = (todayMinutes / goalMinutes).clamp(0.0, 1.0);
+    final progress = (treeProgress.todayMinutes / goalMinutes).clamp(0.0, 1.0);
+    final stageName = treeProgress.stageTitle(isEn: isEn);
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: c.surface,
+    return Material(
+      color: c.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: c.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+        onTap: onOpenTree,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: c.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: c.primarySoft,
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(
-                  Icons.self_improvement_rounded,
-                  size: 20,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: c.primarySoft,
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: CustomPaint(
+                      painter: _MiniFocusTreeEmblemPainter(
+                        stageIndex: treeProgress.stageIndex,
+                        trunkColor: const Color(0xFF6B4F3B),
+                        foliageColor: c.primary,
+                        blossomColor: context.limeAccent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                isEn ? 'Your Focus Tree' : 'شجرتك ونمو تركيزك',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: c.textPrimary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: c.primarySoft,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                stageName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: c.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          isEn
+                              ? 'Today: ${treeProgress.todayMinutes} min • ${treeProgress.completedTrees} completed tree(s)'
+                              : 'النهارده ${ArabicFormatters.toArabicDigits(treeProgress.todayMinutes)} د • ${ArabicFormatters.toArabicDigits(treeProgress.completedTrees)} شجرة مكتملة',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  TextButton(
+                    onPressed: onOpenTree,
+                    style: TextButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      isEn ? 'Open Tree' : 'عرض شجرتك',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: c.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 11),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 6,
+                  backgroundColor: c.surfaceSoft,
                   color: c.primary,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isEn ? 'Focus Achievements' : 'إنجازك في جلسات التركيز',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                    Text(
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
                       isEn
-                          ? 'Today: $todayMinutes min • Total: ${sessions.length} sessions ($totalMinutes min)'
-                          : 'النهارده ${ArabicFormatters.toArabicDigits(todayMinutes)} د • الإجمالي ${ArabicFormatters.toArabicDigits(sessions.length)} جلسة (${ArabicFormatters.toArabicDigits(totalMinutes)} د)',
+                          ? 'Daily focus goal: ${treeProgress.todayMinutes} / $goalMinutes min'
+                          : 'الهدف اليومي: ${ArabicFormatters.toArabicDigits(treeProgress.todayMinutes)} من ${ArabicFormatters.toArabicDigits(goalMinutes)} د',
                       style: TextStyle(
-                        fontSize: 11.5,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                         color: c.textSecondary,
                       ),
                     ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: onOpenTracking,
-                style: TextButton.styleFrom(
-                  minimumSize: Size.zero,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
                   ),
-                ),
-                child: Text(
-                  isEn ? 'Details' : 'التفاصيل',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: c.primary,
+                  InkWell(
+                    onTap: onOpenFocus,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.timer_outlined,
+                            size: 14,
+                            color: c.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isEn ? 'Start Timer' : 'فتح المؤقت',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: c.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: c.surfaceSoft,
-              color: c.primary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
-                  isEn
-                      ? 'Daily target: $todayMinutes / $goalMinutes min'
-                      : 'الهدف اليومي: ${ArabicFormatters.toArabicDigits(todayMinutes)} من ${ArabicFormatters.toArabicDigits(goalMinutes)} د',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: c.textSecondary,
-                  ),
-                ),
-              ),
-              InkWell(
-                onTap: onOpenFocus,
-                borderRadius: BorderRadius.circular(10),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.timer_outlined,
-                        size: 14,
-                        color: c.primary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isEn ? 'Open Timer' : 'فتح المؤقت',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          color: c.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
+}
+
+class _MiniFocusTreeEmblemPainter extends CustomPainter {
+  final int stageIndex;
+  final Color trunkColor;
+  final Color foliageColor;
+  final Color blossomColor;
+
+  const _MiniFocusTreeEmblemPainter({
+    required this.stageIndex,
+    required this.trunkColor,
+    required this.foliageColor,
+    required this.blossomColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final cx = w / 2;
+
+    // Ground soil arc
+    final soilPaint = Paint()
+      ..color = trunkColor.withValues(alpha: 0.35)
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(w * 0.25, h * 0.80),
+      Offset(w * 0.75, h * 0.80),
+      soilPaint,
+    );
+
+    // Stem / trunk height scales with growth stage (0..4)
+    final stemHeight = (0.18 + stageIndex * 0.08).clamp(0.18, 0.45);
+    final trunkPaint = Paint()
+      ..color = trunkColor
+      ..strokeWidth = stageIndex >= 2 ? 3.2 : 2.2
+      ..strokeCap = StrokeCap.round;
+    final basePt = Offset(cx, h * 0.79);
+    final topPt = Offset(cx, h * (0.79 - stemHeight));
+    canvas.drawLine(basePt, topPt, trunkPaint);
+
+    final leafPaint = Paint()..color = foliageColor;
+    if (stageIndex <= 1) {
+      // Seed sprout: two tender side leaves
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(cx - 5, topPt.dy + 1),
+          width: 9,
+          height: 5.5,
+        ),
+        leafPaint,
+      );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(cx + 5, topPt.dy - 1),
+          width: 9,
+          height: 5.5,
+        ),
+        leafPaint,
+      );
+      return;
+    }
+
+    // Layered botanical canopy
+    final sideLeafPaint = Paint()..color = foliageColor.withValues(alpha: 0.86);
+    canvas.drawCircle(
+      Offset(cx, topPt.dy - 4),
+      stageIndex >= 3 ? 9.5 : 7.5,
+      leafPaint,
+    );
+    canvas.drawCircle(
+      Offset(cx - 6.5, topPt.dy + 2),
+      6.0,
+      sideLeafPaint,
+    );
+    canvas.drawCircle(
+      Offset(cx + 6.5, topPt.dy + 2),
+      6.0,
+      sideLeafPaint,
+    );
+
+    if (stageIndex >= 4) {
+      final bloomPaint = Paint()..color = blossomColor;
+      canvas.drawCircle(Offset(cx - 3.5, topPt.dy - 6), 2.1, bloomPaint);
+      canvas.drawCircle(Offset(cx + 4.5, topPt.dy - 3), 2.1, bloomPaint);
+      canvas.drawCircle(Offset(cx, topPt.dy + 1), 1.9, bloomPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniFocusTreeEmblemPainter oldDelegate) =>
+      oldDelegate.stageIndex != stageIndex ||
+      oldDelegate.foliageColor != foliageColor ||
+      oldDelegate.blossomColor != blossomColor;
 }

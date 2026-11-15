@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val AUDIO_CHANNEL = "com.handelha.app/audio"
         private const val AUTH_CHANNEL = "com.handelha.app/auth"
+        private const val ALARM_CHANNEL = "com.handelha.app/alarm"
         private const val REQUEST_CODE_PICK_ACCOUNT = 9401
     }
 
@@ -30,6 +31,7 @@ class MainActivity : FlutterActivity() {
     private var alarmPlayer: MediaPlayer? = null
     private var ambientVolume: Float = 0.6f
     private var pendingAccountResult: MethodChannel.Result? = null
+    private var alarmChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -133,6 +135,108 @@ class MainActivity : FlutterActivity() {
                 }
 
                 else -> result.notImplemented()
+            }
+        }
+
+        alarmChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            ALARM_CHANNEL,
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "scheduleAlarm" -> {
+                        val id = call.argument<String>("id") ?: ""
+                        val title = call.argument<String>("title") ?: "تذكير مهمة"
+                        val triggerAtMs = (call.argument<Number>("scheduledAtMs")?.toLong() ?: 0L)
+                        val alertMode = call.argument<String>("alertMode") ?: "alarm"
+                        val taskId = call.argument<String>("taskId")
+                        if (id.isNotBlank() && triggerAtMs > 0L) {
+                            NativeAlarmScheduler.scheduleAlarm(
+                                context = applicationContext,
+                                id = id,
+                                title = title,
+                                triggerAtMs = triggerAtMs,
+                                alertMode = alertMode,
+                                taskId = taskId,
+                            )
+                        }
+                        result.success(true)
+                    }
+
+                    "cancelAlarm" -> {
+                        val id = call.argument<String>("id") ?: ""
+                        if (id.isNotBlank()) {
+                            NativeAlarmScheduler.cancelAlarm(applicationContext, id)
+                        }
+                        result.success(true)
+                    }
+
+                    "cancelAllAlarms" -> {
+                        NativeAlarmScheduler.cancelAllAlarms(applicationContext)
+                        AlarmAudioController.stop(applicationContext)
+                        result.success(true)
+                    }
+
+                    "showAlarmNow" -> {
+                        val id = call.argument<String>("id")
+                            ?: "preview_${System.currentTimeMillis()}"
+                        val title = call.argument<String>("title") ?: "مراجعة الامتحان"
+                        val taskId = call.argument<String>("taskId")
+                        val isEn = call.argument<Boolean>("isEn") ?: false
+                        val isPreview = call.argument<Boolean>("isPreview") ?: true
+                        NativeAlarmScheduler.launchAlarmActivityNow(
+                            context = applicationContext,
+                            id = id,
+                            title = title,
+                            taskId = taskId,
+                            isEn = isEn,
+                            isPreview = isPreview,
+                        )
+                        result.success(true)
+                    }
+
+                    "stopAlarmAudio" -> {
+                        AlarmAudioController.stop(applicationContext)
+                        result.success(true)
+                    }
+
+                    "checkCapabilities" -> {
+                        result.success(
+                            mapOf(
+                                "exactAlarm" to NativeAlarmScheduler.canScheduleExactAlarms(applicationContext),
+                                "canDrawOverlays" to NativeAlarmScheduler.canDrawOverlays(applicationContext),
+                                "fullScreenIntent" to NativeAlarmScheduler.canUseFullScreenIntent(applicationContext),
+                            ),
+                        )
+                    }
+
+                    "requestOverlayPermission" -> {
+                        NativeAlarmScheduler.openOverlayPermissionSettings(this)
+                        result.success(true)
+                    }
+
+                    "requestExactAlarmPermission" -> {
+                        NativeAlarmScheduler.openExactAlarmSettings(this)
+                        result.success(true)
+                    }
+
+                    "consumePendingActions" -> {
+                        result.success(NativeAlarmStore.drainPendingActions(applicationContext))
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == AlarmActivity.ACTION_START_FOCUS_FROM_ALARM) {
+            try {
+                alarmChannel?.invokeMethod("onPendingActionsUpdated", null)
+            } catch (_: Exception) {
             }
         }
     }

@@ -13,6 +13,7 @@ import 'package:handelha/features/assistant/planning/ai_planning_service.dart';
 import 'package:handelha/features/assistant/presentation/assistant_providers.dart';
 import 'package:handelha/features/home/presentation/dashboard_screen.dart';
 import 'package:handelha/features/notifications/alarm_reminder_store.dart';
+import 'package:handelha/features/notifications/presentation/alarm_ringing_dialog.dart';
 import 'package:handelha/features/notifications/presentation/notifications_screen.dart';
 import 'package:handelha/features/projects/domain/project.dart';
 import 'package:handelha/features/projects/presentation/handelha_focus_session_screen.dart';
@@ -94,22 +95,23 @@ void main() {
       expect(find.textContaining('لسه مفيش خطوات متسجلة'), findsOneWidget);
     });
 
-    testWidgets('3. AddTaskScreen renders modern task form with live preview and no assistant mode', (tester) async {
+    testWidgets('3. AddTaskScreen renders clean form with mode switcher and validation fields', (tester) async {
       await tester.pumpWidget(_buildTestApp(
         const AddTaskScreen(),
       ));
       await tester.pumpAndSettle();
 
-      expect(find.text('مهمة جديدة'), findsOneWidget);
-      expect(find.text('بمساعدة هندلها'), findsNothing);
-      expect(find.text('الإضافة الذكية'), findsNothing);
-      expect(find.text('عنوان المهمة والتفاصيل'), findsOneWidget);
+      expect(find.text('إضافة مهمة'), findsOneWidget);
+      expect(find.text('يدوي'), findsOneWidget);
+      expect(find.text('بمساعدة هندلها'), findsOneWidget);
+      expect(find.text('اسم المهمة'), findsOneWidget);
+      expect(find.text('الموعد والأولوية'), findsOneWidget);
       expect(find.text('احفظ المهمة'), findsOneWidget);
 
       await tester.enterText(find.byType(TextFormField).first, 'مراجعة شاشة الدخول');
       await tester.pumpAndSettle();
 
-      expect(find.text('مراجعة شاشة الدخول'), findsAtLeastNWidgets(2));
+      expect(find.text('مراجعة شاشة الدخول'), findsOneWidget);
     });
 
     testWidgets('4. AiBreakdownModal renders a generated plan for review', (tester) async {
@@ -254,26 +256,41 @@ void main() {
     );
 
     testWidgets(
-      '9. AddTaskScreen reveals alarm vs notification selector when scheduled',
+      '9. AddTaskScreen reveals alarm vs notification selector when scheduled and handles alarm selection permission flow',
       (tester) async {
         await tester.pumpWidget(_buildTestApp(const AddTaskScreen()));
         await tester.pumpAndSettle();
 
         expect(find.text('طريقة التنبيه عند الموعد'), findsNothing);
 
+        await tester.ensureVisible(find.text('الموعد'));
+        await tester.tap(find.text('الموعد'));
+        await tester.pumpAndSettle();
+
         await tester.ensureVisible(find.text('بكرة'));
         await tester.tap(find.text('بكرة'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('تم'));
         await tester.pumpAndSettle();
 
         await tester.ensureVisible(find.text('طريقة التنبيه عند الموعد'));
         expect(find.text('طريقة التنبيه عند الموعد'), findsOneWidget);
         expect(find.text('رسالة إشعار'), findsOneWidget);
         expect(find.text('منبه يرن'), findsOneWidget);
+
+        await tester.ensureVisible(find.text('منبه يرن'));
+        await tester.tap(find.text('منبه يرن'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('تفعيل إذن الإشعارات والمنبه'), findsOneWidget);
+        await tester.tap(find.text('تخطي الآن'));
+        await tester.pumpAndSettle();
       },
     );
 
     testWidgets(
-      '10. NotificationsScreen renders permission controls and scheduled alarm items',
+      '10. NotificationsScreen omits removed permission card and keeps scheduled alarm items',
       (tester) async {
         await AlarmReminderStore.save(
           'guest',
@@ -295,16 +312,50 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 120));
 
-        expect(find.text('تفعيل إذن الإشعارات والمنبه الآن'), findsOneWidget);
-        expect(find.text('منبه يرن'), findsOneWidget);
-        expect(find.text('رسالة إشعار'), findsOneWidget);
+        expect(find.text('إذن الإشعارات والمنبه الذكي'), findsNothing);
+        expect(find.text('تفعيل إذن الإشعارات والمنبه الآن'), findsNothing);
+        expect(
+          find.text('السماح بالظهور فوق التطبيقات للمنبه الخارجي'),
+          findsNothing,
+        );
+        expect(
+          find.text('معاينة وتجربة شاشة وصوت المنبه'),
+          findsNothing,
+        );
         expect(find.text('المنبهات والتذكيرات المجدولة'), findsOneWidget);
         expect(find.text('امتحان رياضة'), findsOneWidget);
       },
     );
 
     testWidgets(
-      '11. HandelhaFocusSessionScreen supports duration controls, ambient sounds, and focus progress tab',
+      '12. HandelhaAlarmRingingDialog renders modern Handelha alarm controls without overflow',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildTestApp(
+            const HandelhaAlarmRingingDialog(
+              title: 'مراجعة الفيزياء',
+              taskId: 'task-physics-1',
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 150));
+
+        expect(find.text('هندلها  •  منبه المواعيد'), findsOneWidget);
+        expect(find.text('مراجعة الفيزياء'), findsOneWidget);
+        expect(find.text('جه ميعاد مهمتك دلوقتي'), findsOneWidget);
+        expect(find.text('إيقاف المنبه'), findsOneWidget);
+        expect(find.text('غفوة ٥ د'), findsOneWidget);
+        expect(find.text('غفوة ١٠ د'), findsOneWidget);
+        expect(find.text('فتح المهمة وبدء التركيز الآن'), findsOneWidget);
+
+        // Unmount before test completion to cleanly cancel periodic ticker & animations.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      },
+    );
+
+    testWidgets(
+      '11. HandelhaFocusSessionScreen supports ruler duration bar, soundscapes without volume slider, and growing tree tab',
       (tester) async {
         await tester.pumpWidget(
           _buildTestApp(
@@ -317,23 +368,42 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 120));
 
-        expect(find.text('تعديل وقت ومدة الجلسة والاستراحة'), findsOneWidget);
-        expect(find.text('أصوات هادئة للتركيز (البحر والليل والمطر)'), findsOneWidget);
+        expect(find.text('مدة الجلسة'), findsOneWidget);
+        expect(find.text('أصوات هادئة للتركيز'), findsOneWidget);
         expect(find.text('أمواج البحر'), findsOneWidget);
         expect(find.text('هدوء الليل'), findsOneWidget);
         expect(find.text('ضوضاء دافئة'), findsOneWidget);
+        // Volume slider was explicitly removed per user request.
+        expect(find.byType(Slider), findsNothing);
 
         await tester.ensureVisible(find.text('أمواج البحر'));
         await tester.tap(find.text('أمواج البحر'));
-        await tester.pump(const Duration(milliseconds: 80));
+        await tester.pump(const Duration(milliseconds: 120));
 
         expect(find.textContaining('الموج الهادئة'), findsOneWidget);
 
-        await tester.ensureVisible(find.textContaining('إنجاز التركيز'));
-        await tester.tap(find.textContaining('إنجاز التركيز'));
-        await tester.pump(const Duration(milliseconds: 80));
+        await tester.ensureVisible(find.text('شجرتك'));
+        await tester.tap(find.text('شجرتك'));
+        await tester.pump(const Duration(milliseconds: 300));
 
-        expect(find.text('لوحة متابعة وإنجازات جلسات التركيز'), findsOneWidget);
+        expect(find.text('جنينة شجرك'), findsOneWidget);
+        expect(find.text('أوسمة شجرتك'), findsOneWidget);
+        expect(find.text('فاتحة خير'), findsOneWidget);
+        expect(find.text('شدّيت حيلك'), findsOneWidget);
+        expect(find.text('بطل التركيز'), findsOneWidget);
+        expect(find.text('رايق ومركّز'), findsOneWidget);
+
+        // Verify direct openTreeTab route opens directly onto شجرتك tab.
+        await tester.pumpWidget(
+          _buildTestApp(
+            const HandelhaFocusSessionScreen(
+              taskTitle: 'جلسة تركيز هادئة',
+              openTreeTab: true,
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(find.text('جنينة شجرك'), findsOneWidget);
 
         // Unmount before test completion to cleanly cancel periodic ticker.
         await tester.pumpWidget(const SizedBox.shrink());

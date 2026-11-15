@@ -7,6 +7,7 @@ import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../tasks/domain/task.dart';
+import 'native_alarm_bridge.dart';
 import 'notification_preferences.dart';
 
 /// Structured payload attached to scheduled notifications and ringing alarms.
@@ -298,6 +299,24 @@ class LocalNotificationService {
         return;
       }
 
+      if (isAlarm) {
+        final scheduledNatively = await NativeAlarmBridge.instance.scheduleAlarm(
+          id: id,
+          title: title,
+          scheduledAtMs: scheduledAt.toLocal().millisecondsSinceEpoch,
+          alertMode: alertMode,
+          taskId: taskId,
+        );
+        if (scheduledNatively) {
+          // Avoid duplicate competing notification banners when AlarmReceiver
+          // owns the external AlarmActivity & lockscreen notification.
+          await _plugin.cancel(_notificationId(id));
+          return;
+        }
+      } else {
+        await NativeAlarmBridge.instance.cancelAlarm(id);
+      }
+
       final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       final canExact = androidPlugin != null
@@ -417,6 +436,7 @@ class LocalNotificationService {
 
   Future<void> cancelById(String id) async {
     try {
+      await NativeAlarmBridge.instance.cancelAlarm(id);
       await initialize();
       await _plugin.cancel(_notificationId(id));
     } catch (_) {
@@ -428,6 +448,7 @@ class LocalNotificationService {
 
   Future<void> cancelAll() async {
     try {
+      await NativeAlarmBridge.instance.cancelAllAlarms();
       await initialize();
       await _plugin.cancelAll();
     } catch (_) {}

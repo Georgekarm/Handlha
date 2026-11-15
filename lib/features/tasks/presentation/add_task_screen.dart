@@ -6,17 +6,21 @@ import '../../../app/theme/app_theme_extension.dart';
 import '../../../core/result/result.dart';
 import '../../../shared/utils/arabic_formatters.dart';
 import '../../../shared/widgets/handelha_ambient_background.dart';
+import '../../../shared/widgets/handelha_bottom_nav.dart';
 import '../../../shared/widgets/handelha_date_time_picker.dart';
 import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../notifications/alarm_reminder_store.dart';
+import '../../notifications/native_alarm_bridge.dart';
 import '../../notifications/presentation/notification_permission_sheet.dart';
 import '../../projects/domain/project.dart';
 import '../../projects/presentation/project_providers.dart';
 import '../domain/task.dart';
 import 'task_providers.dart';
 
-/// شاشة إضافة وتعديل مهمة بتصميم حديث متناغم مع هوية «هندلها».
+enum _AddTaskMode { manual, assistant }
+
+/// شاشة إضافة وتعديل مهمة بتصميم نظيف متطابق مع هوية «هندلها».
 class AddTaskScreen extends ConsumerStatefulWidget {
   final Task? existingTask;
   final String? initialProjectId;
@@ -31,19 +35,27 @@ class AddTaskScreen extends ConsumerStatefulWidget {
   ConsumerState<AddTaskScreen> createState() => _AddTaskScreenState();
 }
 
-class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
+class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
+    with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _notesController = TextEditingController();
+  final _assistantController = TextEditingController();
+  final _subtaskController = TextEditingController();
 
+  _AddTaskMode _mode = _AddTaskMode.manual;
   late TaskPriority _priority;
   late EnergyLevel _energyLevel;
   late TaskRecurrence _recurrence;
-  int _estimatedMinutes = 30;
+  int _estimatedMinutes = 25;
   DateTime? _scheduledAt;
   String? _selectedProjectId;
   String _alertMode = 'notification';
+  bool _overlayGranted = true;
   bool _saving = false;
+  bool _showSubtaskInput = false;
+  final List<String> _subtasks = [];
+  String? _attachmentNote;
 
   late final String _initialTitleSnapshot;
   late final String _initialNotesSnapshot;
@@ -63,10 +75,10 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
     final t = widget.existingTask;
     _titleController.text = t?.title ?? '';
     _notesController.text = t?.description ?? '';
-    _priority = t?.priority ?? TaskPriority.medium;
+    _priority = t?.priority ?? TaskPriority.high;
     _energyLevel = t?.energyLevel ?? EnergyLevel.medium;
     _recurrence = t?.recurrence ?? TaskRecurrence.none;
-    _estimatedMinutes = t?.estimatedDurationMinutes ?? 30;
+    _estimatedMinutes = t?.estimatedDurationMinutes ?? 25;
     _scheduledAt = t?.scheduledStartAt ?? t?.dueAt;
     _selectedProjectId = t?.projectId ?? widget.initialProjectId;
     _alertMode = t != null
@@ -83,8 +95,33 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
     _initialProjectSnapshot = _selectedProjectId;
     _initialAlertModeSnapshot = _alertMode;
 
+    WidgetsBinding.instance.addObserver(this);
     _titleController.addListener(_onTextEdited);
     _notesController.addListener(_onTextEdited);
+    _refreshAlertCapabilities();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(alarmReminderProvider.notifier).refreshPermissions();
+      _refreshAlertCapabilities();
+    }
+  }
+
+  Future<void> _refreshAlertCapabilities() async {
+    final caps = await NativeAlarmBridge.instance.checkCapabilities();
+    if (!mounted) return;
+    setState(() => _overlayGranted = caps.canDrawOverlays);
+  }
+
+  Future<void> _ensureAlarmPermissionsFromTask() async {
+    await ensureHandelhaNotificationPermission(
+      context,
+      ref,
+      includeExactAlarm: true,
+    );
+    await _refreshAlertCapabilities();
   }
 
   void _onTextEdited() {
@@ -100,15 +137,20 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
         _estimatedMinutes != _initialMinutesSnapshot ||
         _scheduledAt != _initialScheduleSnapshot ||
         _selectedProjectId != _initialProjectSnapshot ||
-        _alertMode != _initialAlertModeSnapshot;
+        _alertMode != _initialAlertModeSnapshot ||
+        _subtasks.isNotEmpty ||
+        (_attachmentNote?.isNotEmpty ?? false);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _titleController.removeListener(_onTextEdited);
     _notesController.removeListener(_onTextEdited);
     _titleController.dispose();
     _notesController.dispose();
+    _assistantController.dispose();
+    _subtaskController.dispose();
     super.dispose();
   }
 
@@ -149,6 +191,23 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
     }
   }
 
+  void _applyQuickDatePreset(Duration offset, {int defaultHour = 10}) {
+    final now = DateTime.now();
+    final targetDay = now.add(offset);
+    final current = _scheduledAt;
+    final hour = current?.hour ?? defaultHour;
+    final minute = current?.minute ?? 0;
+    setState(() {
+      _scheduledAt = DateTime(
+        targetDay.year,
+        targetDay.month,
+        targetDay.day,
+        hour,
+        minute,
+      );
+    });
+  }
+
   Future<void> _pickScheduleDateTime() async {
     final now = DateTime.now();
     final initial = _scheduledAt ??
@@ -164,20 +223,269 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
     }
   }
 
-  void _applyQuickDatePreset(Duration offset, {int defaultHour = 10}) {
-    final targetDay = DateTime.now().add(offset);
-    final current = _scheduledAt;
-    final hour = current?.hour ?? defaultHour;
-    final minute = current?.minute ?? 0;
-    setState(() {
-      _scheduledAt = DateTime(
-        targetDay.year,
-        targetDay.month,
-        targetDay.day,
-        hour,
-        minute,
-      );
-    });
+  Future<void> _openScheduleSheet() async {
+    final c = context.appColors;
+    final isEn = Directionality.of(context) == TextDirection.ltr;
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final now = DateTime.now();
+          final todayDate = DateTime(now.year, now.month, now.day);
+          final tomorrowDate = todayDate.add(const Duration(days: 1));
+          final nextWeekDate = todayDate.add(const Duration(days: 7));
+          final selectedOnly = _scheduledAt == null
+              ? null
+              : DateTime(
+                  _scheduledAt!.year,
+                  _scheduledAt!.month,
+                  _scheduledAt!.day,
+                );
+
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: c.border,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isEn ? 'Schedule & Duration' : 'الموعد والمدة',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+                      if (_scheduledAt != null)
+                        TextButton(
+                          onPressed: () {
+                            setState(() => _scheduledAt = null);
+                            setSheetState(() {});
+                          },
+                          child: Text(
+                            isEn ? 'Clear' : 'مسح',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: c.danger,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _SheetOptionChip(
+                        label: isEn ? 'Today' : 'النهارده',
+                        selected: selectedOnly == todayDate,
+                        onTap: () {
+                          _applyQuickDatePreset(
+                            Duration.zero,
+                            defaultHour: (now.hour + 1).clamp(9, 21),
+                          );
+                          setSheetState(() {});
+                        },
+                      ),
+                      _SheetOptionChip(
+                        label: isEn ? 'Tomorrow' : 'بكرة',
+                        selected: selectedOnly == tomorrowDate,
+                        onTap: () {
+                          _applyQuickDatePreset(const Duration(days: 1));
+                          setSheetState(() {});
+                        },
+                      ),
+                      _SheetOptionChip(
+                        label: isEn ? 'Next week' : 'الأسبوع الجاي',
+                        selected: selectedOnly == nextWeekDate,
+                        onTap: () {
+                          _applyQuickDatePreset(const Duration(days: 7));
+                          setSheetState(() {});
+                        },
+                      ),
+                      _SheetOptionChip(
+                        label: isEn ? 'Pick date & time' : 'تاريخ ووقت مخصص',
+                        selected: false,
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await _pickScheduleDateTime();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    isEn ? 'Estimated Duration' : 'المدة المتوقعة',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: c.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [15, 25, 45, 60, 90].map((min) {
+                      return _SheetOptionChip(
+                        label: ArabicFormatters.durationMinutes(min),
+                        selected: _estimatedMinutes == min,
+                        onTap: () {
+                          setState(() => _estimatedMinutes = min);
+                          setSheetState(() {});
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    isEn ? 'Repeat' : 'التكرار',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: c.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: TaskRecurrence.values.map((r) {
+                      return _SheetOptionChip(
+                        label: _recurrenceLabel(r, isEn),
+                        selected: _recurrence == r,
+                        onTap: () {
+                          setState(() => _recurrence = r);
+                          setSheetState(() {});
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: context.ctaBackground,
+                        foregroundColor: context.ctaForeground,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(
+                        isEn ? 'Done' : 'تم',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: context.ctaForeground,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _openPrioritySheet() async {
+    final c = context.appColors;
+    final isEn = Directionality.of(context) == TextDirection.ltr;
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: c.border,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                isEn ? 'Select Priority' : 'اختيار الأولوية',
+                style: TextStyle(
+                  fontSize: 16.5,
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final p in TaskPriority.values)
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  leading: Container(
+                    width: 11,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: _priorityColor(c, p),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  title: Text(
+                    _priorityLabel(p, isEn),
+                    style: TextStyle(
+                      fontWeight:
+                          _priority == p ? FontWeight.w700 : FontWeight.w500,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  trailing: _priority == p
+                      ? Icon(Icons.check_rounded, color: c.primary)
+                      : null,
+                  onTap: () {
+                    setState(() => _priority = p);
+                    Navigator.pop(ctx);
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openProjectPickerSheet(List<Project> projects) async {
@@ -201,6 +509,121 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
     }
   }
 
+  Future<void> _openAttachmentDialog() async {
+    final c = context.appColors;
+    final isEn = Directionality.of(context) == TextDirection.ltr;
+    final ctrl = TextEditingController(text: _attachmentNote ?? '');
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          isEn ? 'Add Reference Note / Link' : 'إضافة مرفق أو رابط مرجعي',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: c.textPrimary,
+          ),
+        ),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: isEn ? 'Link, file name, or reference...' : 'رابط أو اسم ملف مرجعي...',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(isEn ? 'Cancel' : 'إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: context.ctaBackground,
+              foregroundColor: context.ctaForeground,
+            ),
+            child: Text(isEn ? 'Attach' : 'إرفاق'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (saved != null && mounted) {
+      setState(() => _attachmentNote = saved.isEmpty ? null : saved);
+    }
+  }
+
+  void _applyAssistantDraft() {
+    final raw = _assistantController.text.trim();
+    if (raw.isEmpty) return;
+
+    var cleaned = raw;
+    var nextPriority = _priority;
+    var nextMinutes = _estimatedMinutes;
+    DateTime? nextSchedule = _scheduledAt;
+    final now = DateTime.now();
+
+    if (cleaned.contains('عاجل') || cleaned.toLowerCase().contains('urgent')) {
+      nextPriority = TaskPriority.urgent;
+    } else if (cleaned.contains('عالية') ||
+        cleaned.contains('مهم') ||
+        cleaned.toLowerCase().contains('high')) {
+      nextPriority = TaskPriority.high;
+    }
+
+    if (cleaned.contains('بكرة') ||
+        cleaned.contains('غدا') ||
+        cleaned.toLowerCase().contains('tomorrow')) {
+      final tmr = now.add(const Duration(days: 1));
+      nextSchedule = DateTime(tmr.year, tmr.month, tmr.day, 10, 0);
+    } else if (cleaned.contains('النهارده') ||
+        cleaned.contains('اليوم') ||
+        cleaned.toLowerCase().contains('today')) {
+      nextSchedule =
+          DateTime(now.year, now.month, now.day, (now.hour + 1).clamp(9, 21), 0);
+    }
+
+    for (final min in [15, 25, 30, 45, 60, 90]) {
+      if (cleaned.contains('$min')) {
+        nextMinutes = min;
+        break;
+      }
+    }
+
+    setState(() {
+      _titleController.text = cleaned;
+      _priority = nextPriority;
+      _estimatedMinutes = nextMinutes;
+      _scheduledAt = nextSchedule;
+      _mode = _AddTaskMode.manual;
+    });
+  }
+
+  Future<void> _activateReminder() async {
+    if (_scheduledAt == null) {
+      _applyQuickDatePreset(Duration.zero, defaultHour: 10);
+    }
+    setState(() => _alertMode = 'alarm');
+    await _ensureAlarmPermissionsFromTask();
+    if (!mounted) return;
+    await _openScheduleSheet();
+  }
+
+  String _composeDescription() {
+    final parts = <String>[];
+    final rawNotes = _notesController.text.trim();
+    if (rawNotes.isNotEmpty) parts.add(rawNotes);
+    if (_subtasks.isNotEmpty) {
+      parts.add(_subtasks.map((s) => '- [ ] $s').join('\n'));
+    }
+    if (_attachmentNote != null && _attachmentNote!.trim().isNotEmpty) {
+      parts.add('مرفق: ${_attachmentNote!.trim()}');
+    }
+    return parts.join('\n\n');
+  }
+
   Future<void> _saveTask() async {
     if (_saving) return;
     final isEn = Directionality.of(context) == TextDirection.ltr;
@@ -216,8 +639,8 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
     setState(() => _saving = true);
 
     final title = _titleController.text.trim();
-    final rawNotes = _notesController.text.trim();
-    final description = rawNotes.isEmpty ? null : rawNotes;
+    final composed = _composeDescription();
+    final description = composed.isEmpty ? null : composed;
 
     late final Result<Task> result;
     if (_isEditing) {
@@ -260,9 +683,8 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
             energyLevel: _energyLevel,
             scheduledStartAt: _scheduledAt,
             estimatedDurationMinutes: _estimatedMinutes,
-            status: _scheduledAt != null
-                ? TaskStatus.planned
-                : TaskStatus.inbox,
+            status:
+                _scheduledAt != null ? TaskStatus.planned : TaskStatus.inbox,
             projectId: _selectedProjectId,
             recurrence: _recurrence,
           );
@@ -300,26 +722,33 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
   Color _priorityColor(AppThemeExtension c, TaskPriority priority) {
     return switch (priority) {
       TaskPriority.low => c.primary,
-      TaskPriority.medium => c.info,
-      TaskPriority.high => c.warning,
+      TaskPriority.medium => c.secondary,
+      TaskPriority.high => const Color(0xFFC9735B),
       TaskPriority.urgent => c.danger,
+    };
+  }
+
+  Color _priorityCardBg(
+    AppThemeExtension c,
+    TaskPriority priority,
+    bool isDark,
+  ) {
+    return switch (priority) {
+      TaskPriority.low =>
+        isDark ? const Color(0xFF15342C) : const Color(0xFFEAF3F0),
+      TaskPriority.medium =>
+        isDark ? const Color(0xFF23223A) : const Color(0xFFEFEFF8),
+      TaskPriority.high || TaskPriority.urgent =>
+        isDark ? const Color(0xFF392721) : const Color(0xFFFBF0EC),
     };
   }
 
   String _priorityLabel(TaskPriority priority, bool isEn) {
     return switch (priority) {
-      TaskPriority.low => isEn ? 'Low' : 'هادئة',
+      TaskPriority.low => isEn ? 'Low priority' : 'أولوية هادئة',
       TaskPriority.medium => isEn ? 'Medium' : 'متوسطة',
-      TaskPriority.high => isEn ? 'High' : 'مهمة',
-      TaskPriority.urgent => isEn ? 'Urgent' : 'عاجلة',
-    };
-  }
-
-  String _energyLabel(EnergyLevel energy, bool isEn) {
-    return switch (energy) {
-      EnergyLevel.low => isEn ? 'Light' : 'طاقة خفيفة',
-      EnergyLevel.medium => isEn ? 'Balanced' : 'تركيز متوازن',
-      EnergyLevel.high => isEn ? 'Deep Focus' : 'تركيز عميق',
+      TaskPriority.high => isEn ? 'High priority' : 'أولوية عالية',
+      TaskPriority.urgent => isEn ? 'Urgent' : 'أولوية عاجلة',
     };
   }
 
@@ -332,10 +761,32 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
     };
   }
 
+  String _scheduleDisplayText(bool isEn) {
+    if (_scheduledAt == null) {
+      return isEn ? 'Choose time' : 'تحديد الموعد';
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final picked = DateTime(
+      _scheduledAt!.year,
+      _scheduledAt!.month,
+      _scheduledAt!.day,
+    );
+    final timeStr = ArabicFormatters.timeOfDayAr(_scheduledAt!);
+    if (picked == today) {
+      return isEn ? 'Today, $timeStr' : 'النهارده، $timeStr';
+    }
+    if (picked == tomorrow) {
+      return isEn ? 'Tomorrow, $timeStr' : 'بكرة، $timeStr';
+    }
+    return '${ArabicFormatters.dateShort(_scheduledAt!)}، $timeStr';
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.appColors;
-    final theme = Theme.of(context);
+    final isDark = context.isDark;
     final isEn = Directionality.of(context) == TextDirection.ltr;
     final alarmState = ref.watch(alarmReminderProvider);
     final projects = ref.watch(projectsProvider).value ?? const <Project>[];
@@ -344,16 +795,9 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
     final selectedProject = activeProjects
         .where((p) => p.id == _selectedProjectId)
         .firstOrNull;
-
-    final now = DateTime.now();
-    final todayDate = DateTime(now.year, now.month, now.day);
-    final tomorrowDate = todayDate.add(const Duration(days: 1));
-    final nextWeekDate = todayDate.add(const Duration(days: 7));
-    final selectedDateOnly = _scheduledAt == null
-        ? null
-        : DateTime(_scheduledAt!.year, _scheduledAt!.month, _scheduledAt!.day);
-
-    final durationOptions = const [15, 25, 45, 60, 90];
+    final projectBarColor = selectedProject != null
+        ? Color(selectedProject.colorValue)
+        : c.primary;
 
     return PopScope(
       canPop: !_hasUnsavedChanges || _saving,
@@ -362,1076 +806,946 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen> {
           _handleBack();
         }
       },
-      child: HandelhaAmbientBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: SafeArea(
-            child: Column(
-              children: [
-                HandelhaHeader(
-                  title: _isEditing
-                      ? (isEn ? 'Edit Task' : 'تعديل المهمة')
-                      : (isEn ? 'New Task' : 'مهمة جديدة'),
-                  subtitle: _isEditing
-                      ? (isEn
-                          ? 'Update your task details smoothly'
-                          : 'عدّل تفاصيل مهمتك بهدوء ووضوح')
-                      : (isEn
-                          ? 'Craft your task clearly in seconds'
-                          : 'جهّز تفاصيل مهمتك بشكل منظم ومريح'),
-                  onBack: _handleBack,
-                ),
+      child: Scaffold(
+        extendBody: true,
+        body: HandelhaAmbientBackground(
+          child: SafeArea(
+            bottom: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 114),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    HandelhaHeader(
+                      title: _isEditing
+                          ? (isEn ? 'Edit Task' : 'تعديل المهمة')
+                          : (isEn ? 'Add Task' : 'إضافة مهمة'),
+                      subtitle: isEn ? 'Take it step by step' : 'خدها خطوة خطوة',
+                      padding: const EdgeInsets.fromLTRB(0, 10, 0, 14),
+                      onBack: _handleBack,
+                    ),
 
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                    // Segmented Switcher: يدوي | بمساعدة هندلها
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: context.segmentedTrackBackground,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
                         children: [
-                          // بطاقة المعاينة الحية لشكل المهمة
-                          _TaskLivePreviewCard(
-                            title: _titleController.text.trim(),
-                            notes: _notesController.text.trim(),
-                            priorityLabel: _priorityLabel(_priority, isEn),
-                            priorityColor: _priorityColor(c, _priority),
-                            energyLabel: _energyLabel(_energyLevel, isEn),
-                            durationMinutes: _estimatedMinutes,
-                            scheduledAt: _scheduledAt,
-                            recurrence: _recurrence,
-                            recurrenceLabel: _recurrenceLabel(
-                              _recurrence,
-                              isEn,
-                            ),
-                            project: selectedProject,
-                            isEn: isEn,
-                          ),
-                          const SizedBox(height: 16),
-
-                          // القسم ١: العنوان والملاحظات
-                          _SectionCard(
-                            icon: Icons.edit_note_rounded,
-                            title: isEn ? 'Task Details' : 'عنوان المهمة والتفاصيل',
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                TextFormField(
-                                  controller: _titleController,
-                                  textInputAction: TextInputAction.next,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    color: c.textPrimary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  decoration: InputDecoration(
-                                    hintText: isEn
-                                        ? 'What do you want to handle?'
-                                        : 'مثال: مراجعة عرض العميل أو إنهاء الفصل الثالث',
-                                    hintStyle: TextStyle(
-                                      color: c.textMuted,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.radio_button_unchecked_rounded,
-                                      color: _priorityColor(c, _priority),
-                                    ),
-                                    filled: true,
-                                    fillColor: c.surfaceSoft,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(color: c.border),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(color: c.border),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(
-                                        color: c.primary,
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                  ),
-                                  validator: (v) =>
-                                      (v == null || v.trim().isEmpty)
-                                      ? (isEn
-                                          ? 'Task title is required'
-                                          : 'اكتب عنوان المهمة')
-                                      : null,
-                                ),
-                                const SizedBox(height: 12),
-                                TextFormField(
-                                  controller: _notesController,
-                                  minLines: 2,
-                                  maxLines: 4,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: c.textPrimary,
-                                  ),
-                                  decoration: InputDecoration(
-                                    hintText: isEn
-                                        ? 'Optional notes, steps, or links...'
-                                        : 'ملاحظات إضافية أو نقاط مساعدة (اختياري)...',
-                                    hintStyle: TextStyle(color: c.textMuted),
-                                    prefixIcon: Padding(
-                                      padding: const EdgeInsets.only(bottom: 22),
-                                      child: Icon(
-                                        Icons.notes_rounded,
-                                        color: c.textMuted,
-                                      ),
-                                    ),
-                                    filled: true,
-                                    fillColor: c.surfaceSoft,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(color: c.border),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(color: c.border),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(
-                                        color: c.primary,
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          Expanded(
+                            child: _ModePill(
+                              label: isEn ? 'Manual' : 'يدوي',
+                              selected: _mode == _AddTaskMode.manual,
+                              onTap: () =>
+                                  setState(() => _mode = _AddTaskMode.manual),
                             ),
                           ),
-                          const SizedBox(height: 14),
-
-                          // القسم ٢: الموعد والمدة
-                          _SectionCard(
-                            icon: Icons.event_available_rounded,
-                            title: isEn
-                                ? 'Schedule & Duration'
-                                : 'الموعد والمدة المقدرة',
-                            trailing: _scheduledAt != null
-                                ? TextButton.icon(
-                                    onPressed: () =>
-                                        setState(() => _scheduledAt = null),
-                                    icon: Icon(
-                                      Icons.close_rounded,
-                                      size: 16,
-                                      color: c.textMuted,
-                                    ),
-                                    label: Text(
-                                      isEn ? 'Clear' : 'مسح',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: c.textMuted,
-                                      ),
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      minimumSize: Size.zero,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                  )
-                                : null,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    _ModernOptionChip(
-                                      icon: Icons.wb_sunny_outlined,
-                                      label: isEn ? 'Today' : 'النهارده',
-                                      selected: selectedDateOnly == todayDate,
-                                      onTap: () => _applyQuickDatePreset(
-                                        Duration.zero,
-                                        defaultHour: (now.hour + 1).clamp(9, 21),
-                                      ),
-                                    ),
-                                    _ModernOptionChip(
-                                      icon: Icons.wb_twilight_rounded,
-                                      label: isEn ? 'Tomorrow' : 'بكرة',
-                                      selected:
-                                          selectedDateOnly == tomorrowDate,
-                                      onTap: () => _applyQuickDatePreset(
-                                        const Duration(days: 1),
-                                      ),
-                                    ),
-                                    _ModernOptionChip(
-                                      icon: Icons.next_week_outlined,
-                                      label: isEn
-                                          ? 'Next week'
-                                          : 'الأسبوع الجاي',
-                                      selected:
-                                          selectedDateOnly == nextWeekDate,
-                                      onTap: () => _applyQuickDatePreset(
-                                        const Duration(days: 7),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-
-                                // زر فتح منتقي التاريخ والوقت المودرن
-                                Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: _pickScheduleDateTime,
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 12,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _scheduledAt != null
-                                            ? c.primarySoft
-                                            : c.surfaceSoft,
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                          color: _scheduledAt != null
-                                              ? c.primary.withValues(alpha: 0.35)
-                                              : c.border,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 36,
-                                            height: 36,
-                                            decoration: BoxDecoration(
-                                              color: _scheduledAt != null
-                                                  ? c.primary
-                                                  : c.surface,
-                                              borderRadius:
-                                                  BorderRadius.circular(11),
-                                            ),
-                                            child: Icon(
-                                              Icons.calendar_month_rounded,
-                                              size: 19,
-                                              color: _scheduledAt != null
-                                                  ? c.textOnPrimary
-                                                  : c.primary,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  _scheduledAt != null
-                                                      ? '${ArabicFormatters.weekdayShort(_scheduledAt!)}، ${ArabicFormatters.dateFull(_scheduledAt!)}'
-                                                      : (isEn
-                                                          ? 'Pick specific date & time'
-                                                          : 'اختيار تاريخ ووقت مخصص'),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: theme
-                                                      .textTheme
-                                                      .titleSmall
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        color: c.textPrimary,
-                                                      ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  _scheduledAt != null
-                                                      ? (isEn
-                                                          ? 'At ${ArabicFormatters.timeOfDayAr(_scheduledAt!)} • Tap to adjust'
-                                                          : 'الساعة ${ArabicFormatters.timeOfDayAr(_scheduledAt!)} • اضغط للتعديل')
-                                                      : (isEn
-                                                          ? 'Optional — leave empty for Inbox'
-                                                          : 'اختياري — لو سيبته فاضي هتدخل صندوق الوارد'),
-                                                  style: theme
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        color: _scheduledAt !=
-                                                                null
-                                                            ? c.primary
-                                                            : c.textSecondary,
-                                                        fontWeight:
-                                                            _scheduledAt != null
-                                                                ? FontWeight.w700
-                                                                : FontWeight.w500,
-                                                      ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Icon(
-                                            Icons.tune_rounded,
-                                            color: c.primary,
-                                            size: 18,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                if (_scheduledAt != null) ...[
-                                  const SizedBox(height: 14),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          isEn
-                                              ? 'Reminder Alert Type'
-                                              : 'طريقة التنبيه عند الموعد',
-                                          style: theme.textTheme.labelMedium
-                                              ?.copyWith(
-                                            color: c.textSecondary,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                      if (!alarmState.permissionGranted)
-                                        TextButton(
-                                          onPressed: () =>
-                                              ensureHandelhaNotificationPermission(
-                                            context,
-                                            ref,
-                                            includeExactAlarm:
-                                                _alertMode == 'alarm',
-                                          ),
-                                          style: TextButton.styleFrom(
-                                            minimumSize: Size.zero,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            tapTargetSize: MaterialTapTargetSize
-                                                .shrinkWrap,
-                                          ),
-                                          child: Text(
-                                            isEn
-                                                ? 'Allow Notifications'
-                                                : 'تفعيل الإذن',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w800,
-                                              color: c.primary,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      _ModernOptionChip(
-                                        icon: Icons.notifications_active_outlined,
-                                        label: isEn
-                                            ? 'Notification'
-                                            : 'رسالة إشعار',
-                                        selected:
-                                            _alertMode == 'notification',
-                                        onTap: () => setState(
-                                          () => _alertMode = 'notification',
-                                        ),
-                                      ),
-                                      _ModernOptionChip(
-                                        icon: Icons.alarm_on_rounded,
-                                        label: isEn
-                                            ? 'Ringing Alarm'
-                                            : 'منبه يرن',
-                                        selected: _alertMode == 'alarm',
-                                        accentColor: const Color(0xFFB45309),
-                                        onTap: () async {
-                                          setState(() => _alertMode = 'alarm');
-                                          await ensureHandelhaNotificationPermission(
-                                            context,
-                                            ref,
-                                            includeExactAlarm: true,
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ],
-
-                                const SizedBox(height: 14),
-                                Text(
-                                  isEn
-                                      ? 'Estimated Focus Duration'
-                                      : 'المدة المتوقعة للإنجاز',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: c.textSecondary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: durationOptions.map((mins) {
-                                    final selected = _estimatedMinutes == mins;
-                                    return _ModernOptionChip(
-                                      icon: Icons.timer_outlined,
-                                      label: ArabicFormatters.durationMinutes(
-                                        mins,
-                                      ),
-                                      selected: selected,
-                                      onTap: () => setState(
-                                        () => _estimatedMinutes = mins,
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-
-                          // القسم ٣: الأولوية ومستوى الطاقة
-                          _SectionCard(
-                            icon: Icons.flag_outlined,
-                            title: isEn
-                                ? 'Priority & Energy'
-                                : 'الأولوية ومستوى التركيز',
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  isEn ? 'Priority Level' : 'درجة الأهمية',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: c.textSecondary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: TaskPriority.values.map((p) {
-                                    final pColor = _priorityColor(c, p);
-                                    return _ModernOptionChip(
-                                      label: _priorityLabel(p, isEn),
-                                      selected: _priority == p,
-                                      accentColor: pColor,
-                                      leadingDotColor: pColor,
-                                      onTap: () =>
-                                          setState(() => _priority = p),
-                                    );
-                                  }).toList(),
-                                ),
-                                const SizedBox(height: 14),
-                                Text(
-                                  isEn ? 'Energy Required' : 'الطاقة المطلوبة',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: c.textSecondary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: EnergyLevel.values.map((energy) {
-                                    final icon = switch (energy) {
-                                      EnergyLevel.low => Icons.spa_outlined,
-                                      EnergyLevel.medium => Icons.bolt_rounded,
-                                      EnergyLevel.high =>
-                                        Icons.local_fire_department_rounded,
-                                    };
-                                    final accent = switch (energy) {
-                                      EnergyLevel.low => c.success,
-                                      EnergyLevel.medium => c.info,
-                                      EnergyLevel.high => c.accent,
-                                    };
-                                    return _ModernOptionChip(
-                                      icon: icon,
-                                      label: _energyLabel(energy, isEn),
-                                      selected: _energyLevel == energy,
-                                      accentColor: accent,
-                                      onTap: () => setState(
-                                        () => _energyLevel = energy,
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-
-                          // القسم ٤: المشروع والتكرار
-                          _SectionCard(
-                            icon: Icons.folder_copy_outlined,
-                            title: isEn
-                                ? 'Project & Repeat'
-                                : 'الربط بمشروع والتكرار',
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      isEn ? 'Project' : 'المشروع',
-                                      style: theme.textTheme.labelMedium
-                                          ?.copyWith(
-                                            color: c.textSecondary,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                    const Spacer(),
-                                    if (activeProjects.isNotEmpty)
-                                      InkWell(
-                                        onTap: () => _openProjectPickerSheet(
-                                          activeProjects,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          child: Text(
-                                            isEn ? 'Browse all' : 'عرض الكل',
-                                            style: theme.textTheme.labelSmall
-                                                ?.copyWith(
-                                                  color: c.primary,
-                                                  fontWeight: FontWeight.w800,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    _ModernOptionChip(
-                                      icon: Icons.inbox_rounded,
-                                      label: isEn ? 'No project' : 'بدون مشروع',
-                                      selected: _selectedProjectId == null,
-                                      onTap: () => setState(
-                                        () => _selectedProjectId = null,
-                                      ),
-                                    ),
-                                    ...activeProjects.take(3).map((proj) {
-                                      final projColor = Color(proj.colorValue);
-                                      return _ModernOptionChip(
-                                        leadingDotColor: projColor,
-                                        label: ArabicFormatters.trData(
-                                          proj.title,
-                                        ),
-                                        selected: _selectedProjectId == proj.id,
-                                        accentColor: projColor,
-                                        onTap: () => setState(
-                                          () => _selectedProjectId = proj.id,
-                                        ),
-                                      );
-                                    }),
-                                    if (selectedProject != null &&
-                                        !activeProjects
-                                            .take(3)
-                                            .any((p) => p.id == selectedProject.id))
-                                      _ModernOptionChip(
-                                        leadingDotColor: Color(
-                                          selectedProject.colorValue,
-                                        ),
-                                        label: ArabicFormatters.trData(
-                                          selectedProject.title,
-                                        ),
-                                        selected: true,
-                                        accentColor: Color(
-                                          selectedProject.colorValue,
-                                        ),
-                                        onTap: () => _openProjectPickerSheet(
-                                          activeProjects,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 14),
-                                Text(
-                                  isEn ? 'Recurrence' : 'تكرار المهمة',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: c.textSecondary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: TaskRecurrence.values.map((rec) {
-                                    return _ModernOptionChip(
-                                      icon: rec == TaskRecurrence.none
-                                          ? Icons.looks_one_outlined
-                                          : Icons.repeat_rounded,
-                                      label: _recurrenceLabel(rec, isEn),
-                                      selected: _recurrence == rec,
-                                      onTap: () =>
-                                          setState(() => _recurrence = rec),
-                                    );
-                                  }).toList(),
-                                ),
-                              ],
+                          Expanded(
+                            child: _ModePill(
+                              label: isEn
+                                  ? 'With Handelha'
+                                  : 'بمساعدة هندلها',
+                              selected: _mode == _AddTaskMode.assistant,
+                              onTap: () => setState(
+                                () => _mode = _AddTaskMode.assistant,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ),
+                    const SizedBox(height: 16),
 
-                // شريط الحفظ السفلي الحديث
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-                  decoration: BoxDecoration(
-                    color: c.surface.withValues(alpha: 0.94),
-                    border: Border(
-                      top: BorderSide(color: c.border.withValues(alpha: 0.7)),
-                    ),
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: _saving ? null : _saveTask,
-                      icon: _saving
-                          ? SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                color: c.textOnPrimary,
-                              ),
-                            )
-                          : Icon(
-                              _isEditing
-                                  ? Icons.check_circle_outline_rounded
-                                  : Icons.add_task_rounded,
-                              size: 20,
-                            ),
-                      label: Text(
-                        _isEditing
-                            ? (isEn ? 'Save Changes' : 'حفظ التعديلات')
-                            : (isEn ? 'Save Task' : 'احفظ المهمة'),
-                        style: const TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: c.primary,
-                        foregroundColor: c.textOnPrimary,
-                        shape: RoundedRectangleBorder(
+                    if (_mode == _AddTaskMode.assistant) ...[
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: c.surface,
                           borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: c.border),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TaskLivePreviewCard extends StatelessWidget {
-  final String title;
-  final String notes;
-  final String priorityLabel;
-  final Color priorityColor;
-  final String energyLabel;
-  final int durationMinutes;
-  final DateTime? scheduledAt;
-  final TaskRecurrence recurrence;
-  final String recurrenceLabel;
-  final Project? project;
-  final bool isEn;
-
-  const _TaskLivePreviewCard({
-    required this.title,
-    required this.notes,
-    required this.priorityLabel,
-    required this.priorityColor,
-    required this.energyLabel,
-    required this.durationMinutes,
-    required this.scheduledAt,
-    required this.recurrence,
-    required this.recurrenceLabel,
-    required this.project,
-    required this.isEn,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.appColors;
-    final theme = Theme.of(context);
-    final isPlaceholder = title.isEmpty;
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Color.alphaBlend(
-              priorityColor.withValues(alpha: context.isDark ? 0.14 : 0.06),
-              c.surface,
-            ),
-            c.surface,
-          ],
-          begin: AlignmentDirectional.topStart,
-          end: AlignmentDirectional.bottomEnd,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: priorityColor.withValues(alpha: context.isDark ? 0.38 : 0.25),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: context.isDark ? 0.25 : 0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              width: 5,
-              decoration: BoxDecoration(
-                color: priorityColor,
-                borderRadius: const BorderRadiusDirectional.horizontal(
-                  start: Radius.circular(22),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: priorityColor.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            isEn ? 'Live Preview' : 'معاينة البطاقة',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: priorityColor,
-                              fontWeight: FontWeight.w800,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              isEn
+                                  ? 'Describe your task naturally'
+                                  : 'احكي لهندلها عن المهمة بجملة واحدة',
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                                color: c.textPrimary,
+                              ),
                             ),
-                          ),
-                        ),
-                        const Spacer(),
-                        if (project != null)
-                          Flexible(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 3,
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: _assistantController,
+                              minLines: 2,
+                              maxLines: 4,
+                              decoration: InputDecoration(
+                                hintText: isEn
+                                    ? 'e.g. Review presentation tomorrow 5 PM urgent'
+                                    : 'مثال: مراجعة التقرير بكرة الساعة ٥ لمدة ٤٥ دقيقة أولوية عالية',
                               ),
-                              decoration: BoxDecoration(
-                                color: Color(
-                                  project!.colorValue,
-                                ).withValues(alpha: 0.14),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 7,
-                                    height: 7,
-                                    decoration: BoxDecoration(
-                                      color: Color(project!.colorValue),
-                                      shape: BoxShape.circle,
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: _applyAssistantDraft,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: context.ctaBackground,
+                                      foregroundColor: context.ctaForeground,
+                                      elevation: 0,
+                                    ),
+                                    child: Text(
+                                      isEn
+                                          ? 'Fill details'
+                                          : 'تجهيز تفاصيل المهمة',
                                     ),
                                   ),
-                                  const SizedBox(width: 5),
-                                  Flexible(
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton(
+                                  onPressed: () => context.go('/chat'),
+                                  child: Text(
+                                    isEn ? 'Open Chat' : 'افتح الشات',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Field 1: اسم المهمة
+                    _FieldLabel(
+                      label: isEn ? 'Task Name' : 'اسم المهمة',
+                    ),
+                    const SizedBox(height: 7),
+                    TextFormField(
+                      controller: _titleController,
+                      textInputAction: TextInputAction.next,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: c.textPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: isEn
+                            ? 'Prepare campaign ideas'
+                            : 'جهّز أفكار الحملة',
+                        filled: true,
+                        fillColor: c.surface,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 15,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(
+                            color: context.activeFieldBorder,
+                            width: 1.4,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(
+                            color: context.activeFieldBorder,
+                            width: 1.8,
+                          ),
+                        ),
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? (isEn
+                              ? 'Task title is required'
+                              : 'اكتب عنوان المهمة')
+                          : null,
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Field 2: وصف بسيط (اختياري)
+                    _FieldLabel(
+                      label: isEn
+                          ? 'Quick Note (optional)'
+                          : 'وصف بسيط (اختياري)',
+                    ),
+                    const SizedBox(height: 7),
+                    TextFormField(
+                      controller: _notesController,
+                      minLines: 2,
+                      maxLines: 3,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: c.textPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: isEn
+                            ? 'Write what helps you start...'
+                            : 'اكتب اللي هيساعدك تبدأ...',
+                        filled: true,
+                        fillColor: c.surface,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 13,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(color: c.border, width: 1),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(
+                            color: context.activeFieldBorder,
+                            width: 1.4,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Section: الموعد والأولوية
+                    Text(
+                      isEn ? 'Schedule & Priority' : 'الموعد والأولوية',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _PickerCard(
+                            label: isEn ? 'Schedule' : 'الموعد',
+                            value: _scheduleDisplayText(isEn),
+                            trailing: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 18,
+                              color: c.textSecondary,
+                            ),
+                            onTap: _openScheduleSheet,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _PickerCard(
+                            label: isEn ? 'Priority' : 'الأولوية',
+                            value: _priorityLabel(_priority, isEn),
+                            backgroundColor:
+                                _priorityCardBg(c, _priority, isDark),
+                            borderColor: _priorityColor(c, _priority)
+                                .withValues(alpha: isDark ? 0.45 : 0.18),
+                            valueColor: _priority == TaskPriority.high ||
+                                    _priority == TaskPriority.urgent
+                                ? _priorityColor(c, _priority)
+                                : c.textPrimary,
+                            trailing: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: _priorityColor(c, _priority),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            onTap: _openPrioritySheet,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    if (_scheduledAt != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: c.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: c.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    isEn
+                                        ? 'Reminder Alert Type'
+                                        : 'طريقة التنبيه عند الموعد',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: c.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                                if (_alertMode == 'notification' &&
+                                    !alarmState.permissionGranted)
+                                  TextButton(
+                                    onPressed: () =>
+                                        ensureHandelhaNotificationPermission(
+                                      context,
+                                      ref,
+                                      includeExactAlarm: false,
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      minimumSize: Size.zero,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
                                     child: Text(
-                                      ArabicFormatters.trData(project!.title),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.labelSmall
-                                          ?.copyWith(
-                                            color: c.textPrimary,
-                                            fontWeight: FontWeight.w700,
+                                      isEn ? 'Allow' : 'تفعيل الإذن',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: c.primary,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _SheetOptionChip(
+                                    label: isEn ? 'Notification' : 'رسالة إشعار',
+                                    selected: _alertMode == 'notification',
+                                    onTap: () => setState(
+                                      () => _alertMode = 'notification',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _SheetOptionChip(
+                                    label: isEn ? 'Ringing Alarm' : 'منبه يرن',
+                                    selected: _alertMode == 'alarm',
+                                    onTap: () async {
+                                      setState(() => _alertMode = 'alarm');
+                                      await _ensureAlarmPermissionsFromTask();
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_alertMode == 'alarm') ...[
+                              const SizedBox(height: 10),
+                              (() {
+                                final missingCore =
+                                    !alarmState.permissionGranted ||
+                                        !alarmState.exactAlarmGranted;
+                                final missingOverlay = !_overlayGranted;
+                                if (!missingCore && !missingOverlay) {
+                                  return Row(
+                                    children: [
+                                      Icon(
+                                        Icons.verified_outlined,
+                                        size: 15,
+                                        color: c.primary,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          isEn
+                                              ? 'External alarm ready — displays over other apps on time'
+                                              : 'منبه خارجي مفعّل — يظهر فوق التطبيقات في ميعاده',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: c.primary,
                                           ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Material(
+                                  color: c.warning.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(12),
+                                    onTap: () async {
+                                      if (missingCore) {
+                                        await _ensureAlarmPermissionsFromTask();
+                                      } else {
+                                        await NativeAlarmBridge.instance
+                                            .requestOverlayPermission();
+                                      }
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color:
+                                              c.warning.withValues(alpha: 0.35),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            missingOverlay
+                                                ? Icons.layers_outlined
+                                                : Icons
+                                                    .notifications_active_outlined,
+                                            size: 17,
+                                            color: c.warning,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              missingOverlay
+                                                  ? (isEn
+                                                      ? 'Allow Display Over Apps for external alarm'
+                                                      : 'السماح بالظهور فوق التطبيقات للمنبه الخارجي')
+                                                  : (isEn
+                                                      ? 'Allow notification & exact alarm permission'
+                                                      : 'تفعيل إذن الإشعارات والمنبه الدقيق'),
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: c.textPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            isEn ? 'Allow' : 'سماح',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w800,
+                                              color: c.warning,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              })(),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+
+                    // Project Selector: المشروع
+                    _FieldLabel(label: isEn ? 'Project' : 'المشروع'),
+                    const SizedBox(height: 7),
+                    Material(
+                      color: c.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _openProjectPickerSheet(activeProjects),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: c.border),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 4,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  color: projectBarColor,
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  selectedProject != null
+                                      ? ArabicFormatters.trData(
+                                          selectedProject.title,
+                                        )
+                                      : (isEn ? 'No project' : 'بدون مشروع'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: c.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                size: 20,
+                                color: c.textSecondary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Action Pills: + خطوة فرعية | + مرفق
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _QuickActionPill(
+                            label: isEn ? '+ Substep' : '+ خطوة فرعية',
+                            onTap: () => setState(
+                              () => _showSubtaskInput = !_showSubtaskInput,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _QuickActionPill(
+                            label: isEn ? '+ Attachment' : '+ مرفق',
+                            onTap: _openAttachmentDialog,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    if (_showSubtaskInput || _subtasks.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: c.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: c.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_showSubtaskInput)
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _subtaskController,
+                                      decoration: InputDecoration(
+                                        hintText: isEn
+                                            ? 'Add substep...'
+                                            : 'أضف خطوة فرعية...',
+                                        isDense: true,
+                                      ),
+                                      onSubmitted: (val) {
+                                        final trimmed = val.trim();
+                                        if (trimmed.isEmpty) return;
+                                        setState(() {
+                                          _subtasks.add(trimmed);
+                                          _subtaskController.clear();
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    onPressed: () {
+                                      final trimmed =
+                                          _subtaskController.text.trim();
+                                      if (trimmed.isEmpty) return;
+                                      setState(() {
+                                        _subtasks.add(trimmed);
+                                        _subtaskController.clear();
+                                      });
+                                    },
+                                    icon: Icon(
+                                      Icons.add_circle_rounded,
+                                      color: c.primary,
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      isPlaceholder
-                          ? (isEn
-                              ? 'Your task title appears here...'
-                              : 'عنوان مهمتك هيظهر هنا بشكل فوري...')
-                          : title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: isPlaceholder ? c.textMuted : c.textPrimary,
-                      ),
-                    ),
-                    if (notes.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        notes,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: c.textSecondary,
+                            for (var i = 0; i < _subtasks.length; i++)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.check_box_outline_blank_rounded,
+                                      size: 16,
+                                      color: c.textSecondary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _subtasks[i],
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: c.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                    InkWell(
+                                      onTap: () =>
+                                          setState(() => _subtasks.removeAt(i)),
+                                      child: Icon(
+                                        Icons.close_rounded,
+                                        size: 16,
+                                        color: c.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ],
+
+                    if (_attachmentNote != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: c.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.attach_file_rounded,
+                              size: 16,
+                              color: c.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _attachmentNote!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: c.textPrimary,
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () =>
+                                  setState(() => _attachmentNote = null),
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 16,
+                                color: c.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        _PreviewPill(
-                          icon: Icons.flag_rounded,
-                          text: priorityLabel,
-                          color: priorityColor,
-                        ),
-                        _PreviewPill(
-                          icon: Icons.timer_outlined,
-                          text: ArabicFormatters.durationMinutes(
-                            durationMinutes,
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: InkWell(
+                        onTap: _activateReminder,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 4,
                           ),
-                          color: c.primary,
-                        ),
-                        _PreviewPill(
-                          icon: Icons.bolt_rounded,
-                          text: energyLabel,
-                          color: c.info,
-                        ),
-                        if (scheduledAt != null)
-                          _PreviewPill(
-                            icon: Icons.schedule_rounded,
-                            text:
-                                '${ArabicFormatters.dateShort(scheduledAt!)} • ${ArabicFormatters.timeOfDayAr(scheduledAt!)}',
-                            color: c.primary,
+                          child: Text(
+                            _scheduledAt != null
+                                ? (isEn
+                                    ? 'Reminder: ${_scheduleDisplayText(true)}'
+                                    : 'تذكير: ${_scheduleDisplayText(false)}')
+                                : (isEn
+                                    ? '+ Add reminder'
+                                    : '+ إضافة تذكير'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _scheduledAt != null
+                                  ? c.primary
+                                  : c.textSecondary,
+                            ),
                           ),
-                        if (recurrence != TaskRecurrence.none)
-                          _PreviewPill(
-                            icon: Icons.repeat_rounded,
-                            text: recurrenceLabel,
-                            color: c.secondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Save CTA
+                    SizedBox(
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _saving ? null : _saveTask,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: context.ctaBackground,
+                          foregroundColor: context.ctaForeground,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
                           ),
-                      ],
+                        ),
+                        child: _saving
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  color: context.ctaForeground,
+                                ),
+                              )
+                            : Text(
+                                _isEditing
+                                    ? (isEn ? 'Save Changes' : 'حفظ التعديلات')
+                                    : (isEn ? 'Save Task' : 'احفظ المهمة'),
+                                style: TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: context.ctaForeground,
+                                ),
+                              ),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
+          ),
         ),
+        bottomNavigationBar: const HandelhaBottomNav(currentIndex: 1),
       ),
     );
   }
 }
 
-class _PreviewPill extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color color;
-
-  const _PreviewPill({
-    required this.icon,
-    required this.text,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.appColors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: c.surfaceSoft,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: c.border.withValues(alpha: 0.7)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: c.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final Widget child;
-  final Widget? trailing;
-
-  const _SectionCard({
-    required this.icon,
-    required this.title,
-    required this.child,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.appColors;
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: c.border.withValues(alpha: 0.75)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: c.primarySoft,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 18, color: c.primary),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: c.textPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              if (trailing != null) trailing!,
-            ],
-          ),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _ModernOptionChip extends StatelessWidget {
-  final IconData? icon;
-  final Color? leadingDotColor;
+class _ModePill extends StatelessWidget {
   final String label;
   final bool selected;
-  final Color? accentColor;
   final VoidCallback onTap;
 
-  const _ModernOptionChip({
-    this.icon,
-    this.leadingDotColor,
+  const _ModePill({
     required this.label,
     required this.selected,
-    this.accentColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = context.appColors;
-    final activeColor = accentColor ?? c.primary;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
+    final isDark = context.isDark;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 170),
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected
+              ? context.heroBannerBackground
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected
-                ? activeColor.withValues(alpha: context.isDark ? 0.24 : 0.13)
-                : c.surfaceSoft,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected ? activeColor : c.border.withValues(alpha: 0.8),
-              width: selected ? 1.4 : 1,
-            ),
+                ? Colors.white
+                : (isDark ? const Color(0xFF9EB5AE) : c.secondary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String label;
+
+  const _FieldLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        color: context.appColors.textSecondary,
+      ),
+    );
+  }
+}
+
+class _PickerCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Widget trailing;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final Color? valueColor;
+  final VoidCallback onTap;
+
+  const _PickerCard({
+    required this.label,
+    required this.value,
+    required this.trailing,
+    required this.onTap,
+    this.backgroundColor,
+    this.borderColor,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.appColors;
+    return Material(
+      color: backgroundColor ?? c.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor ?? c.border, width: 1),
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              if (leadingDotColor != null) ...[
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: leadingDotColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ] else if (icon != null) ...[
-                Icon(
-                  icon,
-                  size: 15,
-                  color: selected ? activeColor : c.textSecondary,
-                ),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: selected ? activeColor : c.textPrimary,
-                      fontWeight:
-                          selected ? FontWeight.w800 : FontWeight.w600,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: c.textSecondary,
+                      ),
                     ),
+                    const SizedBox(height: 3),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: valueColor ?? c.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 6),
+              trailing,
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionPill extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickActionPill({
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.appColors;
+    return Material(
+      color: context.softControlSurface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: SizedBox(
+          height: 44,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetOptionChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SheetOptionChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.appColors;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? context.ctaBackground : context.softControlSurface,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: selected ? context.ctaForeground : c.textPrimary,
           ),
         ),
       ),
@@ -1453,7 +1767,6 @@ class _ProjectPickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.appColors;
-    final theme = Theme.of(context);
     final maxHeight = MediaQuery.sizeOf(context).height * 0.65;
 
     return SafeArea(
@@ -1487,8 +1800,9 @@ class _ProjectPickerSheet extends StatelessWidget {
                     Expanded(
                       child: Text(
                         isEn ? 'Link to Project' : 'ربط المهمة بمشروع',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                           color: c.textPrimary,
                         ),
                       ),
@@ -1507,7 +1821,7 @@ class _ProjectPickerSheet extends StatelessWidget {
                   children: [
                     _ProjectTile(
                       color: c.textMuted,
-                      title: isEn ? 'No project (Standalone)' : 'بدون مشروع',
+                      title: isEn ? 'No project' : 'بدون مشروع',
                       subtitle: isEn
                           ? 'Keep as a general task'
                           : 'مهمة مستقلة في جدولك',
@@ -1589,18 +1903,20 @@ class _ProjectTile extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: c.textPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: c.textPrimary,
+                      ),
                     ),
                     Text(
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: c.textSecondary,
-                          ),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: c.textSecondary,
+                      ),
                     ),
                   ],
                 ),

@@ -20,6 +20,8 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
+      fontFamily: AppTextStyles.fontFamily,
+      fontFamilyFallback: AppTextStyles.fallbackFonts,
       scaffoldBackgroundColor: AppColors.background,
       primaryColor: AppColors.primary,
       colorScheme: const ColorScheme.light(
@@ -285,6 +287,8 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      fontFamily: AppTextStyles.fontFamily,
+      fontFamilyFallback: AppTextStyles.fallbackFonts,
       scaffoldBackgroundColor: AppColors.darkBackground,
       primaryColor: AppColors.darkPrimary,
       colorScheme: const ColorScheme.dark(

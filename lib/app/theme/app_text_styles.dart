@@ -17,9 +17,7 @@ class AppTextStyles {
   AppTextStyles._();
 
   static const String fontFamily = 'IBMPlexSansArabic';
-  static const List<String> _fallbackFonts = <String>[
-    'Segoe UI',
-    'Tahoma',
+  static const List<String> fallbackFonts = <String>[
     'sans-serif',
   ];
 
@@ -32,7 +30,7 @@ class AppTextStyles {
   }) {
     return TextStyle(
       fontFamily: fontFamily,
-      fontFamilyFallback: _fallbackFonts,
+      fontFamilyFallback: fallbackFonts,
       fontSize: fontSize,
       fontWeight: fontWeight,
       color: color,

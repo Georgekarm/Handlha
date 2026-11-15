@@ -48,6 +48,66 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     }
   }
 
+  Future<void> _showTaskActions(Task task) async {
+    final c = context.appColors;
+    final isEn = Directionality.of(context) == TextDirection.ltr;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: c.border,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              leading: Icon(Icons.edit_outlined, color: c.primary),
+              title: Text(isEn ? 'Edit task' : 'تعديل المهمة'),
+              onTap: () => Navigator.pop(ctx, 'edit'),
+            ),
+            ListTile(
+              leading: Icon(Icons.timer_outlined, color: c.primary),
+              title: Text(isEn ? 'Start focus session' : 'ابدأ جلسة تركيز'),
+              onTap: () => Navigator.pop(ctx, 'focus'),
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline_rounded, color: c.danger),
+              title: Text(
+                isEn ? 'Delete task' : 'حذف المهمة',
+                style: TextStyle(color: c.danger),
+              ),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'edit') {
+      await context.push('/tasks/add', extra: task);
+    } else if (action == 'focus') {
+      await context.push(
+        '/focus-session',
+        extra: {'title': task.title, 'id': task.id},
+      );
+    } else if (action == 'delete') {
+      await _confirmDelete(task);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.appColors;
@@ -95,6 +155,12 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
       return dt != null && !dt.isBefore(todayEnd);
     }).toList();
 
+    final totalCount = openTasks.length + completedTasks.length;
+    final doneCount = completedTasks.length;
+    final ratio =
+        totalCount == 0 ? 0.0 : (doneCount / totalCount).clamp(0.0, 1.0);
+    final percent = (ratio * 100).round();
+
     return Material(
       type: MaterialType.transparency,
       child: SafeArea(
@@ -112,7 +178,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 title: _tab == _TasksTab.open
                     ? (isEn ? 'Tasks' : 'المهام')
                     : (isEn ? 'Completed Tasks' : 'المهام المكتملة'),
-                padding: const EdgeInsets.fromLTRB(0, 12, 0, 16),
+                padding: const EdgeInsets.fromLTRB(0, 10, 0, 14),
                 actions: [
                   HandelhaHeaderIconButton(
                     icon: Icons.settings_outlined,
@@ -122,12 +188,99 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 ],
               ),
 
+              // Hero Summary Card
+              Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                decoration: BoxDecoration(
+                  color: context.heroBannerBackground,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: context.heroBannerBorder,
+                    width: isDark ? 1 : 0,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isEn ? 'Take it step by step' : 'خدها خطوة خطوة',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                totalCount == 0
+                                    ? (isEn
+                                        ? 'Ready for your first task'
+                                        : 'جاهز لأول مهمة')
+                                    : (isEn
+                                        ? '$doneCount of $totalCount tasks done'
+                                        : '${ArabicFormatters.toArabicDigits(doneCount)} من ${ArabicFormatters.toArabicDigits(totalCount)} مهام خلصت'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: context.limeAccent,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            ArabicFormatters.percent(percent),
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: context.limeAccentInk,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: ratio,
+                        minHeight: 5.5,
+                        backgroundColor: Colors.white.withValues(alpha: 0.16),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          context.limeAccent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+
               // Pill capsule tabs (المفتوحة N / المكتملة M)
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: isDark ? c.surfaceSoft : const Color(0xFFE1E8E4),
-                  borderRadius: BorderRadius.circular(18),
+                  color: context.segmentedTrackBackground,
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
                   children: [
@@ -152,7 +305,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 18),
 
               if (shown.isEmpty)
                 FeatureEmptyState(
@@ -178,68 +331,91 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 )
               else if (_tab == _TasksTab.open) ...[
                 if (todayOpen.isNotEmpty) ...[
-                  Text(
-                    isEn ? 'Today' : 'النهارده',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: c.textPrimary,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isEn ? 'Today' : 'النهارده',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        isEn
+                            ? '${todayOpen.length} tasks'
+                            : '${ArabicFormatters.toArabicDigits(todayOpen.length)} مهام',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   for (var i = 0; i < todayOpen.length; i++) ...[
                     if (i > 0) const SizedBox(height: 10),
                     _buildTaskItem(todayOpen[i], projectMap),
                   ],
                 ],
                 if (upcomingOpen.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  Text(
-                    isEn ? 'Upcoming' : 'القادمة',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: c.textPrimary,
-                    ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isEn ? 'Upcoming' : 'القادمة',
+                          style: TextStyle(
+                            fontSize: 17.5,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        isEn
+                            ? '${upcomingOpen.length} tasks'
+                            : '${ArabicFormatters.toArabicDigits(upcomingOpen.length)} مهام',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   for (var i = 0; i < upcomingOpen.length; i++) ...[
                     if (i > 0) const SizedBox(height: 10),
                     _buildTaskItem(upcomingOpen[i], projectMap),
                   ],
                 ],
-                const SizedBox(height: 18),
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: c.primarySoft,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      isEn
-                          ? 'Prioritize what matters most, not what is most.'
-                          : 'الأولوية للأهم، مش للأكثر.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: c.primary,
-                      ),
+                const SizedBox(height: 16),
+                Center(
+                  child: Text(
+                    isEn
+                        ? 'Prioritize what matters most, not what is most.'
+                        : 'الأولوية للأهم، مش للأكثر.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: c.textSecondary,
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 SizedBox(
-                  height: 54,
+                  height: 52,
                   child: ElevatedButton(
                     onPressed: () => context.push('/tasks/add'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: c.primary,
-                      foregroundColor: c.textOnPrimary,
+                      backgroundColor: context.ctaBackground,
+                      foregroundColor: context.ctaForeground,
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
                       ),
@@ -247,9 +423,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     child: Text(
                       isEn ? '+ Add Task' : '+ إضافة مهمة',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15.5,
                         fontWeight: FontWeight.w700,
-                        color: c.textOnPrimary,
+                        color: context.ctaForeground,
                       ),
                     ),
                   ),
@@ -353,6 +529,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
         }
       },
       onTap: () => context.push('/tasks/add', extra: task),
+      onMorePressed: () => _showTaskActions(task),
       onLongPress: () => _confirmDelete(task),
     );
   }
@@ -380,9 +557,9 @@ class _TabPill extends StatelessWidget {
         height: 40,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? c.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: selected
+          color: selected ? context.segmentedActiveBackground : Colors.transparent,
+          borderRadius: BorderRadius.circular(13),
+          boxShadow: selected && !context.isDark
               ? [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.04),
@@ -397,7 +574,9 @@ class _TabPill extends StatelessWidget {
           style: TextStyle(
             fontSize: 13.5,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? c.primary : c.textSecondary,
+            color: selected
+                ? (context.isDark ? Colors.white : c.primary)
+                : c.textSecondary,
           ),
         ),
       ),

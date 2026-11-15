@@ -5,6 +5,7 @@ import '../../../../app/theme/app_theme_extension.dart';
 import '../../../../shared/utils/arabic_formatters.dart';
 import '../../../../shared/widgets/handelha_feedback.dart';
 import '../../../notifications/alarm_reminder_store.dart';
+import '../../../notifications/native_alarm_bridge.dart';
 import '../../../notifications/presentation/alarm_ringing_dialog.dart';
 import '../../../notifications/presentation/notification_permission_sheet.dart';
 import '../../../tasks/domain/task.dart';
@@ -950,12 +951,25 @@ class _CreatedTaskMiniCardState extends ConsumerState<_CreatedTaskMiniCard> {
                   icon: Icons.volume_up_rounded,
                   label: isEn ? 'Test Alarm' : 'تجربة المنبه',
                   selected: false,
-                  onTap: () => HandelhaAlarmRingingDialog.show(
-                    context,
-                    title: title,
-                    scheduledTimeLabel: whenLabel,
-                    isNotificationMode: _selectedMode == 'notification',
-                  ),
+                  onTap: () async {
+                    if (_selectedMode != 'notification') {
+                      final launched =
+                          await NativeAlarmBridge.instance.showExternalAlarm(
+                        id: 'assistant_preview_${DateTime.now().millisecondsSinceEpoch}',
+                        title: title,
+                        isEn: isEn,
+                        isPreview: true,
+                      );
+                      if (launched) return;
+                    }
+                    if (!context.mounted) return;
+                    await HandelhaAlarmRingingDialog.show(
+                      context,
+                      title: title,
+                      scheduledTimeLabel: whenLabel,
+                      isNotificationMode: _selectedMode == 'notification',
+                    );
+                  },
                 ),
               ],
             ),

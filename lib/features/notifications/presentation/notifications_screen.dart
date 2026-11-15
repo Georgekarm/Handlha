@@ -8,17 +8,16 @@ import '../../../shared/widgets/app_loading_view.dart';
 import '../../../shared/widgets/feature_empty_state.dart';
 import '../../../shared/widgets/handelha_ambient_background.dart';
 import '../../../shared/widgets/handelha_bottom_nav.dart';
-import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../../shared/widgets/handelha_segmented_switch.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../tasks/domain/task.dart';
 import '../../tasks/presentation/task_providers.dart';
 import '../alarm_reminder_store.dart';
+import '../native_alarm_bridge.dart';
 import '../notification_inbox_store.dart';
 import '../notification_preferences.dart';
 import 'alarm_ringing_dialog.dart';
-import 'notification_permission_sheet.dart';
 
 enum _NotifFilter { all, unread }
 
@@ -59,6 +58,40 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   NotificationPreferences _prefs = const NotificationPreferences();
   bool _loadingMeta = true;
   String? _loadedUserId;
+
+  Future<void> _previewAlert({
+    required String id,
+    required String title,
+    required bool isNotificationMode,
+    String? taskId,
+  }) async {
+    final isEn = Directionality.of(context) == TextDirection.ltr;
+    if (!isNotificationMode) {
+      final launchedExternal = await NativeAlarmBridge.instance.showExternalAlarm(
+        id: id,
+        title: title,
+        taskId: taskId,
+        isEn: isEn,
+        isPreview: true,
+      );
+      if (launchedExternal) return;
+    }
+    if (!mounted) return;
+    await HandelhaAlarmRingingDialog.show(
+      context,
+      title: title,
+      isNotificationMode: isNotificationMode,
+      taskId: taskId,
+      onSnoozeMinutes: (mins) => ref
+          .read(alarmReminderProvider.notifier)
+          .snoozeAlarm(
+            id,
+            fallbackTitle: title,
+            taskId: taskId,
+            minutes: mins,
+          ),
+    );
+  }
 
   Future<void> _loadMeta(String userId) async {
     if (_loadedUserId == userId && !_loadingMeta) return;
@@ -220,282 +253,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
                 (() {
                   final alarmState = ref.watch(alarmReminderProvider);
+                  if (alarmState.items.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
 
                   return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Permission & Alarm vs Notification Mode Card
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: c.surface,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: c.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: c.primarySoft,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  alarmState.defaultAlertMode == 'alarm'
-                                      ? Icons.alarm_on_rounded
-                                      : Icons.notifications_active_rounded,
-                                  color: c.primary,
-                                  size: 22,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      isEn
-                                          ? 'Smart Alarms & Notifications Permission'
-                                          : 'إذن الإشعارات والمنبه الذكي',
-                                      style: TextStyle(
-                                        fontSize: 14.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: c.textPrimary,
-                                      ),
-                                    ),
-                                    Text(
-                                      alarmState.permissionGranted
-                                          ? (isEn
-                                              ? (alarmState.exactAlarmGranted
-                                                  ? 'Notifications & exact alarms active'
-                                                  : 'Notifications active (grant exact alarms for alarms)')
-                                              : (alarmState.exactAlarmGranted
-                                                  ? 'إذن الإشعارات والمنبه الدقيق مفعّل'
-                                                  : 'الإشعارات مفعّلة (يُفضّل السماح بالمنبه الدقيق)'))
-                                          : (isEn
-                                              ? 'Grant permission to receive alarms & exam alerts'
-                                              : 'اسمَح بالإشعارات لتشغيل منبه الامتحانات والمذاكرة'),
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        color: c.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          if (!alarmState.permissionGranted ||
-                              (alarmState.defaultAlertMode == 'alarm' &&
-                                  !alarmState.exactAlarmGranted)) ...[
-                            ElevatedButton.icon(
-                              onPressed: () async {
-                                final ok =
-                                    await ensureHandelhaNotificationPermission(
-                                  context,
-                                  ref,
-                                  includeExactAlarm: true,
-                                );
-                                if (!context.mounted) return;
-                                if (ok) {
-                                  HandelhaFeedback.showSuccess(
-                                    context,
-                                    isEn
-                                        ? 'Notification & Alarm permission granted!'
-                                        : 'تم تفعيل إذن الإشعارات والمنبهات بنجاح!',
-                                  );
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: c.primary,
-                                foregroundColor: c.textOnPrimary,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              icon: const Icon(
-                                Icons.verified_user_outlined,
-                                size: 18,
-                              ),
-                              label: Text(
-                                isEn
-                                    ? 'Grant Notification & Alarm Permission'
-                                    : 'تفعيل إذن الإشعارات والمنبه الآن',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                          ],
-                          Row(
-                            children: [
-                              Expanded(
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () => ref
-                                      .read(alarmReminderProvider.notifier)
-                                      .setDefaultAlertMode('alarm'),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 10,
-                                      horizontal: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          alarmState.defaultAlertMode == 'alarm'
-                                              ? c.primary
-                                              : c.surfaceSoft,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: alarmState.defaultAlertMode ==
-                                                'alarm'
-                                            ? c.primary
-                                            : c.border,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.alarm_rounded,
-                                          size: 16,
-                                          color: alarmState.defaultAlertMode ==
-                                                  'alarm'
-                                              ? c.textOnPrimary
-                                              : c.primary,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            isEn
-                                                ? 'Ringing Alarm'
-                                                : 'منبه يرن',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 12.5,
-                                              fontWeight: FontWeight.w800,
-                                              color:
-                                                  alarmState.defaultAlertMode ==
-                                                          'alarm'
-                                                      ? c.textOnPrimary
-                                                      : c.textPrimary,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () => ref
-                                      .read(alarmReminderProvider.notifier)
-                                      .setDefaultAlertMode('notification'),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 10,
-                                      horizontal: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: alarmState.defaultAlertMode ==
-                                              'notification'
-                                          ? c.primary
-                                          : c.surfaceSoft,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: alarmState.defaultAlertMode ==
-                                                'notification'
-                                            ? c.primary
-                                            : c.border,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.notifications_active_outlined,
-                                          size: 16,
-                                          color: alarmState.defaultAlertMode ==
-                                                  'notification'
-                                              ? c.textOnPrimary
-                                              : c.primary,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            isEn
-                                                ? 'Message'
-                                                : 'رسالة إشعار',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 12.5,
-                                              fontWeight: FontWeight.w800,
-                                              color:
-                                                  alarmState.defaultAlertMode ==
-                                                          'notification'
-                                                      ? c.textOnPrimary
-                                                      : c.textPrimary,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: () => HandelhaAlarmRingingDialog.show(
-                              context,
-                              title: tasks.isNotEmpty
-                                  ? tasks.first.title
-                                  : (isEn
-                                      ? 'Study & Exam Reminder'
-                                      : 'مراجعة الامتحان والمذاكرة'),
-                              isNotificationMode:
-                                  alarmState.defaultAlertMode == 'notification',
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: c.primary,
-                              side: BorderSide(
-                                color: c.primary.withValues(alpha: 0.4),
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            icon: const Icon(Icons.volume_up_rounded, size: 17),
-                            label: Text(
-                              isEn
-                                  ? 'Test Alarm Screen & Sound Now'
-                                  : 'معاينة وتجربة شاشة وصوت المنبه',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (alarmState.items.isNotEmpty) ...[
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Text(
@@ -519,19 +283,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                           onToggleEnabled: () => ref
                               .read(alarmReminderProvider.notifier)
                               .toggleItemEnabled(alarmItem.id),
-                          onPreview: () => HandelhaAlarmRingingDialog.show(
-                            context,
+                          onPreview: () => _previewAlert(
+                            id: alarmItem.id,
                             title: alarmItem.title,
                             isNotificationMode: !alarmItem.isFullAlarm,
                             taskId: alarmItem.taskId,
-                            onSnoozeMinutes: (mins) => ref
-                                .read(alarmReminderProvider.notifier)
-                                .snoozeAlarm(
-                                  alarmItem.id,
-                                  fallbackTitle: alarmItem.title,
-                                  taskId: alarmItem.taskId,
-                                  minutes: mins,
-                                ),
                           ),
                           onDelete: () => ref
                               .read(alarmReminderProvider.notifier)
@@ -541,8 +297,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       ],
                       const SizedBox(height: 6),
                     ],
-                  ],
-                );
+                  );
                 })(),
                 if (!_prefs.enabled)
                   Container(
@@ -871,7 +626,7 @@ class _ScheduledAlarmCard extends StatelessWidget {
               Switch(
                 value: item.isEnabled,
                 onChanged: (_) => onToggleEnabled(),
-                activeColor: c.primary,
+                activeThumbColor: c.primary,
               ),
             ],
           ),

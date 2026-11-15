@@ -2,14 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/router/app_router.dart';
 import '../alarm_reminder_store.dart';
 import '../local_notification_service.dart';
+import '../native_alarm_bridge.dart';
 import 'alarm_ringing_dialog.dart';
 
-/// Bridges OS notification taps/launches and in-app due alarms directly to
-/// [HandelhaAlarmRingingDialog] above any route.
+/// Bridges native external Android alarm actions and notification taps with app
+/// state and focus navigation. On Android, alarms open [AlarmActivity] outside
+/// the app rather than interrupting with an in-app modal.
 class HandelhaAlarmCoordinator extends ConsumerStatefulWidget {
   const HandelhaAlarmCoordinator({super.key, required this.child});
 
@@ -32,10 +35,14 @@ class _HandelhaAlarmCoordinatorState
     WidgetsBinding.instance.addObserver(this);
     _tapSub =
         LocalNotificationService.instance.onNotificationTap.listen(_openPayload);
+    NativeAlarmBridge.instance.setNativeActionListener(_syncPendingNativeActions);
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await LocalNotificationService.instance.initialize(
         requestPermission: false,
       );
+      if (!mounted) return;
+      await _syncPendingNativeActions();
       if (!mounted) return;
       final launchPayload =
           LocalNotificationService.instance.takePendingLaunchPayload();
@@ -44,6 +51,7 @@ class _HandelhaAlarmCoordinatorState
       }
       _checkDueForegroundAlarms();
     });
+
     _dueTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) => _checkDueForegroundAlarms(),
@@ -54,6 +62,7 @@ class _HandelhaAlarmCoordinatorState
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.read(alarmReminderProvider.notifier).refreshPermissions();
+      _syncPendingNativeActions();
       _checkDueForegroundAlarms();
     }
   }
@@ -61,12 +70,53 @@ class _HandelhaAlarmCoordinatorState
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    NativeAlarmBridge.instance.setNativeActionListener(null);
     _tapSub?.cancel();
     _dueTimer?.cancel();
     super.dispose();
   }
 
-  void _checkDueForegroundAlarms() {
+  Future<void> _syncPendingNativeActions() async {
+    final actions = await NativeAlarmBridge.instance.consumePendingActions();
+    if (!mounted || actions.isEmpty) return;
+
+    final notifier = ref.read(alarmReminderProvider.notifier);
+    for (final act in actions) {
+      switch (act.action) {
+        case 'dismiss':
+          await notifier.markAlarmDismissed(act.id);
+          break;
+        case 'snooze':
+          if (act.snoozeAtMs > 0) {
+            final snoozedAt =
+                DateTime.fromMillisecondsSinceEpoch(act.snoozeAtMs);
+            await notifier.addOrUpdateAlarm(
+              id: act.id,
+              title: act.title.isEmpty ? 'تذكير مهمة' : act.title,
+              scheduledAt: snoozedAt,
+              alertMode: 'alarm',
+              taskId: act.taskId,
+            );
+          }
+          break;
+        case 'start_focus':
+          await notifier.markAlarmDismissed(act.id);
+          final navContext = rootNavigatorKey.currentContext;
+          if (navContext != null && navContext.mounted) {
+            GoRouter.maybeOf(navContext)?.push(
+              '/focus-session',
+              extra: <String, dynamic>{
+                'title': act.title,
+                if (act.taskId != null) 'id': act.taskId,
+              },
+            );
+          }
+          break;
+      }
+    }
+  }
+
+  Future<void> _checkDueForegroundAlarms() async {
     if (!mounted || HandelhaAlarmRingingDialog.isShowing) return;
     final state = ref.read(alarmReminderProvider);
     final now = DateTime.now();
@@ -79,11 +129,31 @@ class _HandelhaAlarmCoordinatorState
 
       final fireKey = '${item.id}_${item.scheduledAt.millisecondsSinceEpoch}';
       if (_firedKeys.contains(fireKey)) continue;
+      _firedKeys.add(fireKey);
 
       final navContext = rootNavigatorKey.currentContext;
-      if (navContext == null || !navContext.mounted) return;
-      _firedKeys.add(fireKey);
-      _showAlarmDialog(
+      final isEn = navContext != null &&
+          navContext.mounted &&
+          Directionality.of(navContext) == TextDirection.ltr;
+
+      // Prefer external Android AlarmActivity so the alarm feels native even
+      // while using the phone.
+      final launchedExternal = await NativeAlarmBridge.instance.showExternalAlarm(
+        id: item.id,
+        title: item.title,
+        taskId: item.taskId,
+        isEn: isEn,
+        isPreview: false,
+      );
+      if (launchedExternal) {
+        await ref
+            .read(alarmReminderProvider.notifier)
+            .markAlarmDismissed(item.id);
+        break;
+      }
+
+      if (!mounted || navContext == null || !navContext.mounted) return;
+      _showAlarmFallback(
         navContext,
         id: item.id,
         title: item.title,
@@ -94,11 +164,26 @@ class _HandelhaAlarmCoordinatorState
     }
   }
 
-  void _openPayload(NotificationPayload payload) {
+  Future<void> _openPayload(NotificationPayload payload) async {
     if (!mounted || HandelhaAlarmRingingDialog.isShowing) return;
     final navContext = rootNavigatorKey.currentContext;
-    if (navContext == null || !navContext.mounted) return;
-    _showAlarmDialog(
+    final isEn = navContext != null &&
+        navContext.mounted &&
+        Directionality.of(navContext) == TextDirection.ltr;
+
+    if (payload.isAlarm) {
+      final launchedExternal = await NativeAlarmBridge.instance.showExternalAlarm(
+        id: payload.id,
+        title: payload.title,
+        taskId: payload.taskId,
+        isEn: isEn,
+        isPreview: false,
+      );
+      if (launchedExternal) return;
+    }
+
+    if (!mounted || navContext == null || !navContext.mounted) return;
+    _showAlarmFallback(
       navContext,
       id: payload.id,
       title: payload.title,
@@ -107,7 +192,7 @@ class _HandelhaAlarmCoordinatorState
     );
   }
 
-  Future<void> _showAlarmDialog(
+  Future<void> _showAlarmFallback(
     BuildContext navContext, {
     required String id,
     required String title,

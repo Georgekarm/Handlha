@@ -611,7 +611,7 @@ class ProductivityReport {
       AchievementMilestone(
         id: 'first_step',
         title: isEn ? 'First Step' : 'أول خطوة',
-        subtitle: isEn ? 'Complete your first task' : 'أنهِ أول مهمة ليك',
+        subtitle: isEn ? 'Complete your first task' : 'خلّص أول مهمة ليك',
         progressLabel: isEn
             ? '${completed.clamp(0, 1)}/1'
             : '${ArabicFormatters.toArabicDigits(completed.clamp(0, 1))}/١',
@@ -632,8 +632,8 @@ class ProductivityReport {
       ),
       AchievementMilestone(
         id: 'steady_streak',
-        title: isEn ? 'Steady Rhythm' : 'نَفَس ثابت',
-        subtitle: isEn ? '3-day active streak' : '٣ أيام إنجاز متواصلة',
+        title: isEn ? 'Steady Rhythm' : 'ماشي بثبات',
+        subtitle: isEn ? '3-day active streak' : '٣ أيام ورا بعض بتنجز',
         progressLabel: isEn
             ? '${bestStreak.clamp(0, 3)}/3 days'
             : '${ArabicFormatters.toArabicDigits(bestStreak.clamp(0, 3))}/٣ أيام',
@@ -643,10 +643,10 @@ class ProductivityReport {
       ),
       AchievementMilestone(
         id: 'hard_task_crusher',
-        title: isEn ? 'Hard Task Crusher' : 'قاهر الصعاب',
+        title: isEn ? 'Hard Task Crusher' : 'قد الصعب',
         subtitle: isEn
             ? 'Finish 3 high/urgent priority tasks'
-            : 'أنهِ ٣ مهام صعبة أو عاجلة',
+            : 'خلّص ٣ مهام صعبة أو عاجلة',
         progressLabel: isEn
             ? '${completedHardTasksCount.clamp(0, 3)}/3 hard'
             : '${ArabicFormatters.toArabicDigits(completedHardTasksCount.clamp(0, 3))}/٣ صعبة',
@@ -670,7 +670,7 @@ class ProductivityReport {
       ),
       AchievementMilestone(
         id: 'ten_tasks',
-        title: isEn ? 'Ten Done' : 'عشرة منجزة',
+        title: isEn ? 'Ten Done' : 'خلّصت ١٠ مهام',
         subtitle: isEn ? 'Finish 10 tasks successfully' : 'كمّل ١٠ مهام بنجاح',
         progressLabel: isEn
             ? '${completed.clamp(0, 10)}/10'
@@ -684,7 +684,7 @@ class ProductivityReport {
         title: isEn ? 'Project Champion' : 'بطل المشروعات',
         subtitle: isEn
             ? 'Complete a full project or 5 focus hours'
-            : 'أنهِ مشروع كامل أو ٥ ساعات تركيز',
+            : 'خلّص مشروع كامل أو ٥ ساعات تركيز',
         progressLabel: completedProjectsCount >= 1
             ? (isEn ? 'Done' : 'مكتمل')
             : (isEn
@@ -702,7 +702,7 @@ class ProductivityReport {
           title: isEn ? 'Exam & Grade Hero' : 'بطل الامتحانات والتقدير',
           subtitle: isEn
               ? 'Complete an exam or record your grade'
-              : 'أنهِ امتحان أو سجّل تقديرك الدراسي',
+              : 'خلّص امتحان أو سجّل تقديرك الدراسي',
           progressLabel: completedExamsCount >= 1
               ? (isEn ? 'Unlocked' : 'مفتوح')
               : (isEn ? '0/1 exam' : '٠/١ امتحان'),

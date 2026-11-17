@@ -313,10 +313,23 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                           controller: _nameController,
                           textInputAction: TextInputAction.next,
                           validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
+                            final trimmed = v?.trim() ?? '';
+                            if (trimmed.isEmpty) {
                               return appLang.tr(
                                 'اكتب اسمك عشان نناديك بيه.',
                                 'Please enter your name.',
+                              );
+                            }
+                            if (trimmed.length < 2) {
+                              return appLang.tr(
+                                'الاسم لازم يكون حرفين على الأقل.',
+                                'Name must be at least 2 characters.',
+                              );
+                            }
+                            if (trimmed.length > 60) {
+                              return appLang.tr(
+                                'الاسم طويل جدًا (بحد أقصى ٦٠ حرفًا).',
+                                'Name is too long (max 60 characters).',
                               );
                             }
                             return null;
@@ -337,8 +350,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                                 'Email address is required.',
                               );
                             }
-                            if (!RegExp(r'^[\w.\-+]+@[\w\-]+\.\w{2,}$')
-                                .hasMatch(email)) {
+                            if (email.length > 120 ||
+                                !RegExp(r'^[\w.\-+]+@[\w\-]+\.\w{2,}$')
+                                    .hasMatch(email)) {
                               return appLang.tr(
                                 'البريد الإلكتروني غير صالح.',
                                 'Enter a valid email address.',
@@ -377,6 +391,12 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                               return appLang.tr(
                                 'استخدم ٨ أحرف أو أكثر.',
                                 'Use 8 or more characters.',
+                              );
+                            }
+                            if (pass.length > 128) {
+                              return appLang.tr(
+                                'كلمة السر طويلة جدًا.',
+                                'Password is too long.',
                               );
                             }
                             if (!RegExp(r'[A-Za-z]').hasMatch(pass) ||

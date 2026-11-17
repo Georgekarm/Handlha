@@ -208,6 +208,18 @@ class AlarmReminderStore {
     final next = _current.copyWith(taskAlertModes: nextModes);
     await save(userId, next);
   }
+
+  static Future<void> clearForUser(String userId) async {
+    _current = const AlarmReminderState();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_permKey(userId));
+      await prefs.remove(_exactPermKey(userId));
+      await prefs.remove(_modeKey(userId));
+      await prefs.remove(_itemsKey(userId));
+      await prefs.remove(_taskModesKey(userId));
+    } catch (_) {}
+  }
 }
 
 class AlarmReminderNotifier extends StateNotifier<AlarmReminderState> {

@@ -97,6 +97,13 @@ class ExamGradesStore {
     return entry;
   }
 
+  static Future<void> clearForUser(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_key(userId));
+    } catch (_) {}
+  }
+
   static ({String ar, String en, String badgeAr, String badgeEn})
       buildEncouragement({
     required String examTitle,

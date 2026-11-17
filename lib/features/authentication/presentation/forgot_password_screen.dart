@@ -22,6 +22,8 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  bool _obscurePassword = true;
   bool _submitting = false;
   String? _statusMessage;
   bool _isError = false;
@@ -29,6 +31,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   @override
   void dispose() {
     _emailController.dispose();
+    _newPasswordController.dispose();
     super.dispose();
   }
 
@@ -42,9 +45,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       _isError = false;
     });
 
-    final result = await ref
-        .read(authNotifierProvider.notifier)
-        .sendPasswordResetEmail(_emailController.text.trim());
+    final email = _emailController.text.trim();
+    final newPassword = _newPasswordController.text;
+    final notifier = ref.read(authNotifierProvider.notifier);
+
+    final result = newPassword.isNotEmpty
+        ? await notifier.resetLocalPassword(
+            email: email,
+            newPassword: newPassword,
+          )
+        : await notifier.sendPasswordResetEmail(email);
 
     if (!mounted) return;
     final appLang = ref.read(appLanguageProvider);
@@ -52,15 +62,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       _submitting = false;
       if (result is Success<void>) {
         _isError = false;
+        _newPasswordController.clear();
         _statusMessage = appLang.tr(
-          'تم إرسال تعليمات الاستعادة إلى بريدك الإلكتروني.',
-          'Recovery instructions have been sent to your email.',
+          'تم تحديث كلمة السر بنجاح! تقدر تسجّل دخولك دلوقتي بكلمة السر الجديدة.',
+          'Password updated! You can now sign in with your new password.',
         );
       } else if (result is Failure<void>) {
         _isError = true;
-        _statusMessage = appLang.isEnglish
-            ? 'Your account and tasks are stored only on your device, so we can\'t send a recovery link by email. You can continue with Google or Facebook instead.'
-            : result.failure.message;
+        _statusMessage = localizeAuthError(ref, result.failure);
       }
     });
   }
@@ -108,8 +117,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       children: [
                         Text(
                           appLang.tr(
-                            'أدخل بريدك الإلكتروني المسجّل على الجهاز.',
-                            'Enter the email registered on this device.',
+                            'أدخل بريدك الإلكتروني المسجّل على الجهاز وكلمة السر الجديدة لتحديثها فورًا.',
+                            'Enter the email registered on this device and a new password to update it immediately.',
                           ),
                           style: TextStyle(
                             fontSize: 13.5,
@@ -123,6 +132,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                           hint: 'name@example.com',
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
                           validator: (v) {
                             final email = v?.trim() ?? '';
                             if (email.isEmpty) {
@@ -131,11 +141,63 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                                 'Email address is required.',
                               );
                             }
-                            if (!RegExp(r'^[\w.\-+]+@[\w\-]+\.\w{2,}$')
-                                .hasMatch(email)) {
+                            if (email.length > 120 ||
+                                !RegExp(r'^[\w.\-+]+@[\w\-]+\.\w{2,}$')
+                                    .hasMatch(email)) {
                               return appLang.tr(
                                 'البريد الإلكتروني غير صالح.',
                                 'Enter a valid email address.',
+                              );
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        AuthLabeledField(
+                          label: appLang.tr(
+                            'كلمة السر الجديدة',
+                            'New Password',
+                          ),
+                          hint: '••••••••••',
+                          controller: _newPasswordController,
+                          obscureText: _obscurePassword,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _submit(),
+                          suffixIcon: InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                size: 20,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                          ),
+                          validator: (v) {
+                            final pass = v ?? '';
+                            if (pass.isEmpty) {
+                              return appLang.tr(
+                                'اكتب كلمة السر الجديدة.',
+                                'Please enter a new password.',
+                              );
+                            }
+                            if (pass.length < 8) {
+                              return appLang.tr(
+                                'استخدم ٨ أحرف أو أكثر.',
+                                'Use 8 or more characters.',
+                              );
+                            }
+                            if (!RegExp(r'[A-Za-z]').hasMatch(pass) ||
+                                !RegExp(r'\d').hasMatch(pass)) {
+                              return appLang.tr(
+                                'لازم تحتوي على حروف وأرقام.',
+                                'Must include both letters and numbers.',
                               );
                             }
                             return null;
@@ -182,8 +244,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                                   )
                                 : Text(
                                     appLang.tr(
-                                      'إرسال طلب الاستعادة',
-                                      'Send Recovery Request',
+                                      'تحديث كلمة السر',
+                                      'Update Password',
                                     ),
                                     style: TextStyle(
                                       fontSize: 15.5,

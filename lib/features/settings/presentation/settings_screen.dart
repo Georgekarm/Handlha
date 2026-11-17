@@ -637,6 +637,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  await _confirmDeleteAccount(user);
+                },
+                icon: Icon(Icons.person_remove_outlined, color: c.danger, size: 18),
+                label: Text(
+                  appLang.tr(
+                    'حذف الحساب وكل بياناته نهائيًا',
+                    'Delete Account & All Data Permanently',
+                  ),
+                  style: TextStyle(
+                    color: c.danger,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -649,12 +667,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await HandelhaDialog.confirm(
       context,
       icon: Icons.person_remove_outlined,
-      title: appLang.tr('حذف الحساب؟', 'Delete Account?'),
+      title: appLang.tr('حذف الحساب نهائيًا؟', 'Delete Account Permanently?'),
       message: appLang.tr(
-        'سيتم مسح جميع المهام والمشروعات والجلسات المرتبطة بهذا الحساب على الجهاز.',
-        'All tasks, projects, and sessions linked to this account on this device will be erased.',
+        'سيتم مسح جميع المهام والمشروعات والجلسات والمحادثات والتنبيهات المرتبطة بهذا الحساب نهائيًا من الجهاز ولا يمكن التراجع عن هذا الإجراء.',
+        'All tasks, projects, focus sessions, conversations, and reminders linked to this account will be permanently erased from this device. This action cannot be undone.',
       ),
-      confirmLabel: appLang.tr('حذف', 'Delete'),
+      confirmLabel: appLang.tr('حذف نهائي', 'Delete Forever'),
       cancelLabel: appLang.tr('إلغاء', 'Cancel'),
       isDanger: true,
     );

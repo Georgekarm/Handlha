@@ -25,54 +25,35 @@ object NativeAlarmScheduler {
     fun canScheduleExactAlarms(context: Context): Boolean {
         val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return false
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            am.canScheduleExactAlarms()
+            try {
+                am.canScheduleExactAlarms()
+            } catch (_: Exception) {
+                false
+            }
         } else {
             true
         }
     }
 
-    fun canDrawOverlays(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(context)
-        } else {
-            true
-        }
+    fun canDrawOverlays(@Suppress("UNUSED_PARAMETER") context: Context): Boolean {
+        // Overlay permission (SYSTEM_ALERT_WINDOW) is intentionally omitted for Google Play compliance.
+        return true
     }
 
     fun canUseFullScreenIntent(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            return nm?.canUseFullScreenIntent() ?: true
+            return nm?.canUseFullScreenIntent() ?: false
         }
         return true
     }
 
-    fun openOverlayPermissionSettings(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-        try {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:${context.packageName}"),
-            ).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-        } catch (_: Exception) {
-        }
+    fun openOverlayPermissionSettings(@Suppress("UNUSED_PARAMETER") context: Context) {
+        // No-op: SYSTEM_ALERT_WINDOW is removed to comply with Google Play policy.
     }
 
-    fun openExactAlarmSettings(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        try {
-            val intent = Intent(
-                Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                Uri.parse("package:${context.packageName}"),
-            ).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-        } catch (_: Exception) {
-        }
+    fun openExactAlarmSettings(@Suppress("UNUSED_PARAMETER") context: Context) {
+        // No-op: SCHEDULE_EXACT_ALARM is removed to comply with Google Play policy.
     }
 
     fun scheduleAlarm(

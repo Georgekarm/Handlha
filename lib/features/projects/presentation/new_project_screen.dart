@@ -515,11 +515,25 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                           ),
                         ),
                       ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? (isEn
+                      validator: (v) {
+                        final trimmed = v?.trim() ?? '';
+                        if (trimmed.isEmpty) {
+                          return isEn
                               ? 'Project name is required'
-                              : 'اكتب اسم المشروع')
-                          : null,
+                              : 'اكتب اسم المشروع';
+                        }
+                        if (trimmed.length < 2) {
+                          return isEn
+                              ? 'Project name must be at least 2 characters'
+                              : 'اسم المشروع لا يقل عن حرفين';
+                        }
+                        if (trimmed.length > 100) {
+                          return isEn
+                              ? 'Project name is too long (max 100 characters)'
+                              : 'اسم المشروع طويل جدًا (الحد الأقصى ١٠٠ حرف)';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 14),
 
@@ -563,6 +577,15 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                           ),
                         ),
                       ),
+                      validator: (v) {
+                        final trimmed = v?.trim() ?? '';
+                        if (trimmed.length > 500) {
+                          return isEn
+                              ? 'Goal description is too long (max 500 characters)'
+                              : 'وصف الهدف طويل جدًا (الحد الأقصى ٥٠٠ حرف)';
+                        }
+                        return null;
+                      },
                     ),
 
                     if (_showStarterStep) ...[
@@ -576,7 +599,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                         ),
                       ),
                       const SizedBox(height: 7),
-                      TextField(
+                      TextFormField(
                         controller: _starterStepController,
                         style: TextStyle(fontSize: 14, color: c.textPrimary),
                         decoration: InputDecoration(
@@ -586,6 +609,15 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                           filled: true,
                           fillColor: c.surface,
                         ),
+                        validator: (v) {
+                          final trimmed = v?.trim() ?? '';
+                          if (trimmed.length > 120) {
+                            return isEn
+                                ? 'First step is too long (max 120 characters)'
+                                : 'الخطوة الأولى طويلة جدًا (الحد الأقصى ١٢٠ حرف)';
+                          }
+                          return null;
+                        },
                       ),
                     ],
                     const SizedBox(height: 16),

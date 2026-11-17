@@ -11,7 +11,6 @@ import '../../../shared/widgets/handelha_date_time_picker.dart';
 import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../notifications/alarm_reminder_store.dart';
-import '../../notifications/native_alarm_bridge.dart';
 import '../../notifications/presentation/notification_permission_sheet.dart';
 import '../../projects/domain/project.dart';
 import '../../projects/presentation/project_providers.dart';
@@ -51,7 +50,6 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
   DateTime? _scheduledAt;
   String? _selectedProjectId;
   String _alertMode = 'notification';
-  bool _overlayGranted = true;
   bool _saving = false;
   bool _showSubtaskInput = false;
   final List<String> _subtasks = [];
@@ -98,21 +96,13 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
     WidgetsBinding.instance.addObserver(this);
     _titleController.addListener(_onTextEdited);
     _notesController.addListener(_onTextEdited);
-    _refreshAlertCapabilities();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.read(alarmReminderProvider.notifier).refreshPermissions();
-      _refreshAlertCapabilities();
     }
-  }
-
-  Future<void> _refreshAlertCapabilities() async {
-    final caps = await NativeAlarmBridge.instance.checkCapabilities();
-    if (!mounted) return;
-    setState(() => _overlayGranted = caps.canDrawOverlays);
   }
 
   Future<void> _ensureAlarmPermissionsFromTask() async {
@@ -121,7 +111,6 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
       ref,
       includeExactAlarm: true,
     );
-    await _refreshAlertCapabilities();
   }
 
   void _onTextEdited() {
@@ -529,7 +518,9 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
         content: TextField(
           controller: ctrl,
           autofocus: true,
+          maxLength: 300,
           decoration: InputDecoration(
+            counterText: '',
             hintText: isEn ? 'Link, file name, or reference...' : 'رابط أو اسم ملف مرجعي...',
           ),
         ),
@@ -551,15 +542,26 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
     );
     ctrl.dispose();
     if (saved != null && mounted) {
-      setState(() => _attachmentNote = saved.isEmpty ? null : saved);
+      final cleanSaved =
+          saved.length > 300 ? saved.substring(0, 300).trim() : saved;
+      setState(() => _attachmentNote = cleanSaved.isEmpty ? null : cleanSaved);
     }
   }
 
   void _applyAssistantDraft() {
     final raw = _assistantController.text.trim();
-    if (raw.isEmpty) return;
+    if (raw.isEmpty) {
+      final isEn = Directionality.of(context) == TextDirection.ltr;
+      HandelhaFeedback.showWarning(
+        context,
+        isEn
+            ? 'Write a quick sentence about your task first.'
+            : 'اكتب جملة سريعة عن المهمة الأول.',
+      );
+      return;
+    }
 
-    var cleaned = raw;
+    var cleaned = raw.length > 120 ? raw.substring(0, 120).trim() : raw;
     var nextPriority = _priority;
     var nextMinutes = _estimatedMinutes;
     DateTime? nextSchedule = _scheduledAt;
@@ -963,11 +965,20 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                           ),
                         ),
                       ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? (isEn
+                      validator: (v) {
+                        final trimmed = v?.trim() ?? '';
+                        if (trimmed.isEmpty) {
+                          return isEn
                               ? 'Task title is required'
-                              : 'اكتب عنوان المهمة')
-                          : null,
+                              : 'اكتب عنوان المهمة';
+                        }
+                        if (trimmed.length > 120) {
+                          return isEn
+                              ? 'Task title is too long (max 120 characters)'
+                              : 'عنوان المهمة طويل جدًا (الحد الأقصى ١٢٠ حرف)';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 14),
 
@@ -1008,6 +1019,15 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                           ),
                         ),
                       ),
+                      validator: (v) {
+                        final trimmed = v?.trim() ?? '';
+                        if (trimmed.length > 1000) {
+                          return isEn
+                              ? 'Note is too long (max 1000 characters)'
+                              : 'الوصف طويل جدًا (الحد الأقصى ١٠٠٠ حرف)';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 18),
 
@@ -1146,10 +1166,8 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                               const SizedBox(height: 10),
                               (() {
                                 final missingCore =
-                                    !alarmState.permissionGranted ||
-                                        !alarmState.exactAlarmGranted;
-                                final missingOverlay = !_overlayGranted;
-                                if (!missingCore && !missingOverlay) {
+                                    !alarmState.permissionGranted;
+                                if (!missingCore) {
                                   return Row(
                                     children: [
                                       Icon(
@@ -1161,8 +1179,8 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                                       Expanded(
                                         child: Text(
                                           isEn
-                                              ? 'External alarm ready — displays over other apps on time'
-                                              : 'منبه خارجي مفعّل — يظهر فوق التطبيقات في ميعاده',
+                                              ? 'Alarm reminder ready — alerts you with sound & vibration on time'
+                                              : 'منبه المواعيد مفعّل — ينبّهك بصوت واهتزاز في ميعاده',
                                           style: TextStyle(
                                             fontSize: 11.5,
                                             fontWeight: FontWeight.w600,
@@ -1178,14 +1196,7 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                                   borderRadius: BorderRadius.circular(12),
                                   child: InkWell(
                                     borderRadius: BorderRadius.circular(12),
-                                    onTap: () async {
-                                      if (missingCore) {
-                                        await _ensureAlarmPermissionsFromTask();
-                                      } else {
-                                        await NativeAlarmBridge.instance
-                                            .requestOverlayPermission();
-                                      }
-                                    },
+                                    onTap: _ensureAlarmPermissionsFromTask,
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 10,
@@ -1201,23 +1212,16 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                                       child: Row(
                                         children: [
                                           Icon(
-                                            missingOverlay
-                                                ? Icons.layers_outlined
-                                                : Icons
-                                                    .notifications_active_outlined,
+                                            Icons.notifications_active_outlined,
                                             size: 17,
                                             color: c.warning,
                                           ),
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
-                                              missingOverlay
-                                                  ? (isEn
-                                                      ? 'Allow Display Over Apps for external alarm'
-                                                      : 'السماح بالظهور فوق التطبيقات للمنبه الخارجي')
-                                                  : (isEn
-                                                      ? 'Allow notification & exact alarm permission'
-                                                      : 'تفعيل إذن الإشعارات والمنبه الدقيق'),
+                                              isEn
+                                                  ? 'Allow notification & alarm permission'
+                                                  : 'تفعيل إذن الإشعارات والمنبه',
                                               style: TextStyle(
                                                 fontSize: 11.5,
                                                 fontWeight: FontWeight.w700,
@@ -1343,7 +1347,9 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                                   Expanded(
                                     child: TextField(
                                       controller: _subtaskController,
+                                      maxLength: 120,
                                       decoration: InputDecoration(
+                                        counterText: '',
                                         hintText: isEn
                                             ? 'Add substep...'
                                             : 'أضف خطوة فرعية...',
@@ -1352,6 +1358,10 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                                       onSubmitted: (val) {
                                         final trimmed = val.trim();
                                         if (trimmed.isEmpty) return;
+                                        if (_subtasks.contains(trimmed)) {
+                                          _subtaskController.clear();
+                                          return;
+                                        }
                                         setState(() {
                                           _subtasks.add(trimmed);
                                           _subtaskController.clear();
@@ -1365,6 +1375,10 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                                       final trimmed =
                                           _subtaskController.text.trim();
                                       if (trimmed.isEmpty) return;
+                                      if (_subtasks.contains(trimmed)) {
+                                        _subtaskController.clear();
+                                        return;
+                                      }
                                       setState(() {
                                         _subtasks.add(trimmed);
                                         _subtaskController.clear();

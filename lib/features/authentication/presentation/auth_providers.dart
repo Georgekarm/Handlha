@@ -1,14 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/mode/student_mode_controller.dart';
 import '../../../core/database/local_focus_session_database.dart';
 import '../../../core/database/local_project_database.dart';
 import '../../../core/database/local_task_database.dart';
 import '../../../core/database/shared_preferences_conversation_store.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/result/result.dart';
+import '../../assistant/data/user_energy_preferences.dart';
+import '../../assistant/presentation/token_balance_provider.dart';
+import '../../notifications/alarm_reminder_store.dart';
 import '../../notifications/local_notification_service.dart';
 import '../../notifications/notification_inbox_store.dart';
 import '../../notifications/notification_preferences.dart';
+import '../../projects/data/exam_grades_store.dart';
 import '../../subscriptions/data/local_subscription_store.dart';
 import '../../subscriptions/domain/subscription_models.dart';
 import '../data/auth_repository.dart';
@@ -120,6 +125,16 @@ class AuthNotifier extends AsyncNotifier<AppUser?> {
     return _repo.sendPasswordResetEmail(email);
   }
 
+  Future<Result<void>> resetLocalPassword({
+    required String email,
+    required String newPassword,
+  }) async {
+    return _repo.resetLocalPassword(
+      email: email,
+      newPassword: newPassword,
+    );
+  }
+
   Future<void> updateAssistantTone(AssistantTone tone) async {
     await _repo.updateAssistantTone(tone);
     final current = state.value;
@@ -165,8 +180,13 @@ class AuthNotifier extends AsyncNotifier<AppUser?> {
       await SharedPreferencesConversationStore.clearForUser(userId);
       await LocalNotificationPreferences.clear(userId);
       await NotificationInboxStore.clearForUser(userId);
+      await AlarmReminderStore.clearForUser(userId);
+      await UserEnergyPreferencesStore.clearForUser(userId);
+      await ExamGradesStore.clearForUser(userId);
+      await TokenBalanceNotifier.clearForUser(userId);
       await LocalSubscriptionStore.clearForUser(userId);
     }
+    await StudentModeController.clearSaved();
     await LocalNotificationService.instance.cancelAll();
     await _repo.deleteAccount();
     state = const AsyncData(null);

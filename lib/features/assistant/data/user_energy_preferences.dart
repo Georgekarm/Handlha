@@ -142,6 +142,14 @@ class UserEnergyPreferencesStore {
       await prefs.setString(_key(userId), jsonEncode(value.toJson()));
     } catch (_) {}
   }
+
+  static Future<void> clearForUser(String userId) async {
+    _current = const UserEnergyPreferences();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_key(userId));
+    } catch (_) {}
+  }
 }
 
 class UserEnergyPreferencesNotifier

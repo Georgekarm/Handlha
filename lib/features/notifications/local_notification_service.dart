@@ -233,7 +233,7 @@ class LocalNotificationService {
     );
   }
 
-  /// Prompts the user at OS level for notification and (optionally) exact alarm permission.
+  /// Prompts the user at OS level for notification permission.
   Future<NotificationPermissionStatus> requestPermissions({
     bool includeExactAlarm = true,
   }) async {
@@ -245,14 +245,6 @@ class LocalNotificationService {
         try {
           await androidPlugin.requestNotificationsPermission();
         } catch (_) {}
-        if (includeExactAlarm) {
-          final canExact = await _safeCanScheduleExact(androidPlugin);
-          if (!canExact) {
-            try {
-              await androidPlugin.requestExactAlarmsPermission();
-            } catch (_) {}
-          }
-        }
         final enabled = await _safeAreNotificationsEnabled(androidPlugin);
         final exact = await _safeCanScheduleExact(androidPlugin);
         return NotificationPermissionStatus(

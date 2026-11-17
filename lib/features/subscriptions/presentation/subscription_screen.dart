@@ -8,6 +8,7 @@ import '../../../app/theme/app_theme_extension.dart';
 import '../../../shared/widgets/handelha_ambient_background.dart';
 import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
+import '../../../shared/widgets/handelha_privacy_policy_sheet.dart';
 import '../domain/subscription_models.dart';
 import 'subscription_providers.dart';
 
@@ -437,6 +438,86 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                   ),
                   const SizedBox(height: 14),
                 ],
+
+                // Google Play Billing Disclosure & Terms
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: c.border.withValues(alpha: 0.7)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.verified_user_outlined,
+                            size: 16,
+                            color: c.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              isEn
+                                  ? 'Google Play Billing & Auto-Renewal Terms'
+                                  : 'شروط الدفع والتجديد التلقائي عبر Google Play',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        isEn
+                            ? 'Subscriptions are billed securely via your Google Play account and renew automatically at the end of each billing cycle (monthly or yearly) unless canceled at least 24 hours before renewal in Google Play > Subscriptions.'
+                            : 'تتم معالجة الاشتراكات بأمان عبر حسابك في Google Play، وتتجدد تلقائيًا في نهاية كل دورة فوترة (شهرية أو سنوية) ما لم تقم بإلغاء الاشتراك قبل ٢٤ ساعة على الأقل من موعد التجديد من خلال متجر Google Play > الاشتراكات.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.5,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              HandelhaPrivacyPolicySheet.show(context),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: Icon(
+                            Icons.policy_outlined,
+                            size: 15,
+                            color: c.primary,
+                          ),
+                          label: Text(
+                            isEn
+                                ? 'Privacy Policy & Terms of Use'
+                                : 'سياسة الخصوصية وشروط الاستخدام',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: c.primary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
 
                 // Footer actions (Restore Purchases & Store Refresh)
                 Row(

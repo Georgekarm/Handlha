@@ -57,4 +57,12 @@ class StudentModeController extends Notifier<bool> {
   }
 
   Future<void> toggle() => setStudentMode(!state);
+
+  static Future<void> clearSaved() async {
+    StudentModeStore.setSync(false);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_key);
+    } catch (_) {}
+  }
 }

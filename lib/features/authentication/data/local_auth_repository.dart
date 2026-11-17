@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../app/mode/student_mode_controller.dart';
 import '../../../core/database/local_focus_session_database.dart';
 import '../../../core/database/local_project_database.dart';
 import '../../../core/database/local_task_database.dart';
@@ -11,9 +12,13 @@ import '../../../core/database/shared_preferences_conversation_store.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/result/result.dart';
 import '../../../core/secure_storage/secure_storage_service.dart';
+import '../../assistant/data/user_energy_preferences.dart';
+import '../../assistant/presentation/token_balance_provider.dart';
+import '../../notifications/alarm_reminder_store.dart';
 import '../../notifications/local_notification_service.dart';
 import '../../notifications/notification_inbox_store.dart';
 import '../../notifications/notification_preferences.dart';
+import '../../projects/data/exam_grades_store.dart';
 import '../../subscriptions/data/local_subscription_store.dart';
 import '../../subscriptions/domain/subscription_models.dart';
 import '../domain/app_user.dart';
@@ -262,6 +267,37 @@ final class LocalAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<Result<void>> resetLocalPassword({
+    required String email,
+    required String newPassword,
+  }) async {
+    final normalized = email.trim().toLowerCase();
+    final emailErr = _validateEmail(normalized);
+    if (emailErr != null) return Failure(ValidationFailure(emailErr));
+
+    final passErr = _validatePassword(newPassword);
+    if (passErr != null) return const Failure(WeakPasswordFailure());
+
+    final savedEmail = await SecureStorageService.instance.read(
+      SecureStorageKeys.localEmail,
+    );
+    if (savedEmail == null || savedEmail.trim().toLowerCase() != normalized) {
+      return const Failure(UserNotFoundFailure());
+    }
+
+    final salt = _uuid.v4();
+    await SecureStorageService.instance.write(
+      SecureStorageKeys.localPasswordSalt,
+      salt,
+    );
+    await SecureStorageService.instance.write(
+      SecureStorageKeys.localPasswordHash,
+      _hash(newPassword, salt),
+    );
+    return const Success(null);
+  }
+
+  @override
   Future<void> updateAssistantTone(AssistantTone tone) async {
     await SecureStorageService.instance.write(
       SecureStorageKeys.assistantTone,
@@ -331,8 +367,13 @@ final class LocalAuthRepository implements AuthRepository {
       await SharedPreferencesConversationStore.clearForUser(userId);
       await LocalNotificationPreferences.clear(userId);
       await NotificationInboxStore.clearForUser(userId);
+      await AlarmReminderStore.clearForUser(userId);
+      await UserEnergyPreferencesStore.clearForUser(userId);
+      await ExamGradesStore.clearForUser(userId);
+      await TokenBalanceNotifier.clearForUser(userId);
       await LocalSubscriptionStore.clearForUser(userId);
     }
+    await StudentModeController.clearSaved();
     await LocalNotificationService.instance.cancelAll();
 
     if (provider == AuthProviderType.email) {

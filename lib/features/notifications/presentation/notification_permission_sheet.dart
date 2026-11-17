@@ -17,14 +17,9 @@ Future<bool> ensureHandelhaNotificationPermission(
   final notifier = ref.read(alarmReminderProvider.notifier);
   await notifier.refreshPermissions();
   final state = ref.read(alarmReminderProvider);
-  final caps = includeExactAlarm
-      ? await NativeAlarmBridge.instance.checkCapabilities()
-      : const NativeAlarmCapabilities();
   final needsNotification = !state.permissionGranted;
-  final needsExactAlarm = includeExactAlarm && !state.exactAlarmGranted;
-  final needsOverlay = includeExactAlarm && !caps.canDrawOverlays;
 
-  if (!needsNotification && !needsExactAlarm && !needsOverlay) {
+  if (!needsNotification) {
     return true;
   }
   if (!context.mounted) return false;
@@ -37,8 +32,8 @@ Future<bool> ensureHandelhaNotificationPermission(
     builder: (sheetContext) => _HandelhaPermissionSheet(
       includeExactAlarm: includeExactAlarm,
       needsNotification: needsNotification,
-      needsExactAlarm: needsExactAlarm,
-      needsOverlay: needsOverlay,
+      needsExactAlarm: includeExactAlarm && !state.exactAlarmGranted,
+      needsOverlay: false,
       reasonAr: reasonAr,
       reasonEn: reasonEn,
     ),
@@ -88,13 +83,13 @@ class _HandelhaPermissionSheetState
 
     final subtitle = overlayOnly
         ? (isEn
-            ? 'Allow Handelha to display over other apps so your ringing alarm pops up on top, just like a built-in external alarm.'
-            : 'فعّل إذن الظهور فوق التطبيقات عشان لما تختار منبه يرن، يفتحلك الشاشة الكاملة فوق أي تطبيق زي أي منبه خارجي.')
+            ? 'Allow notifications so your ringing alarm alerts you right on time.'
+            : 'فعّل إذن الإشعارات عشان لما تختار منبه يرن، يوصلك التنبيه في ميعاده.')
         : isEn
             ? (widget.reasonEn ??
-                'Allow notifications and exact alarms so Handelha can alert you right on time for study sessions and exams.')
+                'Allow notifications so Handelha can alert you right on time for study sessions and exams.')
             : (widget.reasonAr ??
-                'اسمح لهندلها بالإشعارات والمنبه والظهور فوق التطبيقات عشان يرن في ميعاده بالضبط زي أي منبه خارجي.');
+                'اسمح لهندلها بالإشعارات والمنبه عشان يرن في ميعاده بالضبط وينبّهك لمواعيدك المهمة.');
 
     return SafeArea(
       child: Padding(
@@ -242,16 +237,8 @@ class _HandelhaPermissionSheetState
                               ok = await ref
                                   .read(alarmReminderProvider.notifier)
                                   .requestPermission(
-                                    includeExactAlarm: widget.includeExactAlarm,
+                                    includeExactAlarm: false,
                                   );
-                            }
-                            if (widget.includeExactAlarm) {
-                              final caps = await NativeAlarmBridge.instance
-                                  .checkCapabilities();
-                              if (!caps.canDrawOverlays) {
-                                await NativeAlarmBridge.instance
-                                    .requestOverlayPermission();
-                              }
                             }
                             if (!context.mounted) return;
                             Navigator.of(context, rootNavigator: true).pop(ok);

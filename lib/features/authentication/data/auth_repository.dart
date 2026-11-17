@@ -36,6 +36,12 @@ abstract interface class AuthRepository {
   /// Send password reset email.
   Future<Result<void>> sendPasswordResetEmail(String email);
 
+  /// Reset the on-device password when the entered email matches the registered local account.
+  Future<Result<void>> resetLocalPassword({
+    required String email,
+    required String newPassword,
+  });
+
   /// Update preferred assistant tone.
   Future<void> updateAssistantTone(AssistantTone tone);
 

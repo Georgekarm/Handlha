@@ -166,6 +166,15 @@ class TokenBalanceNotifier extends StateNotifier<TokenBalanceState> {
       } catch (_) {}
     }
   }
+
+  static Future<void> clearForUser(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('handelha_tokens_balance_$userId');
+      await prefs.remove('handelha_tokens_date_$userId');
+      await prefs.remove('handelha_tokens_ads_$userId');
+    } catch (_) {}
+  }
 }
 
 final tokenBalanceProvider =

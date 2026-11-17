@@ -348,8 +348,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 'Email address is required.',
                               );
                             }
-                            if (!RegExp(r'^[\w.\-+]+@[\w\-]+\.\w{2,}$')
-                                .hasMatch(email)) {
+                            if (email.length > 120 ||
+                                !RegExp(r'^[\w.\-+]+@[\w\-]+\.\w{2,}$')
+                                    .hasMatch(email)) {
                               return appLang.tr(
                                 'البريد الإلكتروني غير صالح.',
                                 'Enter a valid email address.',
@@ -387,6 +388,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               return appLang.tr(
                                 'كلمة السر مطلوبة.',
                                 'Password is required.',
+                              );
+                            }
+                            if (v.length > 128) {
+                              return appLang.tr(
+                                'كلمة السر طويلة جدًا.',
+                                'Password is too long.',
                               );
                             }
                             return null;

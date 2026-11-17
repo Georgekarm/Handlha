@@ -27,53 +27,65 @@ class HandelhaPrivacyPolicySheet extends StatelessWidget {
         ? const [
             (
               icon: Icons.lock_outline_rounded,
-              title: 'Your data stays private',
+              title: 'Your data stays private on your device',
               body:
-                  'Your tasks, projects, and notes are stored securely on your device and are never sold or shared.',
+                  'Your tasks, projects, study records, and notes are stored securely on your device and are never sold or shared with third parties.',
             ),
             (
               icon: Icons.mic_none_rounded,
               title: 'Microphone only when you tap',
               body:
-                  'Voice access is used solely when you press the mic button to speak with the assistant.',
+                  'Voice access (RECORD_AUDIO) is used strictly when you press the mic button to speak with the assistant. No background audio is ever recorded or stored.',
             ),
             (
               icon: Icons.notifications_none_rounded,
               title: 'Smart reminders on your terms',
               body:
-                  'Notifications keep you on track, and you can adjust quiet hours or turn them off anytime.',
+                  'Notifications and alarms keep you on track for tasks and exams, and you can adjust quiet hours or turn them off anytime in Settings.',
+            ),
+            (
+              icon: Icons.workspace_premium_outlined,
+              title: 'Subscriptions & Google Play Billing',
+              body:
+                  'Student and Pro plans renew automatically unless cancelled at least 24 hours before the end of the billing period via Google Play Subscriptions. You can restore purchases anytime.',
             ),
             (
               icon: Icons.tune_rounded,
-              title: 'Full control anytime',
+              title: 'Full control & permanent account deletion',
               body:
-                  'Export your backup, clear chat history, or delete your account whenever you wish from Settings.',
+                  'You can export a JSON backup, clear assistant chat history, or permanently delete your account and all associated data directly from Settings at any time.',
             ),
           ]
         : const [
             (
               icon: Icons.lock_outline_rounded,
-              title: 'بياناتك محفوظة بأمان',
+              title: 'بياناتك محفوظة بأمان وخصوصية',
               body:
-                  'مهامك ومشاريعك ومحادثاتك بتتحفظ على جهازك بخصوصية تامة ومش بتتشارك مع أي طرف خارجي.',
+                  'مهامك ومشاريعك وسجل دراستك ومحادثاتك بتتحفظ بأمان على جهازك بخصوصية تامة ومش بتتشارك أو تتباع لأي طرف خارجي.',
             ),
             (
               icon: Icons.mic_none_rounded,
               title: 'المايك عند ضغطك بس',
               body:
-                  'بنستخدم الميكروفون وقت ما تضغط على زر التحدث الصوتي مع المساعد ومش بنحتفظ بأي تسجيلات.',
+                  'بنستخدم إذن الميكروفون وقت ما تضغط على زر التحدث الصوتي مع المساعد فقط، ومش بنسجل في الخلفية أو نحتفظ بأي تسجيلات صوتية.',
             ),
             (
               icon: Icons.notifications_none_rounded,
-              title: 'تنبيهات على راحتك',
+              title: 'تنبيهات ومنبهات على راحتك',
               body:
-                  'تذكيرات المهام وجلسات التركيز تحت تحكمك الكامل، وتقدر تضبط ساعات الهدوء أو توقفها في أي وقت.',
+                  'تذكيرات المهام وجلسات التركيز والامتحانات تحت تحكمك الكامل، وتقدر تضبط ساعات الهدوء أو توقفها في أي وقت من الإعدادات.',
+            ),
+            (
+              icon: Icons.workspace_premium_outlined,
+              title: 'الاشتراكات والدفع عبر Google Play',
+              body:
+                  'باقات الطلاب و Pro بتتجدد تلقائيًا حسب الخطة المختارة (شهريًا أو سنويًا) ويمكنك إلغاء الاشتراك أو إدارته في أي وقت من إعدادات اشتراكات Google Play أو استعادة مشترياتك السابقة.',
             ),
             (
               icon: Icons.tune_rounded,
-              title: 'تحكم كامل في حسابك',
+              title: 'تحكم كامل وحذف فوري للحساب والبيانات',
               body:
-                  'تقدر تحفظ نسخة من بياناتك أو تمسح سجل المحادثات أو تحذف الحساب بالكامل من الإعدادات.',
+                  'تقدر تصدّر نسخة احتياطية من بياناتك (JSON)، أو تمسح سجل المحادثات، أو تحذف حسابك وجميع بياناته نهائيًا وبشكل فوري من الإعدادات.',
             ),
           ];
 

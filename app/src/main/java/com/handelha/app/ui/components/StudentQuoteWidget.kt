@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -50,11 +51,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.handelha.app.R
 import com.handelha.app.domain.StudentMotivationState
 import com.handelha.app.domain.StudentQuickBoost
 import com.handelha.app.domain.StudentQuotesCatalog
@@ -120,11 +124,11 @@ fun StudentQuoteWidgetCard(
                         .background(c.primarySoft),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.FormatQuote,
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
                         contentDescription = null,
-                        tint = c.primary,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(20.dp),
+                        contentScale = ContentScale.Fit,
                     )
                 }
                 Spacer(Modifier.width(8.dp))
@@ -250,7 +254,7 @@ fun StudentQuoteWidgetCard(
                             modifier = Modifier.testTag("student_widget_open_hub_btn"),
                         ) {
                             Text(
-                                text = if (isEnglish) "Quotes Library" else "مكتبة الحِكم",
+                                text = if (isEnglish) "Your Desk" else "مكتبك",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = c.primary,
@@ -372,6 +376,7 @@ fun StudentQuickBoostSheet(
     initialBoost: StudentQuickBoost? = null,
     onDismiss: () -> Unit,
     onStartQuickFocus: (minutes: Int, title: String) -> Unit,
+    onCreateTaskAndStartFocus: ((minutes: Int, title: String, microStep: String) -> Unit)? = null,
 ) {
     val c = HandelhaTheme.colors
     var selectedBoost by remember(initialBoost) {
@@ -387,7 +392,12 @@ fun StudentQuickBoostSheet(
                     .background(c.primarySoft),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Bolt, null, tint = c.primary, modifier = Modifier.size(20.dp))
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(26.dp),
+                    contentScale = ContentScale.Fit,
+                )
             }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -486,14 +496,23 @@ fun StudentQuickBoostSheet(
 
         Button(
             onClick = {
-                onStartQuickFocus(
-                    selectedBoost.suggestedFocusMinutes,
-                    selectedBoost.feelingTitle(isEnglish),
-                )
+                if (onCreateTaskAndStartFocus != null) {
+                    onCreateTaskAndStartFocus(
+                        selectedBoost.suggestedFocusMinutes,
+                        selectedBoost.microStep(isEnglish),
+                        selectedBoost.responseBody(isEnglish),
+                    )
+                } else {
+                    onStartQuickFocus(
+                        selectedBoost.suggestedFocusMinutes,
+                        selectedBoost.feelingTitle(isEnglish),
+                    )
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp),
+                .height(50.dp)
+                .testTag("quick_boost_apply_and_focus_btn"),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = c.ctaBackground,
@@ -504,9 +523,9 @@ fun StudentQuickBoostSheet(
             Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(6.dp))
             Text(
-                text = if (isEnglish) "Start ${selectedBoost.suggestedFocusMinutes}m Calm Focus Now"
-                else "ابدأ ${ArabicFormatters.toArabicDigits(selectedBoost.suggestedFocusMinutes)} دقيقة تركيز هادي دلوقتي",
-                fontSize = 14.5.sp,
+                text = if (isEnglish) "Add Step to My Tasks + Start ${selectedBoost.suggestedFocusMinutes}m Focus"
+                else "ضِف الخطوة في مهامي + ابدأ ${ArabicFormatters.toArabicDigits(selectedBoost.suggestedFocusMinutes)} د تركيز",
+                fontSize = 13.5.sp,
                 fontWeight = FontWeight.ExtraBold,
             )
         }

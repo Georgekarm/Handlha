@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:inset="16%">
-    <bitmap
-        android:gravity="center"
-        android:src="@drawable/handelha_icon_fg_1794752138135" />
-</inset>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:drawable="@drawable/logo"
+        android:gravity="center" />
+</layer-list>

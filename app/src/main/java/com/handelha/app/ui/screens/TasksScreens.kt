@@ -87,6 +87,8 @@ import com.handelha.app.domain.ProjectItem
 import com.handelha.app.domain.TaskItem
 import com.handelha.app.domain.TaskPriority
 import com.handelha.app.domain.TaskRecurrence
+import com.handelha.app.domain.TaskSubtaskItem
+import com.handelha.app.domain.TaskSubtasksCodec
 import com.handelha.app.ui.components.FeatureEmptyState
 import com.handelha.app.ui.components.HandelhaBottomSheetFrame
 import com.handelha.app.ui.components.HandelhaConfirmDialog
@@ -111,6 +113,7 @@ fun TasksScreen(
     onOpenAssistant: () -> Unit,
     onStartFocus: (taskId: String, title: String) -> Unit,
     onToggleComplete: (String) -> Unit,
+    onToggleSubtask: (String, String) -> Unit = { _, _ -> },
     onDeleteTask: (String) -> Unit,
 ) {
     val c = HandelhaTheme.colors
@@ -315,6 +318,7 @@ fun TasksScreen(
                             projectName = proj?.title,
                             stripeColor = proj?.let { Color(it.colorValue) },
                             onToggleComplete = { onToggleComplete(t.id) },
+                            onToggleSubtask = { subId -> onToggleSubtask(t.id, subId) },
                             onTap = { onOpenAddTask(t) },
                             onLongPress = { actionTask = t },
                             onMorePressed = { actionTask = t },
@@ -342,6 +346,7 @@ fun TasksScreen(
                             projectName = proj?.title,
                             stripeColor = proj?.let { Color(it.colorValue) },
                             onToggleComplete = { onToggleComplete(t.id) },
+                            onToggleSubtask = { subId -> onToggleSubtask(t.id, subId) },
                             onTap = { onOpenAddTask(t) },
                             onLongPress = { actionTask = t },
                             onMorePressed = { actionTask = t },
@@ -503,6 +508,7 @@ fun AddTaskScreen(
         recurrence: TaskRecurrence,
         projectId: String?,
         alertMode: String,
+        subtasksJson: String?,
     ) -> Unit,
     onShowToast: (String, Boolean) -> Unit,
 ) {
@@ -523,8 +529,12 @@ fun AddTaskScreen(
     var projectId by remember(editingTask) { mutableStateOf(editingTask?.projectId) }
     var alertMode by remember(editingTask, initialAlertMode) { mutableStateOf(initialAlertMode) }
 
-    val substeps = remember { mutableStateListOf<String>() }
-    var showSubstepInput by remember { mutableStateOf(false) }
+    val substeps = remember(editingTask) {
+        mutableStateListOf<TaskSubtaskItem>().apply {
+            addAll(editingTask?.subtasks.orEmpty())
+        }
+    }
+    var showSubstepInput by remember { mutableStateOf(editingTask?.subtasks?.isNotEmpty() == true) }
     var substepDraft by remember { mutableStateOf("") }
 
     val attachments = remember { mutableStateListOf<String>() }
@@ -1104,10 +1114,10 @@ fun AddTaskScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Action Pills Row (+ خطوة فرعية | + مرفق)
+        // Action Pills Row (+ خطوة فرعية | قسّمها خطوات ✨ | + مرفق)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Box(
                 modifier = Modifier
@@ -1116,19 +1126,51 @@ fun AddTaskScreen(
                     .clip(RoundedCornerShape(14.dp))
                     .background(c.softControlSurface, RoundedCornerShape(14.dp))
                     .border(1.dp, c.border, RoundedCornerShape(14.dp))
-                    .clickable { showSubstepInput = !showSubstepInput },
+                    .clickable { showSubstepInput = !showSubstepInput }
+                    .testTag("add_task_substep_toggle"),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = if (isEnglish) "+ Substep" else "+ خطوة فرعية",
-                    fontSize = 13.5.sp,
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = c.textPrimary,
                 )
             }
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(1.15f)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(c.primarySoft, RoundedCornerShape(14.dp))
+                    .border(1.dp, c.primary.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                    .clickable {
+                        val generated = TaskSubtasksCodec.generateSmartSubtasks(title, isEnglish)
+                        substeps.clear()
+                        substeps.addAll(generated)
+                        showSubstepInput = true
+                        onShowToast(
+                            if (isEnglish) "Broken down into 3 actionable steps!" else "اتقسّمت لـ ٣ خطوات عملية سريعة!",
+                            false,
+                        )
+                    }
+                    .testTag("add_task_smart_substeps_btn"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.AutoAwesome, null, tint = c.primary, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = if (isEnglish) "Smart Steps" else "قسّمها خطوات",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = c.primary,
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .weight(0.85f)
                     .height(44.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(c.softControlSurface, RoundedCornerShape(14.dp))
@@ -1140,8 +1182,8 @@ fun AddTaskScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (isEnglish) "+ Attachment" else "+ مرفق",
-                    fontSize = 13.5.sp,
+                    text = if (isEnglish) "+ Link" else "+ مرفق",
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = c.textPrimary,
                 )
@@ -1180,7 +1222,7 @@ fun AddTaskScreen(
                                 singleLine = true,
                                 textStyle = TextStyle(fontFamily = IbmPlexSansArabic, fontSize = 13.5.sp, color = c.textPrimary),
                                 cursorBrush = SolidColor(c.primary),
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().testTag("add_task_substep_input"),
                             )
                         }
                         Spacer(Modifier.width(6.dp))
@@ -1188,23 +1230,46 @@ fun AddTaskScreen(
                             onClick = {
                                 val clean = substepDraft.trim()
                                 if (clean.isNotEmpty()) {
-                                    substeps.add(clean)
+                                    substeps.add(
+                                        TaskSubtaskItem(
+                                            id = "sub_${System.currentTimeMillis()}_${substeps.size}",
+                                            title = clean,
+                                            isDone = false,
+                                        ),
+                                    )
                                     substepDraft = ""
                                 }
                             },
+                            modifier = Modifier.testTag("add_task_substep_add_btn"),
                         ) {
                             Icon(Icons.Rounded.Add, null, tint = c.primary)
                         }
                     }
                 }
-                substeps.forEachIndexed { idx, stepText ->
+                substeps.forEachIndexed { idx, stepItem ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                substeps[idx] = stepItem.copy(isDone = !stepItem.isDone)
+                            }
+                            .padding(vertical = 5.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.CheckCircleOutline, null, tint = c.primary, modifier = Modifier.size(16.dp))
+                        Icon(
+                            imageVector = if (stepItem.isDone) Icons.Rounded.Check else Icons.Rounded.CheckCircleOutline,
+                            contentDescription = null,
+                            tint = c.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
                         Spacer(Modifier.width(8.dp))
-                        Text(stepText, fontSize = 13.sp, color = c.textPrimary, modifier = Modifier.weight(1f))
+                        Text(
+                            text = stepItem.title,
+                            fontSize = 13.sp,
+                            color = if (stepItem.isDone) c.textMuted else c.textPrimary,
+                            modifier = Modifier.weight(1f),
+                        )
                         Icon(
                             imageVector = Icons.Rounded.Close,
                             contentDescription = null,
@@ -1296,15 +1361,13 @@ fun AddTaskScreen(
                 }
                 val combinedNotes = buildList {
                     if (note.trim().isNotEmpty()) add(note.trim())
-                    if (substeps.isNotEmpty()) {
-                        add("خطوات فرعية:\n" + substeps.joinToString("\n") { "• $it" })
-                    }
                     if (attachments.isNotEmpty()) {
                         add("مرفقات:\n" + attachments.joinToString("\n") { "📎 $it" })
                     }
                 }.joinToString("\n\n").ifBlank { null }
 
-                onSave(clean, combinedNotes, priority, dueAtMs, estMinutes, recurrence, projectId, alertMode)
+                val encodedSubtasks = TaskSubtasksCodec.encode(substeps.toList())
+                onSave(clean, combinedNotes, priority, dueAtMs, estMinutes, recurrence, projectId, alertMode, encodedSubtasks)
             },
             modifier = Modifier
                 .fillMaxWidth()

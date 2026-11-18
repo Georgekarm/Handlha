@@ -2,6 +2,7 @@ package com.handelha.app.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,7 +56,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -66,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.handelha.app.R
 import com.handelha.app.domain.AuthProviderType
 import com.handelha.app.domain.UserEnergyPreferences
 import com.handelha.app.ui.theme.HandelhaTheme
@@ -662,7 +666,12 @@ fun EnergyPreferencesWizardSheet(
                     .background(c.primarySoft),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Bolt, null, tint = c.primary)
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = if (isEnglish) "Handelha Logo" else "شعار هندلها",
+                    modifier = Modifier.size(28.dp),
+                    contentScale = ContentScale.Fit,
+                )
             }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -694,9 +703,9 @@ fun EnergyPreferencesWizardSheet(
                 )
                 Spacer(Modifier.height(12.dp))
                 val choices = listOf(
-                    Triple("morning", if (isEnglish) "Morning ☀️ (8 AM – 3 PM)" else "صباحي ☀️ (٨ ص – ٣ م)", if (isEnglish) "Best for early heavy focus" else "أنسب للشغل التقيل بدري"),
-                    Triple("afternoon", if (isEnglish) "Afternoon 🌤️ (12 PM – 7 PM)" else "بعد الظهر 🌤️ (١٢ م – ٧ م)", if (isEnglish) "Balanced midday rhythm" else "إيقاع متوازن في نص اليوم"),
-                    Triple("evening", if (isEnglish) "Evening 🌙 (5 PM – 11 PM)" else "مسائي 🌙 (٥ م – ١١ م)", if (isEnglish) "Quiet night owl deep work" else "هدوء الليل والتركيز العميق"),
+                    Triple("morning", if (isEnglish) "Morning (8 AM – 3 PM)" else "صباحي (٨ ص – ٣ م)", if (isEnglish) "Best for early heavy focus" else "أنسب للشغل التقيل بدري"),
+                    Triple("afternoon", if (isEnglish) "Afternoon (12 PM – 7 PM)" else "بعد الظهر (١٢ م – ٧ م)", if (isEnglish) "Balanced midday rhythm" else "إيقاع متوازن في نص اليوم"),
+                    Triple("evening", if (isEnglish) "Evening (5 PM – 11 PM)" else "مسائي (٥ م – ١١ م)", if (isEnglish) "Quiet night owl deep work" else "هدوء الليل والتركيز العميق"),
                 )
                 choices.forEach { (key, title, sub) ->
                     val sel = prefs.peakEnergyPeriod == key
@@ -740,14 +749,14 @@ fun EnergyPreferencesWizardSheet(
                 )
                 Spacer(Modifier.height(12.dp))
                 WizardOptionTile(
-                    title = if (isEnglish) "Hardest at Peak Energy 🔥" else "الأصعب في قمة طاقتي 🔥",
+                    title = if (isEnglish) "Hardest at Peak Energy" else "الأصعب في قمة طاقتي",
                     subtitle = if (isEnglish) "Tackle priority items when sharp" else "نحط أهم وأصعب خطوة في ذروة يومك",
                     selected = prefs.hardTaskStrategy == "peak_first",
                     onClick = { prefs = prefs.copy(hardTaskStrategy = "peak_first") },
                 )
                 Spacer(Modifier.height(8.dp))
                 WizardOptionTile(
-                    title = if (isEnglish) "Easy Warm-up First 🌱" else "تسخين بمهمة خفيفة أولًا 🌱",
+                    title = if (isEnglish) "Easy Warm-up First" else "تسخين بمهمة خفيفة أولًا",
                     subtitle = if (isEnglish) "Build gentle momentum before deep work" else "تبدأ بحاجة خفيفة تفتح نفسك للشغل",
                     selected = prefs.hardTaskStrategy == "warmup_first",
                     onClick = { prefs = prefs.copy(hardTaskStrategy = "warmup_first") },

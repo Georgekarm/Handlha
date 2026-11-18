@@ -3,11 +3,13 @@ package com.handelha.app.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bolt
@@ -66,13 +69,16 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.handelha.app.R
 import com.handelha.app.domain.StudentMotivationState
 import com.handelha.app.domain.StudentQuickBoost
 import com.handelha.app.domain.StudentQuoteCategory
@@ -112,6 +118,9 @@ fun StudentQuotesScreen(
     onAddCustomQuote: (text: String, tag: String) -> Unit,
     onDeleteCustomQuote: (String) -> Unit,
     onStartQuickFocus: (minutes: Int, title: String) -> Unit,
+    onCreateTaskAndStartFocus: (minutes: Int, title: String, stepDescription: String) -> Unit = { mins, title, _ ->
+        onStartQuickFocus(mins, title)
+    },
     onShowToast: (String, Boolean) -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -176,6 +185,28 @@ fun StudentQuotesScreen(
         )
     }
 
+    fun shareQuote(item: StudentQuoteItem) {
+        val shareBody = buildString {
+            append("«")
+            append(if (isEnglish) item.textEn else item.textAr)
+            append("»")
+            item.source(isEnglish)?.let { src ->
+                append("\n— ")
+                append(src)
+            }
+            append("\n\n")
+            append(if (isEnglish) "Shared from Handelha • Your Desk" else "من تطبيق هندلها • مكتبك")
+        }
+        runCatching {
+            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, shareBody)
+            }
+            val chooser = Intent.createChooser(sendIntent, if (isEnglish) "Share Quote" else "مشاركة الاقتباس")
+            context.startActivity(chooser)
+        }
+    }
+
     val cardShadow = if (c.isDark) 0.dp else 6.dp
 
     Column(
@@ -185,26 +216,34 @@ fun StudentQuotesScreen(
             .padding(start = 20.dp, end = 20.dp, bottom = 40.dp),
     ) {
         HandelhaHeader(
-            title = if (isEnglish) "Wisdom, Books & Study Quotes" else "مكتبة الحِكم والاقتباسات العلمية",
-            subtitle = if (isEnglish) "Insights from books, scientific studies & study motivation"
-            else "خلاصات من الكتب والأبحاث العلمية وكلمات تشجيعية لرحلة مذاكرتك",
+            title = if (isEnglish) "Your Desk" else "مكتبك",
+            subtitle = if (isEnglish) "Wisdom, books & daily study boost"
+            else "حِكم وكتب وتشجيع على قد خطوتك",
             isEnglish = isEnglish,
             showBack = true,
             onBack = onBack,
             padding = PaddingValues(top = 12.dp, bottom = 14.dp),
             actions = {
-                Box(
+                Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
-                        .background(c.studentIndigoSoft)
-                        .border(1.dp, c.studentIndigo.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                        .background(c.primarySoft)
+                        .border(1.dp, c.primary.copy(alpha = 0.28f), RoundedCornerShape(999.dp))
                         .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        contentScale = ContentScale.Fit,
+                    )
+                    Spacer(Modifier.width(5.dp))
                     Text(
                         text = if (isEnglish) "Student Mode" else "وضع الطالب",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = c.studentIndigo,
+                        color = c.primary,
                     )
                 }
             },
@@ -406,7 +445,24 @@ fun StudentQuotesScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.ContentCopy,
-                        contentDescription = null,
+                        contentDescription = if (isEnglish) "Copy" else "نسخ",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .clickable { shareQuote(spotlightQuote) }
+                        .testTag("quotes_hub_share_btn"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = if (isEnglish) "Share" else "مشاركة",
                         tint = Color.White,
                         modifier = Modifier.size(18.dp),
                     )
@@ -439,7 +495,12 @@ fun StudentQuotesScreen(
                             .background(c.primarySoft),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Rounded.School, null, tint = c.primary, modifier = Modifier.size(19.dp))
+                        Image(
+                            painter = painterResource(id = R.drawable.logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            contentScale = ContentScale.Fit,
+                        )
                     }
                     Spacer(Modifier.width(10.dp))
                     Column {
@@ -582,7 +643,12 @@ fun StudentQuotesScreen(
                                 .background(c.primarySoft),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(Icons.Rounded.Bolt, null, tint = c.primary, modifier = Modifier.size(16.dp))
+                            Image(
+                                painter = painterResource(id = R.drawable.logo),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                contentScale = ContentScale.Fit,
+                            )
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
@@ -949,6 +1015,18 @@ fun StudentQuotesScreen(
                                 )
                             }
 
+                            IconButton(
+                                onClick = { shareQuote(item) },
+                                modifier = Modifier.size(34.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Share,
+                                    contentDescription = if (isEnglish) "Share" else "مشاركة",
+                                    tint = c.textSecondary,
+                                    modifier = Modifier.size(17.dp),
+                                )
+                            }
+
                             if (item.isCustom) {
                                 IconButton(
                                     onClick = { onDeleteCustomQuote(item.id) },
@@ -977,6 +1055,10 @@ fun StudentQuotesScreen(
             onStartQuickFocus = { mins, title ->
                 activeQuickBoost = null
                 onStartQuickFocus(mins, title)
+            },
+            onCreateTaskAndStartFocus = { mins, title, microStep ->
+                activeQuickBoost = null
+                onCreateTaskAndStartFocus(mins, title, microStep)
             },
         )
     }

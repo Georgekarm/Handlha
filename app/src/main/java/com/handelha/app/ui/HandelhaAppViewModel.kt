@@ -479,6 +479,7 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
         recurrence: TaskRecurrence,
         projectId: String?,
         alertMode: String, // "alarm" | "notification"
+        subtasksJson: String? = null,
         onComplete: () -> Unit = {},
     ) {
         val uid = _uiState.value.user?.id ?: return
@@ -501,6 +502,7 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
                     source = TaskSource.manual,
                     recurrence = recurrence,
                     projectId = projectId,
+                    durationUncertainty = subtasksJson,
                 )
             } else {
                 workspaceRepo.updateTask(
@@ -513,6 +515,7 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
                         estimatedDurationMinutes = estimatedMinutes,
                         recurrence = recurrence,
                         projectId = projectId,
+                        durationUncertainty = subtasksJson,
                     ),
                 )
             }
@@ -522,6 +525,55 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
                 scheduleTaskReminder(uid, savedTask, alertMode)
             }
             onComplete()
+        }
+    }
+
+    fun toggleTaskSubtask(taskId: String, subtaskId: String) {
+        val task = _uiState.value.tasks.firstOrNull { it.id == taskId } ?: return
+        val currentSubs = task.subtasks
+        if (currentSubs.isEmpty()) return
+        val updatedSubs = currentSubs.map {
+            if (it.id == subtaskId) it.copy(isDone = !it.isDone) else it
+        }
+        val encoded = com.handelha.app.domain.TaskSubtasksCodec.encode(updatedSubs)
+        viewModelScope.launch {
+            val saved = workspaceRepo.updateTask(task.copy(durationUncertainty = encoded))
+            if (updatedSubs.all { it.isDone } && !saved.isCompleted) {
+                val isEn = _uiState.value.isEnglish
+                showToast(
+                    if (isEn) "All steps finished! Task marked completed"
+                    else "عاش! خلّصت كل الخطوات الفرعية واتقفلت المهمة",
+                )
+                toggleTaskComplete(taskId)
+            }
+        }
+    }
+
+    fun createTaskFromStudyBoost(
+        minutes: Int,
+        stepTitle: String,
+        description: String,
+        onTaskReady: (String, String) -> Unit,
+    ) {
+        val uid = _uiState.value.user?.id ?: return
+        val isEn = _uiState.value.isEnglish
+        viewModelScope.launch {
+            val smartSubs = com.handelha.app.domain.TaskSubtasksCodec.generateSmartSubtasks(stepTitle, isEn)
+            val created = workspaceRepo.createTask(
+                userId = uid,
+                title = stepTitle,
+                description = description,
+                priority = TaskPriority.high,
+                dueAtMs = System.currentTimeMillis() + minutes * 60_000L,
+                scheduledStartAtMs = System.currentTimeMillis(),
+                estimatedDurationMinutes = minutes,
+                status = TaskStatus.inProgress,
+                energyLevel = EnergyLevel.medium,
+                source = TaskSource.ai,
+                durationUncertainty = com.handelha.app.domain.TaskSubtasksCodec.encode(smartSubs),
+            )
+            setFocusDuration(minutes)
+            onTaskReady(created.id, created.title)
         }
     }
 
@@ -743,6 +795,7 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
         if (cur.isRunning) {
             focusTickerJob?.cancel()
             soundEngine.stopAmbient()
+            notifScheduler.cancelFocusTimerNotification()
             _uiState.update { it.copy(focusState = cur.copy(isRunning = false)) }
         } else {
             val started = cur.startedAtMs ?: System.currentTimeMillis()
@@ -760,6 +813,12 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
                     ),
                 )
             }
+            notifScheduler.postFocusTimerNotification(
+                taskTitle = cur.linkedTaskTitle,
+                remainingSeconds = secs,
+                isBreakMode = cur.isBreakMode,
+                isEnglish = _uiState.value.isEnglish,
+            )
             startFocusTicker()
         }
     }
@@ -777,6 +836,14 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
                     break
                 } else {
                     _uiState.update { it.copy(focusState = fs.copy(remainingSeconds = next)) }
+                    if (next % 5 == 0 || next <= 10) {
+                        notifScheduler.postFocusTimerNotification(
+                            taskTitle = fs.linkedTaskTitle,
+                            remainingSeconds = next,
+                            isBreakMode = fs.isBreakMode,
+                            isEnglish = _uiState.value.isEnglish,
+                        )
+                    }
                 }
             }
         }
@@ -785,6 +852,7 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
     fun finishFocusSession(completedNaturally: Boolean) {
         focusTickerJob?.cancel()
         soundEngine.stopAmbient()
+        notifScheduler.cancelFocusTimerNotification()
         val st = _uiState.value
         val fs = st.focusState
         val elapsedSec = (fs.totalSeconds - fs.remainingSeconds).coerceAtLeast(0)
@@ -1130,19 +1198,33 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun previewAlarm(item: AlarmReminderItem) {
+        val isEn = _uiState.value.isEnglish
+        if (!item.isFullAlarm) {
+            val encouraging = com.handelha.app.data.repo.ReminderMessageCatalog.dailyMessage(
+                nowMs = System.currentTimeMillis(),
+                tone = com.handelha.app.domain.ReminderTone.supportive,
+            )
+            notifScheduler.postQuietNotificationNow(
+                id = item.id,
+                title = item.title,
+                body = if (isEn) "Take it one step at a time; 5 minutes of focus is a great start." else encouraging,
+                badgeText = if (isEn) "Your Next Step" else "خطوتك الجاية",
+                isEnglish = isEn,
+            )
+            showToast(if (isEn) "External notification sent to your status bar" else "تم إرسال الإشعار الخارجي في شريط الإشعارات بالأعلى")
+            return
+        }
         _uiState.update {
             it.copy(
                 activeAlarmRing = ActiveAlarmRing(
                     id = item.id,
                     title = item.title,
                     taskId = item.taskId,
-                    isPreview = !item.isFullAlarm,
+                    isPreview = false,
                 ),
             )
         }
-        if (item.isFullAlarm) {
-            soundEngine.playAlarmChime(loop = true)
-        }
+        soundEngine.playAlarmChime(loop = true)
     }
 
     fun dismissAlarmRing() {
@@ -1222,6 +1304,29 @@ class HandelhaAppViewModel(application: Application) : AndroidViewModel(applicat
     suspend fun exportBackupJson(): String? {
         val uid = _uiState.value.user?.id ?: return null
         return backupManager.exportForUser(uid)
+    }
+
+    fun importBackupJson(rawJson: String, onDone: (Boolean, String) -> Unit) {
+        val uid = _uiState.value.user?.id ?: return
+        val isEn = _uiState.value.isEnglish
+        viewModelScope.launch {
+            val res = backupManager.importTasksForUser(uid, rawJson)
+            res.fold(
+                onSuccess = { count ->
+                    onDone(
+                        true,
+                        if (isEn) "Restored $count tasks successfully!"
+                        else "تم استعادة ${ArabicFormatters.toArabicDigits(count)} مهام وخطوات بنجاح!",
+                    )
+                },
+                onFailure = { err ->
+                    onDone(
+                        false,
+                        err.message ?: if (isEn) "Invalid backup JSON" else "ملف النسخة الاحتياطية غير صالح",
+                    )
+                },
+            )
+        }
     }
 
     fun clearChatHistory() {

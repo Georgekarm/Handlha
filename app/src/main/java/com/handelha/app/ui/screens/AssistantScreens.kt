@@ -8,6 +8,7 @@ import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,7 +86,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import com.handelha.app.R
 import com.handelha.app.domain.AppUser
 import com.handelha.app.domain.ChatConversationRecord
 import com.handelha.app.domain.ChatMessageItem
@@ -206,7 +210,12 @@ fun ChatScreen(
                     modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(c.primarySoft),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Outlined.AutoAwesome, null, tint = c.primary, modifier = Modifier.size(21.dp))
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
+                        contentDescription = if (isEnglish) "Handelha Logo" else "شعار هندلها",
+                        modifier = Modifier.size(30.dp),
+                        contentScale = ContentScale.Fit,
+                    )
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {

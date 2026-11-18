@@ -181,7 +181,7 @@ fun TrackingScreen(
                         Icon(Icons.Rounded.FormatQuote, null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = if (isEnglish) "Quotes Hub" else "مكتبة الحِكم",
+                            text = if (isEnglish) "Your Desk" else "مكتبك",
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,

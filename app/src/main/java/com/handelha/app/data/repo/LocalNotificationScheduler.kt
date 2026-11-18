@@ -304,48 +304,135 @@ class LocalNotificationScheduler(
         nm?.cancelAll()
     }
 
-    fun postQuietNotificationNow(id: String, title: String, body: String) {
+    fun postQuietNotificationNow(
+        id: String,
+        title: String,
+        body: String,
+        badgeText: String = "خطوتك الجاية",
+        isEnglish: Boolean = false,
+    ) {
         val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                QUIET_CHANNEL_ID,
-                "تذكيرات هندلها",
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "إشعارات هادئة لتذكيرات المهام والمواعيد"
-            }
-            nm.createNotificationChannel(channel)
-        }
+        com.handelha.app.AlarmReceiver.ensureQuietChannel(nm)
+
+        val reqCode = NativeAlarmScheduler.stableRequestCode(id)
+        val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+
         val launchIntent = Intent(appContext, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra(NativeAlarmScheduler.EXTRA_ALARM_ID, id)
+            putExtra(NativeAlarmScheduler.EXTRA_ALARM_TITLE, title)
         }
-        val pi = PendingIntent.getActivity(
-            appContext,
-            NativeAlarmScheduler.stableRequestCode(id),
-            launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        val contentPi = PendingIntent.getActivity(appContext, reqCode + 1, launchIntent, piFlags)
+
+        val snoozeIntent = Intent(appContext, com.handelha.app.AlarmReceiver::class.java).apply {
+            action = com.handelha.app.AlarmReceiver.ACTION_SNOOZE_NOTIF
+            putExtra(NativeAlarmScheduler.EXTRA_ALARM_ID, id)
+            putExtra(NativeAlarmScheduler.EXTRA_ALARM_TITLE, title)
+            putExtra(com.handelha.app.AlarmReceiver.EXTRA_ALERT_MODE, "notification")
+        }
+        val snoozePi = PendingIntent.getBroadcast(appContext, reqCode + 4, snoozeIntent, piFlags)
+
+        val dismissIntent = Intent(appContext, com.handelha.app.AlarmReceiver::class.java).apply {
+            action = com.handelha.app.AlarmReceiver.ACTION_DISMISS_NOTIF
+            putExtra(NativeAlarmScheduler.EXTRA_ALARM_ID, id)
+            putExtra(NativeAlarmScheduler.EXTRA_ALARM_TITLE, title)
+            putExtra(com.handelha.app.AlarmReceiver.EXTRA_ALERT_MODE, "notification")
+        }
+        val dismissPi = PendingIntent.getBroadcast(appContext, reqCode + 3, dismissIntent, piFlags)
+
+        val notif = com.handelha.app.AlarmReceiver.buildThemedNotification(
+            context = appContext,
+            channelId = com.handelha.app.AlarmReceiver.QUIET_CHANNEL_ID,
+            id = id,
+            taskTitle = title,
+            subtitleText = body,
+            badgeText = badgeText,
+            brandHeaderText = if (isEnglish) "Handelha • Your Companion" else "هندلها • رفيق يومك",
+            primaryButtonText = if (isEnglish) "Start Focus" else "ابدأ جلسة تركيز",
+            snoozeButtonText = if (isEnglish) "Snooze 10m" else "تأجيل ١٠ د",
+            dismissButtonText = if (isEnglish) "Done ✓" else "خلصتها ✓",
+            contentPendingIntent = contentPi,
+            snoozePendingIntent = snoozePi,
+            dismissPendingIntent = dismissPi,
+            isFullAlarm = false,
         )
-        val notif = NotificationCompat.Builder(appContext, QUIET_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pi)
-            .build()
-        nm.notify(NativeAlarmScheduler.stableRequestCode(id), notif)
+        nm.notify(reqCode, notif)
+    }
+
+    fun postFocusTimerNotification(
+        taskTitle: String,
+        remainingSeconds: Int,
+        isBreakMode: Boolean,
+        isEnglish: Boolean,
+    ) {
+        val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        com.handelha.app.AlarmReceiver.ensureFocusChannel(nm)
+
+        val mins = (remainingSeconds / 60).coerceAtLeast(0)
+        val secs = (remainingSeconds % 60).coerceAtLeast(0)
+        val formattedTime = String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
+        val badgeText = if (isEnglish) {
+            if (isBreakMode) "Break • $formattedTime" else "Focus • $formattedTime"
+        } else {
+            val arTime = com.handelha.app.util.ArabicFormatters.toArabicDigits(formattedTime)
+            if (isBreakMode) "استراحة • $arTime" else "تركيز • $arTime"
+        }
+
+        val subtitle = if (isEnglish) {
+            if (isBreakMode) "Take a calm breath before your next focus block."
+            else "Stay with this single step — your focus tree is growing."
+        } else {
+            if (isBreakMode) "خد نفس هادي وريّح دماغك شوية قبل الجولة الجاية."
+            else "ركّز في خطوتك الحالية بهدوء — شجرتك بتكبر مع كل دقيقة."
+        }
+
+        val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val launchIntent = Intent(appContext, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val contentPi = PendingIntent.getActivity(appContext, 9910, launchIntent, piFlags)
+
+        val notif = com.handelha.app.AlarmReceiver.buildThemedNotification(
+            context = appContext,
+            channelId = com.handelha.app.AlarmReceiver.FOCUS_CHANNEL_ID,
+            id = "focus_live_session",
+            taskTitle = taskTitle.ifBlank { if (isEnglish) "Calm Focus Session" else "جلسة تركيز هادئة" },
+            subtitleText = subtitle,
+            badgeText = badgeText,
+            brandHeaderText = if (isEnglish) "Handelha • Focus Session" else "هندلها • جلسة تركيز نشطة",
+            primaryButtonText = if (isEnglish) "Return to Timer" else "العودة للمؤقت",
+            snoozeButtonText = badgeText,
+            dismissButtonText = if (isEnglish) "Open" else "فتح",
+            contentPendingIntent = contentPi,
+            snoozePendingIntent = contentPi,
+            dismissPendingIntent = contentPi,
+            isFullAlarm = false,
+        )
+        nm.notify(9910, notif)
+    }
+
+    fun cancelFocusTimerNotification() {
+        val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        nm?.cancel(9910)
     }
 
     private fun scheduleQuietAlarmBroadcast(id: String, title: String, triggerAtMs: Long) {
         val am = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val intent = Intent(appContext, MainActivity::class.java).apply {
-            action = ACTION_QUIET_TRIGGER
+        val encouragingSubtitle = ReminderMessageCatalog.dailyMessage(
+            nowMs = triggerAtMs + abs(id.hashCode()) * 86_400_000L,
+            tone = ReminderTone.supportive,
+        )
+        val intent = Intent(appContext, com.handelha.app.AlarmReceiver::class.java).apply {
+            action = com.handelha.app.AlarmReceiver.ACTION_QUIET_REMINDER
             data = Uri.parse("handelha://quiet/$id")
             putExtra(NativeAlarmScheduler.EXTRA_ALARM_ID, id)
             putExtra(NativeAlarmScheduler.EXTRA_ALARM_TITLE, title)
+            putExtra(com.handelha.app.AlarmReceiver.EXTRA_ALERT_MODE, "notification")
+            putExtra(com.handelha.app.AlarmReceiver.EXTRA_SUBTITLE, encouragingSubtitle)
+            putExtra(com.handelha.app.AlarmReceiver.EXTRA_BADGE, "خطوتك الجاية")
         }
         val reqCode = NativeAlarmScheduler.stableRequestCode("q_$id")
-        val pi = PendingIntent.getActivity(
+        val pi = PendingIntent.getBroadcast(
             appContext,
             reqCode,
             intent,

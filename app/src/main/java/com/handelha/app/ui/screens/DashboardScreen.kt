@@ -86,6 +86,7 @@ fun DashboardScreen(
     onOpenSettings: () -> Unit,
     onOpenAddTask: (TaskItem?) -> Unit,
     onToggleTaskComplete: (String) -> Unit,
+    onToggleSubtask: (String, String) -> Unit = { _, _ -> },
     onStartFocus: (taskId: String?, title: String, initialTab: Int) -> Unit,
     onOpenAssistant: () -> Unit,
     onOpenAllTasks: () -> Unit,
@@ -631,6 +632,7 @@ fun DashboardScreen(
                         projectName = proj?.title,
                         stripeColor = proj?.let { Color(it.colorValue) },
                         onToggleComplete = { onToggleTaskComplete(t.id) },
+                        onToggleSubtask = { subId -> onToggleSubtask(t.id, subId) },
                         onTap = { onOpenAddTask(t) },
                     )
                 }

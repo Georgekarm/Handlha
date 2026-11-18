@@ -266,7 +266,7 @@ private fun AuthenticatedWorkspaceShell(vm: HandelhaAppViewModel) {
                             isEnglish = state.isEnglish,
                             onBack = ::popRoute,
                             onAskAssistant = ::askAssistantFromDraft,
-                            onSave = { title, desc, priority, dueAt, estMins, recurrence, projectId, alertMode ->
+                            onSave = { title, desc, priority, dueAt, estMins, recurrence, projectId, alertMode, subtasksJson ->
                                 vm.saveTask(
                                     editingTask = editingTask,
                                     title = title,
@@ -277,6 +277,7 @@ private fun AuthenticatedWorkspaceShell(vm: HandelhaAppViewModel) {
                                     recurrence = recurrence,
                                     projectId = projectId,
                                     alertMode = alertMode,
+                                    subtasksJson = subtasksJson,
                                     onComplete = ::popRoute,
                                 )
                             },
@@ -383,6 +384,7 @@ private fun AuthenticatedWorkspaceShell(vm: HandelhaAppViewModel) {
                             onOpenSubscriptions = { pushRoute(SubRoute.Subscription) },
                             onUpdateTone = vm::updateAssistantTone,
                             onExportBackup = vm::exportBackupJson,
+                            onImportBackup = vm::importBackupJson,
                             onClearChatHistory = vm::clearChatHistory,
                             onDeleteAccount = {
                                 subStack.clear()
@@ -455,6 +457,12 @@ private fun AuthenticatedWorkspaceShell(vm: HandelhaAppViewModel) {
                                     0,
                                 )
                             },
+                            onCreateTaskAndStartFocus = { boostMins, stepTitle, stepDesc ->
+                                vm.createTaskFromStudyBoost(boostMins, stepTitle, stepDesc) { createdId, createdTitle ->
+                                    popRoute()
+                                    startFocusFor(createdId, createdTitle, 0)
+                                }
+                            },
                             onShowToast = vm::showToast,
                         )
                     }
@@ -477,6 +485,7 @@ private fun AuthenticatedWorkspaceShell(vm: HandelhaAppViewModel) {
                         onOpenSettings = { pushRoute(SubRoute.Settings) },
                         onOpenAddTask = { task -> openAddTask(task) },
                         onToggleTaskComplete = vm::toggleTaskComplete,
+                        onToggleSubtask = vm::toggleTaskSubtask,
                         onStartFocus = { taskId, title, tab ->
                             startFocusFor(taskId, title, tab)
                         },
@@ -502,6 +511,7 @@ private fun AuthenticatedWorkspaceShell(vm: HandelhaAppViewModel) {
                             startFocusFor(taskId, title, 0)
                         },
                         onToggleComplete = vm::toggleTaskComplete,
+                        onToggleSubtask = vm::toggleTaskSubtask,
                         onDeleteTask = vm::deleteTask,
                     )
 

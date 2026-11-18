@@ -54,6 +54,7 @@ fun HandelhaTaskCard(
     stripeColor: Color? = null,
     onLongPress: (() -> Unit)? = null,
     onMorePressed: (() -> Unit)? = null,
+    onToggleSubtask: ((String) -> Unit)? = null,
     showEndStripe: Boolean = true,
     compactTag: Boolean = false,
     subtitleOverride: String? = null,
@@ -62,6 +63,8 @@ fun HandelhaTaskCard(
     val isDark = c.isDark
     val done = task.isCompleted
     val displayTitle = ArabicFormatters.trData(task.title)
+    val subtasks = task.subtasks
+    val doneSubtasks = task.completedSubtasksCount
 
     val resolvedStripe = stripeColor ?: when (task.priority) {
         TaskPriority.urgent, TaskPriority.high -> c.primary
@@ -213,24 +216,96 @@ fun HandelhaTaskCard(
                 color = c.textSecondary,
             )
             Spacer(Modifier.height(7.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(tagBg, RoundedCornerShape(999.dp))
-                    .then(
-                        if (tagBorder != null) Modifier.border(1.dp, tagBorder, RoundedCornerShape(999.dp))
-                        else Modifier,
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(tagBg, RoundedCornerShape(999.dp))
+                        .then(
+                            if (tagBorder != null) Modifier.border(1.dp, tagBorder, RoundedCornerShape(999.dp))
+                            else Modifier,
+                        )
+                        .padding(horizontal = 10.dp, vertical = 3.5.dp),
+                ) {
+                    Text(
+                        text = tagLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = tagFg,
                     )
-                    .padding(horizontal = 10.dp, vertical = 3.5.dp),
-            ) {
-                Text(
-                    text = tagLabel,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = tagFg,
-                )
+                }
+
+                if (subtasks.isNotEmpty()) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(c.primarySoft, RoundedCornerShape(999.dp))
+                            .padding(horizontal = 9.dp, vertical = 3.5.dp),
+                    ) {
+                        Text(
+                            text = if (isEnglish) "$doneSubtasks/${subtasks.size} steps"
+                            else "${ArabicFormatters.toArabicDigits(doneSubtasks)}/${ArabicFormatters.toArabicDigits(subtasks.size)} خطوات",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = c.primary,
+                        )
+                    }
+                }
+            }
+
+            if (subtasks.isNotEmpty() && !done) {
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(c.surfaceSoft, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                ) {
+                    subtasks.take(3).forEach { sub ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    if (onToggleSubtask != null) onToggleSubtask(sub.id) else onTap()
+                                }
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(if (sub.isDone) c.primary else Color.Transparent)
+                                    .border(1.2.dp, if (sub.isDone) c.primary else c.border, RoundedCornerShape(5.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (sub.isDone) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        tint = c.textOnPrimary,
+                                        modifier = Modifier.size(11.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                text = sub.title,
+                                fontSize = 11.5.sp,
+                                fontWeight = if (sub.isDone) FontWeight.Medium else FontWeight.SemiBold,
+                                color = if (sub.isDone) c.textMuted else c.textPrimary,
+                                textDecoration = if (sub.isDone) TextDecoration.LineThrough else null,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
 

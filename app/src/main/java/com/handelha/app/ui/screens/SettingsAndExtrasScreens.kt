@@ -3,6 +3,7 @@ package com.handelha.app.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
@@ -127,6 +129,7 @@ fun SettingsScreen(
     onOpenSubscriptions: () -> Unit,
     onUpdateTone: (AssistantTone) -> Unit,
     onExportBackup: suspend () -> String?,
+    onImportBackup: (String, (Boolean, String) -> Unit) -> Unit = { _, _ -> },
     onClearChatHistory: () -> Unit,
     onDeleteAccount: () -> Unit,
     onSignOut: () -> Unit,
@@ -146,6 +149,7 @@ fun SettingsScreen(
     var showSignOutConfirm by remember { mutableStateOf(false) }
     var showDeleteAccountConfirm by remember { mutableStateOf(false) }
     var exportedJsonPreview by remember { mutableStateOf<String?>(null) }
+    var showRestoreBackupSheet by remember { mutableStateOf(false) }
 
     val accountCategory = if (subscriptionState.isPro) subscriptionState.category
     else (user?.subscriptionCategory ?: UserSubscriptionCategory.free)
@@ -324,7 +328,7 @@ fun SettingsScreen(
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isEnglish) "Wisdom, Books & Study Quotes Library" else "مكتبة الحِكم والكتب والاقتباسات — وضع الطالب",
+                        text = if (isEnglish) "Your Desk — Wisdom & Books" else "مكتبك — حِكم وكتب وتشجيع",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = c.studentIndigo,
@@ -687,13 +691,26 @@ fun SettingsScreen(
                         if (json != null) exportedJsonPreview = json
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(46.dp),
+                modifier = Modifier.fillMaxWidth().height(46.dp).testTag("settings_export_backup_btn"),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = c.primary, contentColor = c.textOnPrimary),
             ) {
                 Icon(Icons.Rounded.Download, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(if (isEnglish) "Export Backup (JSON)" else "تصدير نسخة احتياطية (JSON)", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    showPrivacyHubSheet = false
+                    showRestoreBackupSheet = true
+                },
+                modifier = Modifier.fillMaxWidth().height(46.dp).testTag("settings_restore_backup_btn"),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(Icons.Rounded.FactCheck, null, tint = c.primary, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (isEnglish) "Restore Backup (JSON)" else "استعادة نسخة احتياطية (JSON)", fontWeight = FontWeight.Bold, color = c.primary)
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
@@ -711,6 +728,96 @@ fun SettingsScreen(
                 Icon(Icons.Rounded.PersonRemove, null, tint = c.danger, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(if (isEnglish) "Delete Account & All Data Permanently" else "حذف الحساب وكل بياناته نهائيًا", color = c.danger, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+
+    if (showRestoreBackupSheet) {
+        var restoreDraft by remember { mutableStateOf("") }
+        HandelhaBottomSheetFrame(onDismiss = { showRestoreBackupSheet = false }) {
+            Text(
+                text = if (isEnglish) "Restore Data Backup" else "استعادة نسخة احتياطية",
+                fontSize = 17.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = c.textPrimary,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = if (isEnglish) "Paste your exported Handelha JSON backup below to restore your tasks and steps."
+                else "الصق كود النسخة الاحتياطية (JSON) لاستعادة مهامك وخطواتك المحفوظة فورًا.",
+                fontSize = 12.5.sp,
+                color = c.textSecondary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val clipText = cm?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                        if (clipText.isNotBlank()) {
+                            restoreDraft = clipText
+                        } else {
+                            onShowToast(if (isEnglish) "Clipboard is empty" else "الحافظة فارغة حاليًا", true)
+                        }
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (isEnglish) "Paste from Clipboard" else "لصق من الحافظة", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(130.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(c.surfaceSoft)
+                    .border(1.dp, c.border, RoundedCornerShape(14.dp))
+                    .padding(12.dp),
+            ) {
+                if (restoreDraft.isEmpty()) {
+                    Text(
+                        text = "{\"schema\": 1, \"product\": \"handelha\", ...}",
+                        fontSize = 12.sp,
+                        color = c.textMuted,
+                    )
+                }
+                BasicTextField(
+                    value = restoreDraft,
+                    onValueChange = { restoreDraft = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 12.sp,
+                        color = c.textPrimary,
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(c.primary),
+                    modifier = Modifier.fillMaxSize().testTag("restore_backup_json_input"),
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = {
+                    val clean = restoreDraft.trim()
+                    if (clean.isEmpty()) {
+                        onShowToast(if (isEnglish) "Paste your backup JSON first" else "الصق كود النسخة الاحتياطية الأول", true)
+                        return@Button
+                    }
+                    onImportBackup(clean) { ok, msg ->
+                        if (ok) showRestoreBackupSheet = false
+                        onShowToast(msg, !ok)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("restore_backup_confirm_btn"),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = c.primary, contentColor = c.textOnPrimary),
+            ) {
+                Icon(Icons.Rounded.Check, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (isEnglish) "Restore My Data Now" else "استعادة بياناتي الآن", fontWeight = FontWeight.ExtraBold)
             }
         }
     }
@@ -734,8 +841,24 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { exportedJsonPreview = null }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
-                        Text(if (isEnglish) "Close" else "إغلاق")
+                    OutlinedButton(onClick = { exportedJsonPreview = null }, modifier = Modifier.weight(0.9f), shape = RoundedCornerShape(12.dp)) {
+                        Text(if (isEnglish) "Close" else "إغلاق", fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Handelha Backup JSON")
+                                    putExtra(Intent.EXTRA_TEXT, rawJson)
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, if (isEnglish) "Share Backup" else "مشاركة النسخة الاحتياطية"))
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(if (isEnglish) "Share" else "مشاركة", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Button(
                         onClick = {
@@ -747,9 +870,9 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                     ) {
-                        Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (isEnglish) "Copy" else "نسخ")
+                        Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (isEnglish) "Copy" else "نسخ", fontSize = 12.sp)
                     }
                 }
             }
@@ -914,7 +1037,20 @@ fun NotificationsScreen(
                         .padding(14.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if (alarm.isFullAlarm) Icons.Outlined.Alarm else Icons.Outlined.NotificationsNone, null, tint = c.primary)
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(c.primarySoft),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = com.handelha.app.R.drawable.logo),
+                                contentDescription = null,
+                                modifier = Modifier.size(26.dp),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                            )
+                        }
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(ArabicFormatters.trData(alarm.title), fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = c.textPrimary)
@@ -923,14 +1059,13 @@ fun NotificationsScreen(
                         Switch(checked = alarm.isEnabled, onCheckedChange = { onToggleAlarmEnabled(alarm.id) })
                     }
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         OutlinedButton(onClick = { onToggleAlarmMode(alarm.id) }, shape = RoundedCornerShape(10.dp)) {
                             Text(if (alarm.isFullAlarm) (if (isEnglish) "Alarm" else "منبه") else (if (isEnglish) "Quiet" else "هادئ"), fontSize = 11.5.sp)
-                        }
-                        OutlinedButton(onClick = { onPreviewAlarm(alarm) }, shape = RoundedCornerShape(10.dp)) {
-                            Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (isEnglish) "Test" else "تجربة", fontSize = 11.5.sp)
                         }
                         IconButton(onClick = { onDeleteAlarm(alarm.id) }) {
                             Icon(Icons.Outlined.DeleteOutline, null, tint = c.danger)
@@ -981,7 +1116,12 @@ fun NotificationsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(modifier = Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(c.primarySoft), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Schedule, null, tint = c.primary, modifier = Modifier.size(19.dp))
+                                androidx.compose.foundation.Image(
+                                    painter = androidx.compose.ui.res.painterResource(id = com.handelha.app.R.drawable.logo),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(26.dp),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                                )
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {

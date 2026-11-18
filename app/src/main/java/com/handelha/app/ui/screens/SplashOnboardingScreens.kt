@@ -241,11 +241,26 @@ fun OnboardingScreen(
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = 24.dp, vertical = 14.dp),
     ) {
-        // Top Header: Brand + Language + Step badge matching lib/features/onboarding/presentation/onboarding_screen.dart
+        // Top Header: Brand Logo + Wordmark + Language + Step badge
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(c.primarySoft),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = if (isEnglish) "Handelha Logo" else "شعار هندلها",
+                    modifier = Modifier.size(28.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = if (isEnglish) "Handelha" else "هندلها",
                 fontSize = 22.sp,
@@ -386,7 +401,7 @@ private fun OnboardingSlideOne(isEnglish: Boolean) {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.Start,
     ) {
-        // Soft sage container matching _SlideOne in onboarding_screen.dart
+        // Soft sage container matching _SlideOne in onboarding_screen.dart with Handelha logo
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -396,12 +411,21 @@ private fun OnboardingSlideOne(isEnglish: Boolean) {
                 .padding(20.dp),
             horizontalAlignment = Alignment.Start,
         ) {
-            Text(
-                text = if (isEnglish) "Built for your energy, not against it" else "على قدّك، مش فوق طاقتك",
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = c.primary,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (isEnglish) "Built for your energy, not against it" else "على قدّك، مش فوق طاقتك",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = c.primary,
+                )
+            }
             Spacer(Modifier.height(14.dp))
             val innerShape = RoundedCornerShape(20.dp)
             Row(
@@ -419,16 +443,16 @@ private fun OnboardingSlideOne(isEnglish: Boolean) {
             ) {
                 Box(
                     modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .background(c.primarySoft),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(c.primary),
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        contentScale = ContentScale.Fit,
                     )
                 }
                 Spacer(Modifier.width(12.dp))
@@ -510,12 +534,29 @@ private fun OnboardingSlideTwo(isEnglish: Boolean) {
                 .padding(20.dp),
             horizontalAlignment = Alignment.Start,
         ) {
-            Text(
-                text = if (isEnglish) "Big idea? Let's break it down together." else "فكرة كبيرة؟ نصغّرها سوا.",
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = c.primary,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(c.surface),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = if (isEnglish) "Big idea? Let's break it down together." else "فكرة كبيرة؟ نصغّرها سوا.",
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = c.primary,
+                )
+            }
             Spacer(Modifier.height(14.dp))
             OnboardingStepPill(
                 number = if (isEnglish) "1" else "١",

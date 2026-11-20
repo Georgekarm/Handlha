@@ -15,6 +15,8 @@ class AlarmReceiver : BroadcastReceiver() {
     companion object {
         private const val ALARM_CHANNEL_ID = "handelha_native_alarms_v1"
         private const val ACTION_DISMISS_NOTIF = "com.handelha.app.ACTION_DISMISS_ALARM_NOTIF"
+        private const val ACTION_SNOOZE_NOTIF = "com.handelha.app.ACTION_SNOOZE_ALARM_NOTIF"
+        private const val SNOOZE_MS = 10 * 60 * 1000L
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -36,11 +38,43 @@ class AlarmReceiver : BroadcastReceiver() {
             return
         }
 
+        if (intent.action == ACTION_SNOOZE_NOTIF) {
+            val id = intent.getStringExtra(NativeAlarmScheduler.EXTRA_ALARM_ID) ?: ""
+            val title = intent.getStringExtra(NativeAlarmScheduler.EXTRA_ALARM_TITLE) ?: ""
+            val taskId = intent.getStringExtra(NativeAlarmScheduler.EXTRA_TASK_ID)
+            val isEn = intent.getBooleanExtra(NativeAlarmScheduler.EXTRA_IS_EN, false)
+            AlarmAudioController.stop(context)
+            if (id.isNotBlank()) {
+                val snoozeAtMs = System.currentTimeMillis() + SNOOZE_MS
+                NativeAlarmScheduler.cancelAlarm(context, id)
+                NativeAlarmScheduler.scheduleAlarm(
+                    context = context,
+                    id = id,
+                    title = title,
+                    triggerAtMs = snoozeAtMs,
+                    alertMode = "alarm",
+                    taskId = taskId,
+                    isEn = isEn,
+                    saveRecord = true,
+                )
+                NativeAlarmStore.enqueuePendingAction(
+                    context = context,
+                    action = "snooze",
+                    id = id,
+                    title = title,
+                    taskId = taskId,
+                    snoozeAtMs = snoozeAtMs,
+                )
+            }
+            return
+        }
+
         val id = intent.getStringExtra(NativeAlarmScheduler.EXTRA_ALARM_ID)
             ?: "alarm_${System.currentTimeMillis()}"
+        val isEn = intent.getBooleanExtra(NativeAlarmScheduler.EXTRA_IS_EN, false)
         val title = intent.getStringExtra(NativeAlarmScheduler.EXTRA_ALARM_TITLE)
             ?.takeIf { it.isNotBlank() }
-            ?: "تذكير مهمة"
+            ?: if (isEn) "Task Reminder" else "تذكير مهمة"
         val taskId = intent.getStringExtra(NativeAlarmScheduler.EXTRA_TASK_ID)
 
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -66,6 +100,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 id = id,
                 title = title,
                 taskId = taskId,
+                isEn = isEn,
                 isPreview = false,
             )
 
@@ -82,6 +117,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 action = ACTION_DISMISS_NOTIF
                 putExtra(NativeAlarmScheduler.EXTRA_ALARM_ID, id)
                 putExtra(NativeAlarmScheduler.EXTRA_ALARM_TITLE, title)
+                putExtra(NativeAlarmScheduler.EXTRA_IS_EN, isEn)
                 if (!taskId.isNullOrBlank()) putExtra(NativeAlarmScheduler.EXTRA_TASK_ID, taskId)
             }
             val dismissPi = PendingIntent.getBroadcast(
@@ -91,32 +127,42 @@ class AlarmReceiver : BroadcastReceiver() {
                 piFlags,
             )
 
+            val snoozeIntent = Intent(context, AlarmReceiver::class.java).apply {
+                action = ACTION_SNOOZE_NOTIF
+                putExtra(NativeAlarmScheduler.EXTRA_ALARM_ID, id)
+                putExtra(NativeAlarmScheduler.EXTRA_ALARM_TITLE, title)
+                putExtra(NativeAlarmScheduler.EXTRA_IS_EN, isEn)
+                if (!taskId.isNullOrBlank()) putExtra(NativeAlarmScheduler.EXTRA_TASK_ID, taskId)
+            }
+            val snoozePi = PendingIntent.getBroadcast(
+                context,
+                reqCode + 4,
+                snoozeIntent,
+                piFlags,
+            )
+
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             if (nm != null) {
-                ensureChannel(nm)
-                val notification = NotificationCompat.Builder(context, ALARM_CHANNEL_ID)
-                    .setSmallIcon(R.mipmap.ic_launcher)
-                    .setContentTitle("منبه هندلها")
+                ensureChannel(nm, isEn)
+                val builder = NotificationCompat.Builder(context, ALARM_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_handelha)
+                    .setContentTitle(if (isEn) "Handelha Alarm" else "منبه هندلها")
                     .setContentText(title)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_ALARM)
-                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                     .setOngoing(true)
                     .setAutoCancel(false)
                     .setSilent(true) // Audio played directly by AlarmAudioController on USAGE_ALARM
-                    .setFullScreenIntent(fullScreenPi, true)
                     .setContentIntent(fullScreenPi)
-                    .addAction(0, "إيقاف", dismissPi)
-                    .build()
+                    .addAction(0, if (isEn) "Snooze 10m" else "غفوة ١٠ د", snoozePi)
+                    .addAction(0, if (isEn) "Dismiss" else "إيقاف", dismissPi)
+                if (NativeAlarmScheduler.canUseFullScreenIntent(context)) {
+                    builder.setFullScreenIntent(fullScreenPi, true)
+                }
+                val notification = builder.build()
                 notification.flags = notification.flags or Notification.FLAG_INSISTENT
                 nm.notify(reqCode, notification)
-            }
-
-            // Directly launch external AlarmActivity over unlocked/home/other apps when allowed
-            // (SYSTEM_ALERT_WINDOW or setAlarmClock BAL grace window).
-            try {
-                context.startActivity(fullScreenIntent)
-            } catch (_: Exception) {
             }
         } finally {
             try {
@@ -128,15 +174,19 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun ensureChannel(nm: NotificationManager) {
+    private fun ensureChannel(nm: NotificationManager, isEn: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 ALARM_CHANNEL_ID,
-                "منبه هندلها",
+                if (isEn) "Handelha Alarm" else "منبه هندلها",
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "شاشة المنبه الخارجي لتنبيهات المهام والمواعيد المهمة"
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                description = if (isEn) {
+                    "High-priority ringing alarms for tasks and exams"
+                } else {
+                    "شاشة المنبه الخارجي لتنبيهات المهام والمواعيد المهمة"
+                }
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 setSound(null, null)
                 enableVibration(false)
                 setBypassDnd(true)

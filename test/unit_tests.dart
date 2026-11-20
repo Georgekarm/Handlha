@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:handelha/core/database/local_backup_service.dart';
+import 'package:handelha/core/database/local_task_database.dart';
 import 'package:handelha/core/result/result.dart';
 import 'package:handelha/core/secure_storage/secure_storage_service.dart';
 import 'package:handelha/features/authentication/data/local_auth_repository.dart';
@@ -343,6 +344,54 @@ void main() {
       final updatedSub = await LocalSubscriptionStore.loadForUser(user.id);
       expect(updatedSub.category, equals(UserSubscriptionCategory.regularPro));
       expect(updatedSub.toSubscriptionState().resolvedPlanTitle(), equals('باقة Pro الشهرية'));
+    });
+
+    test('enforces subscription expirationDate and isolates subscriptions & account deletion per user', () async {
+      final expiredRecord = StoredSubscriptionRecord(
+        userId: 'u-exp',
+        category: UserSubscriptionCategory.regularPro,
+        tier: SubscriptionTier.pro,
+        activePlanId: 'pro_monthly',
+        subscribedAt: DateTime.now().subtract(const Duration(days: 40)),
+        expirationDate: DateTime.now().subtract(const Duration(days: 1)),
+      );
+      expect(expiredRecord.isExpired, isTrue);
+      expect(expiredRecord.isSubscribed, isFalse);
+      expect(expiredRecord.toSubscriptionState().status, equals(SubscriptionStatus.expired));
+      expect(expiredRecord.toSubscriptionState().isPro, isFalse);
+
+      // User A activates Pro; User B must remain Free (no global key leak)
+      await LocalSubscriptionStore.activatePlanForUser(
+        userId: 'user-a',
+        track: SubscriptionPlanTrack.pro,
+        planId: 'pro_yearly',
+        planTitle: 'باقة Pro السنوية',
+        planPrice: '٦٩٩ ج.م',
+        isAnnual: true,
+        isLocalActivation: false,
+      );
+      final subB = await LocalSubscriptionStore.loadForUser('user-b');
+      expect(subB.isSubscribed, isFalse);
+      expect(subB.category, equals(UserSubscriptionCategory.free));
+
+      // Deleting email account A must not wipe User B's tasks in LocalTaskDatabase
+      await LocalTaskDatabase.instance.createTask(
+        userId: 'user-b',
+        title: 'مهمة المستخدم ب المحمية',
+      );
+      final repo = LocalAuthRepository();
+      await repo.createAccountWithEmail(
+        email: 'usera@example.com',
+        password: 'Password123',
+        displayName: 'User A',
+      );
+      await repo.deleteAccount();
+
+      final userBTasks = (await LocalTaskDatabase.instance.getTasksForUser('user-b')
+              as Success<List<Task>>)
+          .data;
+      expect(userBTasks, hasLength(1));
+      expect(userBTasks.single.title, 'مهمة المستخدم ب المحمية');
     });
   });
 }

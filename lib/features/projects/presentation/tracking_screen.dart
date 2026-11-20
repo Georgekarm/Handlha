@@ -144,7 +144,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                             : 'أول مهمة تخلصها أو جلسة تركيز تبدأها هتبني رسومات وتقارير التتابع الخاصة بيك هنا.',
                         primaryCtaLabel:
                             isEn ? 'Add First Task' : 'إضافة أول مهمة',
-                        onPrimaryCta: () => context.push('/tasks/new'),
+                        onPrimaryCta: () => context.push('/tasks/add'),
                       ),
                       const SizedBox(height: 16),
                     ] else ...[

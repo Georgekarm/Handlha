@@ -102,6 +102,24 @@ class ChatSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void reset() {
+    _cancelSubscriptions();
+    _assistant = null;
+    _messages = const [];
+    _conversations = const [];
+    _currentConversationId = '';
+    _isSending = false;
+    _initializing = false;
+    _error = null;
+    _pendingText = null;
+    _pendingMessageId = null;
+    _assistantState = AssistantState.idle;
+    _partialTranscript = '';
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
   Future<void> initialize() async {
     final assistant = _assistant;
     if (assistant == null || _initializing || _isSending) return;

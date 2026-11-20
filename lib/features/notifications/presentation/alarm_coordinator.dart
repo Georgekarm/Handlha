@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/app_router.dart';
+import '../../authentication/presentation/auth_providers.dart';
 import '../alarm_reminder_store.dart';
 import '../local_notification_service.dart';
 import '../native_alarm_bridge.dart';
@@ -52,6 +53,11 @@ class _HandelhaAlarmCoordinatorState
       _checkDueForegroundAlarms();
     });
 
+    _startDueTimer();
+  }
+
+  void _startDueTimer() {
+    _dueTimer?.cancel();
     _dueTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) => _checkDueForegroundAlarms(),
@@ -61,9 +67,15 @@ class _HandelhaAlarmCoordinatorState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _startDueTimer();
       ref.read(alarmReminderProvider.notifier).refreshPermissions();
       _syncPendingNativeActions();
       _checkDueForegroundAlarms();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _dueTimer?.cancel();
+      _dueTimer = null;
     }
   }
 
@@ -77,6 +89,10 @@ class _HandelhaAlarmCoordinatorState
   }
 
   Future<void> _syncPendingNativeActions() async {
+    if (!mounted) return;
+    final authState = ref.read(authNotifierProvider);
+    if (authState.isLoading) return;
+
     final actions = await NativeAlarmBridge.instance.consumePendingActions();
     if (!mounted || actions.isEmpty) return;
 
@@ -101,16 +117,18 @@ class _HandelhaAlarmCoordinatorState
           break;
         case 'start_focus':
           await notifier.markAlarmDismissed(act.id);
-          final navContext = rootNavigatorKey.currentContext;
-          if (navContext != null && navContext.mounted) {
-            GoRouter.maybeOf(navContext)?.push(
-              '/focus-session',
-              extra: <String, dynamic>{
-                'title': act.title,
-                if (act.taskId != null) 'id': act.taskId,
-              },
-            );
-          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final navContext = rootNavigatorKey.currentContext;
+            if (navContext != null && navContext.mounted) {
+              GoRouter.maybeOf(navContext)?.push(
+                '/focus-session',
+                extra: <String, dynamic>{
+                  'title': act.title,
+                  if (act.taskId != null) 'id': act.taskId,
+                },
+              );
+            }
+          });
           break;
       }
     }
@@ -146,9 +164,6 @@ class _HandelhaAlarmCoordinatorState
         isPreview: false,
       );
       if (launchedExternal) {
-        await ref
-            .read(alarmReminderProvider.notifier)
-            .markAlarmDismissed(item.id);
         break;
       }
 
@@ -219,6 +234,11 @@ class _HandelhaAlarmCoordinatorState
   @override
   Widget build(BuildContext context) {
     ref.watch(alarmReminderProvider);
+    ref.listen(authNotifierProvider, (prev, next) {
+      if ((prev?.isLoading ?? true) && !next.isLoading) {
+        _syncPendingNativeActions();
+      }
+    });
     return widget.child;
   }
 }

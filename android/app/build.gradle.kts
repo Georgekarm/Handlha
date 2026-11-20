@@ -74,10 +74,12 @@ android {
 
     buildTypes {
         release {
-            // Release builds must be signed by the CI/Play App Signing upload key.
-            // Never fall back to the debug keystore.
-            if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("release")
+            // Use the official upload key when android/key.properties is configured,
+            // or fall back to debug signing so local release APKs can be installed on a phone.
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
             }
             isMinifyEnabled = true
             isShrinkResources = true

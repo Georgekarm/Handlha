@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="AlarmTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
-        <item name="android:windowBackground">#FF091C17</item>
-        <item name="android:colorBackground">#FF091C17</item>
-        <item name="android:statusBarColor">#FF091C17</item>
-        <item name="android:navigationBarColor">#FF071612</item>
-    </style>
-</resources>

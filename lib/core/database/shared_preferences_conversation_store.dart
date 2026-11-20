@@ -30,9 +30,18 @@ class SharedPreferencesConversationStore implements ConversationStore {
     final prefs = preferences;
     final key = 'ai_conversations_${userId.trim()}';
     final states = <String, ConversationState>{};
-    final raw = preferences != null
-        ? prefs!.getString(key)
-        : await SecureStorageService.instance.read(key);
+    String? raw;
+    if (preferences != null) {
+      raw = prefs!.getString(key);
+    } else {
+      raw = await SecureStorageService.instance.read(key);
+      if (raw == null) {
+        try {
+          final fallbackPrefs = await SharedPreferences.getInstance();
+          raw = fallbackPrefs.getString(key);
+        } catch (_) {}
+      }
+    }
     if (raw != null) {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) {
@@ -143,6 +152,10 @@ class SharedPreferencesConversationStore implements ConversationStore {
       await preferences.remove(key);
     } else {
       await SecureStorageService.instance.delete(key);
+      try {
+        final fallbackPrefs = await SharedPreferences.getInstance();
+        await fallbackPrefs.remove(key);
+      } catch (_) {}
     }
   }
 

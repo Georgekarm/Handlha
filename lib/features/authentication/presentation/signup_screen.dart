@@ -8,6 +8,7 @@ import '../../../core/result/result.dart';
 import '../../../shared/widgets/handelha_ambient_background.dart';
 import '../../../shared/widgets/handelha_privacy_policy_sheet.dart';
 import '../../../shared/widgets/handelha_segmented_switch.dart';
+import '../data/social_auth_service.dart';
 import '../domain/app_user.dart';
 import 'auth_providers.dart';
 import 'login_screen.dart';
@@ -68,7 +69,20 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
   Future<void> _socialAuth(AuthProviderType provider) async {
     if (_isSubmitting) return;
-    final selection = await HandelhaSocialAuthSheet.show(
+    SocialAccountSelection? selection;
+    if (provider == AuthProviderType.google) {
+      final nativePick =
+          await SocialAuthService.pickDeviceGoogleAccountOutcome();
+      if (!mounted) return;
+      if (nativePick.status == NativeGoogleAccountPickStatus.cancelled) {
+        return;
+      }
+      if (nativePick.status == NativeGoogleAccountPickStatus.selected &&
+          nativePick.email != null) {
+        selection = SocialAccountSelection(email: nativePick.email);
+      }
+    }
+    selection ??= await HandelhaSocialAuthSheet.show(
       context,
       provider: provider,
     );

@@ -7,7 +7,11 @@ import '../data/subscription_repository.dart';
 import '../domain/subscription_models.dart';
 
 final subscriptionRepositoryProvider = Provider<SubscriptionRepository>((ref) {
-  final repository = RevenueCatSubscriptionRepository();
+  final repository = RevenueCatSubscriptionRepository(
+    onCustomerInfoChanged: (nextState) {
+      ref.read(subscriptionProvider.notifier).applyExternalUpdate(nextState);
+    },
+  );
   ref.onDispose(() {
     repository.dispose();
   });
@@ -29,6 +33,11 @@ class SubscriptionNotifier extends AsyncNotifier<SubscriptionState> {
       authNotifierProvider.selectAsync((user) => user?.id),
     );
     return _repository.load(userId);
+  }
+
+  void applyExternalUpdate(SubscriptionState next) {
+    state = AsyncData(next);
+    _syncAuthClassification(next);
   }
 
   Future<void> _syncAuthClassification(SubscriptionState next) async {

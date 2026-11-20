@@ -27,33 +27,33 @@ class HandelhaPrivacyPolicySheet extends StatelessWidget {
         ? const [
             (
               icon: Icons.lock_outline_rounded,
-              title: 'Your data stays private on your device',
+              title: 'Your data stays private & under your control',
               body:
-                  'Your tasks, projects, study records, and notes are stored securely on your device and are never sold or shared with third parties.',
+                  'Your tasks, projects, study records, and notes are stored in protected app storage on your device and synced with your personal Firebase / Cloud Firestore account when cloud sync is active. Your data is never sold to third parties.',
             ),
             (
               icon: Icons.mic_none_rounded,
-              title: 'Microphone only when you tap',
+              title: 'Microphone & Speech Recognition only when you tap',
               body:
-                  'Voice access (RECORD_AUDIO) is used strictly when you press the mic button to speak with the assistant. No background audio is ever recorded or stored.',
+                  'Voice access (RECORD_AUDIO) is used strictly when you press the mic button to speak with the assistant. Android SpeechRecognizer may process speech via the system speech provider to convert it to text. No background audio is ever recorded.',
             ),
             (
               icon: Icons.notifications_none_rounded,
               title: 'Smart reminders on your terms',
               body:
-                  'Notifications and alarms keep you on track for tasks and exams, and you can adjust quiet hours or turn them off anytime in Settings.',
+                  'Notifications and exact alarms keep you on track for tasks and exams, and you can adjust quiet hours or turn them off anytime in Settings.',
             ),
             (
               icon: Icons.workspace_premium_outlined,
               title: 'Subscriptions & Google Play Billing',
               body:
-                  'Student and Pro plans renew automatically unless cancelled at least 24 hours before the end of the billing period via Google Play Subscriptions. You can restore purchases anytime.',
+                  'Subscriptions are processed via Google Play Billing and verified through RevenueCat. Plans renew automatically unless cancelled at least 24 hours before the end of the billing period in Google Play Subscriptions.',
             ),
             (
               icon: Icons.tune_rounded,
               title: 'Full control & permanent account deletion',
               body:
-                  'You can export a JSON backup, clear assistant chat history, or permanently delete your account and all associated data directly from Settings at any time.',
+                  'You can export a complete JSON backup, clear assistant chat history, or permanently delete your account and all local & cloud data directly from Settings at any time.',
             ),
           ]
         : const [
@@ -61,13 +61,13 @@ class HandelhaPrivacyPolicySheet extends StatelessWidget {
               icon: Icons.lock_outline_rounded,
               title: 'بياناتك محفوظة بأمان وخصوصية',
               body:
-                  'مهامك ومشاريعك وسجل دراستك ومحادثاتك بتتحفظ بأمان على جهازك بخصوصية تامة ومش بتتشارك أو تتباع لأي طرف خارجي.',
+                  'مهامك ومشاريعك وسجل دراستك ومحادثاتك بتتحفظ بأمان داخل مساحة التطبيق على جهازك، وتتم مزامنتها مع حسابك السحابي المشفّر (Firebase / Cloud Firestore) عند تفعيل المزامنة، ولا يتم بيعها لأي طرف خارجي.',
             ),
             (
               icon: Icons.mic_none_rounded,
-              title: 'المايك عند ضغطك بس',
+              title: 'المايك والتعرّف على الصوت عند ضغطك بس',
               body:
-                  'بنستخدم إذن الميكروفون وقت ما تضغط على زر التحدث الصوتي مع المساعد فقط، ومش بنسجل في الخلفية أو نحتفظ بأي تسجيلات صوتية.',
+                  'بنستخدم إذن الميكروفون لحظة ضغطك على زر التحدث الصوتي فقط؛ وقد يستخدم محرك التعرّف على الكلام في نظام Android اتصال الشبكة لتحويل صوتك لنص، بدون أي تسجيل في الخلفية أو حفظ للتسجيلات.',
             ),
             (
               icon: Icons.notifications_none_rounded,
@@ -79,13 +79,13 @@ class HandelhaPrivacyPolicySheet extends StatelessWidget {
               icon: Icons.workspace_premium_outlined,
               title: 'الاشتراكات والدفع عبر Google Play',
               body:
-                  'باقات الطلاب و Pro بتتجدد تلقائيًا حسب الخطة المختارة (شهريًا أو سنويًا) ويمكنك إلغاء الاشتراك أو إدارته في أي وقت من إعدادات اشتراكات Google Play أو استعادة مشترياتك السابقة.',
+                  'تتم معالجة الاشتراكات عبر Google Play Billing والتحقق من صلاحية الباقة عبر خدمة RevenueCat، وتتجدد تلقائيًا ما لم يتم إلغاؤها من إعدادات اشتراكات Google Play قبل ٢٤ ساعة من التجديد.',
             ),
             (
               icon: Icons.tune_rounded,
               title: 'تحكم كامل وحذف فوري للحساب والبيانات',
               body:
-                  'تقدر تصدّر نسخة احتياطية من بياناتك (JSON)، أو تمسح سجل المحادثات، أو تحذف حسابك وجميع بياناته نهائيًا وبشكل فوري من الإعدادات.',
+                  'تقدر تصدّر نسخة احتياطية كاملة من بياناتك (JSON)، أو تمسح سجل المحادثات، أو تحذف حسابك وجميع بياناته المحلية والسحابية نهائيًا وبشكل فوري من الإعدادات.',
             ),
           ];
 

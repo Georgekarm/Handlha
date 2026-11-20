@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/app_theme_extension.dart';
 import '../alarm_reminder_store.dart';
-import '../native_alarm_bridge.dart';
 
 /// Requests OS notification (and optionally exact alarm + overlay) permissions
 /// with a friendly Handelha explanation sheet first, only when not yet granted.

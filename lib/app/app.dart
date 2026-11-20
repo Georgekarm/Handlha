@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -37,17 +38,29 @@ class HandelhaApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       builder: (context, child) {
-        return Directionality(
-          textDirection: appLang.textDirection,
-          child: MediaQuery.withClampedTextScaling(
-            minScaleFactor: 0.8,
-            maxScaleFactor: 1.4,
-            child: HandelhaAlarmCoordinator(
-              child: child ??
-                  const ColoredBox(
-                    color: Color(0xFFF6F7F5),
-                    child: SizedBox.expand(),
-                  ),
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final overlayStyle = SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarIconBrightness:
+              isDark ? Brightness.light : Brightness.dark,
+        );
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: overlayStyle,
+          child: Directionality(
+            textDirection: appLang.textDirection,
+            child: MediaQuery.withClampedTextScaling(
+              minScaleFactor: 0.8,
+              maxScaleFactor: 1.4,
+              child: HandelhaAlarmCoordinator(
+                child: child ??
+                    const ColoredBox(
+                      color: Color(0xFFF6F7F5),
+                      child: SizedBox.expand(),
+                    ),
+              ),
             ),
           ),
         );

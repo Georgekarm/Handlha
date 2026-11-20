@@ -1,2 +1,0 @@
--keep class com.handelha.app.** { *; }
--keepattributes *Annotation*

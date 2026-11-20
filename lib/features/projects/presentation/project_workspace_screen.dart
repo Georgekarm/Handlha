@@ -9,6 +9,8 @@ import '../../../shared/widgets/handelha_bottom_nav.dart';
 import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../../shared/widgets/handelha_task_card.dart';
+import '../../subscriptions/domain/subscription_models.dart';
+import '../../subscriptions/presentation/subscription_providers.dart';
 import '../../tasks/domain/task.dart';
 import '../../tasks/presentation/task_providers.dart';
 import '../domain/project.dart';
@@ -42,12 +44,27 @@ class _ProjectWorkspaceScreenState
   _WorkspaceTab _tab = _WorkspaceTab.upcoming;
 
   Future<void> _openAiBreakdown(Project? project) async {
+    final sub = ref.read(subscriptionProvider).value;
+    final canUseAiPlanning =
+        sub?.canUseFeature(PremiumFeature.advancedPlanning) ?? false;
+    if (!canUseAiPlanning) {
+      final isEn = Directionality.of(context) == TextDirection.ltr;
+      HandelhaFeedback.showInfo(
+        context,
+        isEn
+            ? 'AI Project Breakdown is a Handelha Pro feature.'
+            : 'تقسيم المشروع بالذكاء الاصطناعي متاح ضمن باقة Handelha Pro.',
+      );
+      context.push('/subscription');
+      return;
+    }
     final created = await showModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => AiBreakdownModal(
+        existingProjectId: project?.id ?? widget.projectId,
         projectTitle: project?.title ?? widget.projectTitle,
         projectGoal: project?.description ?? widget.projectGoal,
         onAccepted: () {

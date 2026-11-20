@@ -1606,9 +1606,8 @@ class _ActiveSubscriptionCard extends StatelessWidget {
     final isStudent = state.isStudent;
     final planName = state.resolvedPlanTitle(isEnglish: isEn);
     final categoryLabel = state.categoryLabel(isEnglish: isEn);
-    final expiryStr = state.expirationDate != null
-        ? state.expirationDate!.toLocal().toString().split(' ').first
-        : null;
+    final expiryStr =
+        state.expirationDate?.toLocal().toString().split(' ').first;
 
     return Container(
       padding: const EdgeInsets.all(16),

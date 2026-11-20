@@ -18,6 +18,11 @@ import '../../projects/presentation/widgets/focus_tree_canvas.dart';
 import '../../tasks/domain/task.dart';
 import '../../tasks/presentation/task_providers.dart';
 
+final _dashboardReadIdsProvider =
+    FutureProvider.autoDispose.family<Set<String>, String>((ref, userId) {
+  return NotificationInboxStore.loadReadIds(userId);
+});
+
 /// الشاشة الرئيسية.
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -132,17 +137,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final remainingTasks =
         heroTask != null ? openTasks.skip(1).take(4).toList() : const <Task>[];
 
-    final unreadCountFuture = user == null
-        ? Future.value(false)
-        : NotificationInboxStore.loadReadIds(user.id).then((readIds) {
-            return allTasks.any(
-              (t) =>
-                  !t.isCompleted &&
-                  !t.isCancelled &&
-                  t.dueAt != null &&
-                  !readIds.contains(t.id),
-            );
-          });
+    final readIds = user == null
+        ? const <String>{}
+        : (ref.watch(_dashboardReadIdsProvider(user.id)).value ??
+            const <String>{});
+    final hasUnreadNotifications = user != null &&
+        allTasks.any(
+          (t) =>
+              !t.isCompleted &&
+              !t.isCancelled &&
+              t.dueAt != null &&
+              !readIds.contains(t.id),
+        );
 
     return Material(
       type: MaterialType.transparency,
@@ -232,16 +238,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             ref.read(themeModeProvider.notifier).toggle(),
                       ),
                       const SizedBox(width: 6),
-                      FutureBuilder<bool>(
-                        future: unreadCountFuture,
-                        builder: (context, snap) {
-                          return HandelhaHeaderIconButton(
-                            icon: Icons.notifications_none_rounded,
-                            tooltip: isEn ? 'Notifications' : 'الإشعارات',
-                            showBadge: snap.data ?? false,
-                            onTap: () => context.push('/notifications'),
-                          );
-                        },
+                      HandelhaHeaderIconButton(
+                        icon: Icons.notifications_none_rounded,
+                        tooltip: isEn ? 'Notifications' : 'الإشعارات',
+                        showBadge: hasUnreadNotifications,
+                        onTap: () => context.push('/notifications'),
                       ),
                       const SizedBox(width: 6),
                       HandelhaHeaderIconButton(
@@ -346,14 +347,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    isEn
-                                        ? '$completedCount of $totalCount'
-                                        : '${ArabicFormatters.toArabicDigits(completedCount)} من ${ArabicFormatters.toArabicDigits(totalCount)}',
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: c.textPrimary,
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: AlignmentDirectional.centerStart,
+                                    child: Text(
+                                      isEn
+                                          ? '$completedCount of $totalCount'
+                                          : '${ArabicFormatters.toArabicDigits(completedCount)} من ${ArabicFormatters.toArabicDigits(totalCount)}',
+                                      maxLines: 1,
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                        color: c.textPrimary,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 2),
@@ -365,6 +371,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                         : (_selectedDayOffset == 0
                                             ? 'مهام خلصوا النهارده'
                                             : 'مهام اليوم ده'),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: c.textSecondary,
@@ -391,14 +399,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                       color: c.primary,
                                     ),
                                   ),
-                                  Text(
-                                    ArabicFormatters.percent(
-                                      progressRatio * 100,
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: c.primary,
+                                  Padding(
+                                    padding: const EdgeInsets.all(8),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        ArabicFormatters.percent(
+                                          progressRatio * 100,
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: c.primary,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -732,39 +746,69 @@ class _HeroNextStepCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: SizedBox(
-                  height: 48,
-                  child: ElevatedButton.icon(
+                flex: 3,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: ElevatedButton(
                     onPressed: onStartFocus,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.92),
                       foregroundColor: c.heroTeal,
                       elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    icon: const Icon(Icons.play_arrow_outlined, size: 22),
-                    label: Text(
-                      isEn ? 'Start Focus Session' : 'ابدأ جلسة تركيز',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: c.heroTeal,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.play_arrow_outlined, size: 20),
+                          const SizedBox(width: 6),
+                          Text(
+                            isEn ? 'Start Focus Session' : 'ابدأ جلسة تركيز',
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: c.heroTeal,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
-              TextButton(
-                onPressed: onOpenAssistant,
-                child: Text(
-                  isEn ? 'Plan together?' : 'نرتّبها سوا؟',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.92),
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 2,
+                child: TextButton(
+                  onPressed: onOpenAssistant,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      isEn ? 'Plan together?' : 'نرتّبها سوا؟',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.92),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -838,6 +882,7 @@ class _FocusDashboardStripCard extends StatelessWidget {
                         Row(
                           children: [
                             Flexible(
+                              flex: 2,
                               child: Text(
                                 isEn ? 'Your Focus Tree' : 'شجرتك ونمو تركيزك',
                                 maxLines: 1,
@@ -850,23 +895,26 @@ class _FocusDashboardStripCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: c.primarySoft,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                stageName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: c.primary,
+                            Flexible(
+                              flex: 1,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: c.primarySoft,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  stageName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: c.primary,
+                                  ),
                                 ),
                               ),
                             ),
@@ -888,22 +936,29 @@ class _FocusDashboardStripCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  TextButton(
-                    onPressed: onOpenTree,
-                    style: TextButton.styleFrom(
-                      minimumSize: Size.zero,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 76),
+                    child: TextButton(
+                      onPressed: onOpenTree,
+                      style: TextButton.styleFrom(
+                        minimumSize: Size.zero,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      isEn ? 'Open Tree' : 'عرض شجرتك',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: c.primary,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          isEn ? 'Open Tree' : 'عرض شجرتك',
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: c.primary,
+                          ),
+                        ),
                       ),
                     ),
                   ),

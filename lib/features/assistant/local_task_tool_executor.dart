@@ -263,7 +263,7 @@ class LocalTaskToolExecutor implements ToolExecutor {
     _onChanged?.call();
     return ToolResult.success({
       'reminder_id': item.id,
-      if (linkedTaskId != null) 'task_id': linkedTaskId,
+      'task_id': ?linkedTaskId,
       'title': item.title,
       'date': _isoDate(scheduledAt),
       'time': _isoTime(scheduledAt),

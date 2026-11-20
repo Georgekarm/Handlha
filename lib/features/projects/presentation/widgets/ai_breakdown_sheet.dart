@@ -14,8 +14,10 @@ import '../../../authentication/presentation/auth_providers.dart';
 import '../../../tasks/domain/task.dart';
 import '../../../tasks/presentation/task_providers.dart';
 import '../../domain/project.dart';
+import '../project_providers.dart';
 
 class AiBreakdownModal extends ConsumerStatefulWidget {
+  final String? existingProjectId;
   final String projectTitle;
   final String projectGoal;
   final String? deadline;
@@ -23,15 +25,34 @@ class AiBreakdownModal extends ConsumerStatefulWidget {
   final String? conversationContext;
   final VoidCallback? onAccepted;
 
-  const AiBreakdownModal({super.key, required this.projectTitle, required this.projectGoal, this.deadline, this.constraints, this.conversationContext, this.onAccepted});
+  const AiBreakdownModal({
+    super.key,
+    this.existingProjectId,
+    required this.projectTitle,
+    required this.projectGoal,
+    this.deadline,
+    this.constraints,
+    this.conversationContext,
+    this.onAccepted,
+  });
 
-  static Future<void> show(BuildContext context, {required String projectTitle, required String projectGoal, String? deadline, String? constraints, String? conversationContext, VoidCallback? onAccepted}) {
+  static Future<void> show(
+    BuildContext context, {
+    String? existingProjectId,
+    required String projectTitle,
+    required String projectGoal,
+    String? deadline,
+    String? constraints,
+    String? conversationContext,
+    VoidCallback? onAccepted,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => AiBreakdownModal(
+        existingProjectId: existingProjectId,
         projectTitle: projectTitle,
         projectGoal: projectGoal,
         deadline: deadline,
@@ -86,7 +107,7 @@ class _AiBreakdownModalState extends ConsumerState<AiBreakdownModal> {
     if (plan == null || user == null || _saving) return;
     setState(() => _saving = true);
     const uuid = Uuid();
-    final projectId = uuid.v4();
+    final projectId = widget.existingProjectId ?? uuid.v4();
     final taskIds = {for (final task in plan.phases.expand((p) => p.tasks)) task.id: uuid.v4()};
     final phaseIds = {for (final phase in plan.phases) phase.id: uuid.v4()};
     final now = DateTime.now();
@@ -107,11 +128,32 @@ class _AiBreakdownModalState extends ConsumerState<AiBreakdownModal> {
       if (mounted) setState(() { _saving = false; _error = 'المهام ما اتحفظتش. مفيش خطة اتعتمدت.'; });
       return;
     }
-    final project = Project(
-      id: projectId, userId: user.id, title: plan.title, description: plan.goal, status: ProjectStatus.active,
-      progressPercent: 0, nextStepTitle: tasks.firstOrNull?.title,
-      targetDate: plan.phases.map((p) => p.suggestedDeadline).whereType<DateTime>().lastOrNull,
-      taskIds: taskIds.values.toList(), createdAt: now, updatedAt: now);
+    Project? existingProject;
+    if (widget.existingProjectId != null) {
+      final currentProjects = await LocalProjectDatabase.instance.forUser(user.id);
+      if (currentProjects is Success<List<Project>>) {
+        existingProject = currentProjects.data
+            .where((p) => p.id == widget.existingProjectId)
+            .firstOrNull;
+      }
+    }
+    final mergedTaskIds = <String>[
+      if (existingProject != null) ...existingProject.taskIds,
+      ...taskIds.values,
+    ];
+    final project = existingProject != null
+        ? existingProject.copyWith(
+            nextStepTitle: existingProject.nextStepTitle ?? tasks.firstOrNull?.title,
+            targetDate: existingProject.targetDate ??
+                plan.phases.map((p) => p.suggestedDeadline).whereType<DateTime>().lastOrNull,
+            taskIds: mergedTaskIds,
+            updatedAt: now,
+          )
+        : Project(
+            id: projectId, userId: user.id, title: plan.title, description: plan.goal, status: ProjectStatus.active,
+            progressPercent: 0, nextStepTitle: tasks.firstOrNull?.title,
+            targetDate: plan.phases.map((p) => p.suggestedDeadline).whereType<DateTime>().lastOrNull,
+            taskIds: mergedTaskIds, createdAt: now, updatedAt: now);
     final phases = plan.phases.map((phase) => {
       'id': phaseIds[phase.id], 'title': phase.title, 'description': phase.description,
       'estimatedDurationMinutes': phase.estimatedDurationMinutes,
@@ -125,12 +167,14 @@ class _AiBreakdownModalState extends ConsumerState<AiBreakdownModal> {
       return;
     }
     ref.invalidate(todayTasksProvider);
+    ref.invalidate(allTasksProvider);
+    ref.invalidate(projectsProvider);
     widget.onAccepted?.call();
     HandelhaFeedback.showSuccess(
       context,
       'تم اعتماد ${plan.phases.length} مراحل و${tasks.length} مهمة.',
     );
-    Navigator.pop(context);
+    Navigator.pop(context, true);
   }
 
   @override

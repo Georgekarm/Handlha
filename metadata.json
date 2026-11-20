@@ -1,8 +1,0 @@
-{
-  "name": "Handelha",
-  "description": "Calm bilingual (Arabic/English) AI executive assistant, task & project workspace, focus tree timer, and smart alarm planner.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

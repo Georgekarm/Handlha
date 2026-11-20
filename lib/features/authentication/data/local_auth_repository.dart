@@ -5,6 +5,8 @@ import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../app/mode/student_mode_controller.dart';
+import '../../../core/cloud/firebase_cloud_service.dart';
+import '../../../core/database/local_backup_service.dart';
 import '../../../core/database/local_focus_session_database.dart';
 import '../../../core/database/local_project_database.dart';
 import '../../../core/database/local_task_database.dart';
@@ -97,6 +99,41 @@ final class LocalAuthRepository implements AuthRepository {
     final validation = _validateEmail(normalizedEmail);
     if (validation != null) return Failure(ValidationFailure(validation));
 
+    if (FirebaseCloudService.instance.isEnabled) {
+      final cloudRes = await FirebaseCloudService.instance.signInWithEmail(
+        email: normalizedEmail,
+        password: password,
+      );
+      if (cloudRes is Failure<FirebaseAuthSession>) {
+        return Failure(cloudRes.failure);
+      }
+      final session = (cloudRes as Success<FirebaseAuthSession>).data;
+      final cloudJson = await FirebaseCloudService.instance.fetchWorkspaceJson(
+        session.uid,
+      );
+      if (cloudJson != null && cloudJson.trim().isNotEmpty) {
+        await LocalBackupService.instance.importTasksForUser(
+          userId: session.uid,
+          backupJson: cloudJson,
+        );
+      }
+      final isOnboardingDone = await isOnboardingComplete();
+      final tone = await _loadTone();
+      final subRecord = await LocalSubscriptionStore.loadForUser(session.uid);
+      final user = _buildUser(
+        userId: session.uid,
+        email: session.email,
+        displayName: session.displayName,
+        provider: AuthProviderType.email,
+        onboardingComplete: isOnboardingDone,
+        tone: tone,
+        subscriptionCategory: subRecord.category,
+        activePlanId: subRecord.activePlanId,
+      );
+      await _startSession(user);
+      return Success(user);
+    }
+
     final savedEmail = await SecureStorageService.instance.read(
       SecureStorageKeys.localEmail,
     );
@@ -160,6 +197,28 @@ final class LocalAuthRepository implements AuthRepository {
 
     final passwordError = _validatePassword(password);
     if (passwordError != null) return const Failure(WeakPasswordFailure());
+
+    if (FirebaseCloudService.instance.isEnabled) {
+      final cloudRes = await FirebaseCloudService.instance.signUpWithEmail(
+        email: normalizedEmail,
+        password: password,
+        displayName: displayName?.trim(),
+      );
+      if (cloudRes is Failure<FirebaseAuthSession>) {
+        return Failure(cloudRes.failure);
+      }
+      final session = (cloudRes as Success<FirebaseAuthSession>).data;
+      final user = _buildUser(
+        userId: session.uid,
+        email: session.email,
+        displayName: session.displayName ?? displayName?.trim(),
+        provider: AuthProviderType.email,
+        tone: await _loadTone(),
+      );
+      await LocalSubscriptionStore.clearForUser(user.id);
+      await _startSession(user);
+      return Success(user);
+    }
 
     final existingEmail = await SecureStorageService.instance.read(
       SecureStorageKeys.localEmail,
@@ -259,6 +318,9 @@ final class LocalAuthRepository implements AuthRepository {
     final normalized = email.trim().toLowerCase();
     final validation = _validateEmail(normalized);
     if (validation != null) return Failure(ValidationFailure(validation));
+    if (FirebaseCloudService.instance.isEnabled) {
+      return FirebaseCloudService.instance.sendPasswordResetEmail(normalized);
+    }
     return const Failure(
       AuthFailure(
         'حسابك ومهامك محفوظين على جهازك بس، فمش بنقدر نبعت رابط استعادة على الإيميل. تقدر تدخل بحساب جوجل أو فيسبوك بدل كده.',
@@ -277,6 +339,10 @@ final class LocalAuthRepository implements AuthRepository {
 
     final passErr = _validatePassword(newPassword);
     if (passErr != null) return const Failure(WeakPasswordFailure());
+
+    if (FirebaseCloudService.instance.isEnabled) {
+      return FirebaseCloudService.instance.sendPasswordResetEmail(normalized);
+    }
 
     final savedEmail = await SecureStorageService.instance.read(
       SecureStorageKeys.localEmail,
@@ -340,8 +406,21 @@ final class LocalAuthRepository implements AuthRepository {
         _providerFrom(
           await SecureStorageService.instance.read(SecureStorageKeys.authProvider),
         );
+    final userId = _currentUser?.id;
+    if (userId != null &&
+        userId.isNotEmpty &&
+        FirebaseCloudService.instance.isEnabled) {
+      final exported = await LocalBackupService.instance.exportForUser(userId);
+      if (exported is Success<String>) {
+        await FirebaseCloudService.instance.syncWorkspaceJson(
+          userId: userId,
+          backupJson: exported.data,
+        );
+      }
+    }
     _currentUser = null;
     _onboardingComplete = false;
+    StudentModeStore.setSync(false);
     await _social.signOut(provider);
     await SecureStorageService.instance.clearSession();
   }
@@ -360,6 +439,8 @@ final class LocalAuthRepository implements AuthRepository {
     _currentUser = null;
     _onboardingComplete = false;
 
+    await FirebaseCloudService.instance.deleteUserCloudData(userId);
+
     if (userId != null && userId.isNotEmpty) {
       await LocalTaskDatabase.instance.clearForUser(userId);
       await LocalProjectDatabase.instance.clearForUser(userId);
@@ -377,12 +458,12 @@ final class LocalAuthRepository implements AuthRepository {
     await LocalNotificationService.instance.cancelAll();
 
     if (provider == AuthProviderType.email) {
-      await SecureStorageService.instance.clearAll();
+      await SecureStorageService.instance.clearEmailAccountCredentials();
     } else {
       // Keep any separate email account on this device intact.
       await _social.disconnect(provider);
       await SecureStorageService.instance.clearSession();
-      await SecureStorageService.instance.delete(SecureStorageKeys.userName);
+      await SecureStorageService.instance.delete(SecureStorageKeys.assistantTone);
     }
   }
 

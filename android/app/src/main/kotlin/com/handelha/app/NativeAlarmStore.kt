@@ -10,6 +10,9 @@ data class NativeAlarmRecord(
     val scheduledAtMs: Long,
     val alertMode: String,
     val taskId: String?,
+    val hour: Int = -1,
+    val minute: Int = -1,
+    val isEn: Boolean = false,
 )
 
 object NativeAlarmStore {
@@ -37,7 +40,7 @@ object NativeAlarmStore {
 
     @Synchronized
     fun clearAllAlarms(context: Context) {
-        prefs(context).edit().remove(KEY_ALARMS).apply()
+        prefs(context).edit().remove(KEY_ALARMS).remove(KEY_ACTIONS).apply()
     }
 
     @Synchronized
@@ -57,6 +60,9 @@ object NativeAlarmStore {
                         scheduledAtMs = obj.optLong("scheduledAtMs", 0L),
                         alertMode = obj.optString("alertMode", "alarm"),
                         taskId = obj.optString("taskId", "").ifBlank { null },
+                        hour = obj.optInt("hour", -1),
+                        minute = obj.optInt("minute", -1),
+                        isEn = obj.optBoolean("isEn", false),
                     ),
                 )
             }
@@ -79,6 +85,9 @@ object NativeAlarmStore {
                     if (!item.taskId.isNullOrBlank()) {
                         put("taskId", item.taskId)
                     }
+                    put("hour", item.hour)
+                    put("minute", item.minute)
+                    put("isEn", item.isEn)
                 },
             )
         }

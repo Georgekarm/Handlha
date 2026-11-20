@@ -33,3 +33,7 @@
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
+
+# Flutter Play Core optional deferred components & Handelha native Android classes
+-dontwarn com.google.android.play.core.**
+-keep class com.handelha.app.** { *; }

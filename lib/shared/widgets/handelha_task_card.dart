@@ -159,27 +159,30 @@ class HandelhaTaskCard extends StatelessWidget {
                         ? 'إعادة فتح المهمة $displayTitle'
                         : 'إتمام المهمة $displayTitle'),
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                   onTap: onToggleComplete,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: done ? context.ctaBackground : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: done ? context.ctaBackground : c.border,
-                        width: 1.5,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: done ? context.ctaBackground : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: done ? context.ctaBackground : c.border,
+                          width: 1.5,
+                        ),
                       ),
+                      child: done
+                          ? Icon(
+                              Icons.check_rounded,
+                              size: 16,
+                              color: context.ctaForeground,
+                            )
+                          : null,
                     ),
-                    child: done
-                        ? Icon(
-                            Icons.check_rounded,
-                            size: 16,
-                            color: context.ctaForeground,
-                          )
-                        : null,
                   ),
                 ),
               ),

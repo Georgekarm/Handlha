@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import '../../../app/locale/language_controller.dart';
 import '../../../app/theme/app_theme_extension.dart';
 import '../../../shared/utils/arabic_formatters.dart';
-import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../projects/domain/project.dart';
@@ -61,13 +60,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await session.toggleVoice();
       return;
     }
-    final hasTokens =
-        await ref.read(tokenBalanceProvider.notifier).consumeVoiceToken();
-    if (!hasTokens) {
+    final tokenState = ref.read(tokenBalanceProvider);
+    if (!tokenState.canSendVoice) {
       if (mounted) _showTokenRefillSheet(context);
       return;
     }
     await session.toggleVoice();
+    if (session.assistantState == AssistantState.listening) {
+      await ref.read(tokenBalanceProvider.notifier).consumeVoiceToken();
+    }
   }
 
   void _showTokenRefillSheet(BuildContext context) {
@@ -591,13 +592,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       child: SizedBox(
                         width: 42,
                         height: 42,
-                        child: Transform.flip(
-                          flipX: !appLang.isEnglish,
-                          child: Icon(
-                            Icons.send_rounded,
-                            size: 19,
-                            color: c.textOnPrimary,
-                          ),
+                        child: Icon(
+                          Icons.send_rounded,
+                          size: 19,
+                          color: c.textOnPrimary,
                         ),
                       ),
                     ),
@@ -850,232 +848,156 @@ class _TokenHeaderBadge extends StatelessWidget {
   }
 }
 
-class _TokenRefillBottomSheet extends ConsumerStatefulWidget {
+class _TokenRefillBottomSheet extends ConsumerWidget {
   const _TokenRefillBottomSheet();
 
   @override
-  ConsumerState<_TokenRefillBottomSheet> createState() =>
-      _TokenRefillBottomSheetState();
-}
-
-class _TokenRefillBottomSheetState
-    extends ConsumerState<_TokenRefillBottomSheet> {
-  bool _watchingAd = false;
-  int _countdown = 3;
-  Timer? _adTimer;
-
-  @override
-  void dispose() {
-    _adTimer?.cancel();
-    super.dispose();
-  }
-
-  void _startGoogleAdSimulation() {
-    if (_watchingAd) return;
-    setState(() {
-      _watchingAd = true;
-      _countdown = 3;
-    });
-    _adTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      if (_countdown > 1) {
-        setState(() => _countdown--);
-      } else {
-        timer.cancel();
-        await ref.read(tokenBalanceProvider.notifier).rewardFromGoogleAd();
-        if (!mounted) return;
-        setState(() => _watchingAd = false);
-        final isEn = ref.read(appLanguageProvider).isEnglish;
-        HandelhaFeedback.showCelebration(
-          context,
-          isEn
-              ? '+15 Tokens added from Google Rewarded Ad!'
-              : 'تم إضافة +١٥ توكن لرصيدك من إعلان Google بنجاح!',
-          title: isEn ? 'Reward Unlocked' : 'مكافأة جديدة',
-        );
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = context.appColors;
     final appLang = ref.watch(appLanguageProvider);
     final tokenState = ref.watch(tokenBalanceProvider);
     final isEn = appLang.isEnglish;
 
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: c.border),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: c.primarySoft,
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(
-                  Icons.bolt_rounded,
-                  size: 26,
-                  color: c.warning,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      appLang.tr(
-                        'محفظة توكنز مساعد هندلها',
-                        'Handelha Assistant Tokens',
-                      ),
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      appLang.tr(
-                        'يتجدد رصيدك تلقائيًا كل يوم إلى ٥٠ توكن مجانًا',
-                        'Auto-renews daily to 50 free tokens every day',
-                      ),
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: c.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: Icon(Icons.close_rounded, color: c.textSecondary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-
-          // Balance Progress Card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: c.surfaceSoft,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: c.border),
-            ),
-            child: Column(
+    return SingleChildScrollView(
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: c.border),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      appLang.tr('رصيدك المتاح الآن', 'Current Balance'),
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: c.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      isEn
-                          ? '${tokenState.balance} / ${tokenState.dailyAllowance} Tokens'
-                          : '${ArabicFormatters.toArabicDigits(tokenState.balance)} / ${ArabicFormatters.toArabicDigits(tokenState.dailyAllowance)} توكن',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: c.primary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: tokenState.fillRatio,
-                    minHeight: 9,
-                    backgroundColor: c.border.withValues(alpha: 0.4),
-                    valueColor: AlwaysStoppedAnimation<Color>(c.primary),
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: c.primarySoft,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    Icons.bolt_rounded,
+                    size: 26,
+                    color: c.warning,
                   ),
                 ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _CostExplanationTile(
-                        icon: Icons.chat_bubble_outline_rounded,
-                        title: appLang.tr('الرسالة النصية', 'Text Message'),
-                        cost: appLang.tr('٢ توكن', '2 Tokens'),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        appLang.tr(
+                          'محفظة توكنز مساعد هندلها',
+                          'Handelha Assistant Tokens',
+                        ),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: c.textPrimary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _CostExplanationTile(
-                        icon: Icons.mic_none_rounded,
-                        title: appLang.tr('الرسالة الصوتية (فويس)', 'Voice Message'),
-                        cost: appLang.tr('٥ توكن', '5 Tokens'),
+                      Text(
+                        appLang.tr(
+                          'يتجدد رصيدك تلقائيًا كل يوم إلى ٥٠ توكن مجانًا',
+                          'Auto-renews daily to 50 free tokens every day',
+                        ),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: c.textSecondary,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: Icon(Icons.close_rounded, color: c.textSecondary),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 18),
 
-          // Watch Google Ad Reward Button
-          if (_watchingAd)
+            // Balance Progress Card
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: c.primarySoft,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: c.primary),
+                color: c.surfaceSoft,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: c.border),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Column(
                 children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: c.primary,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        appLang.tr('رصيدك المتاح الآن', 'Current Balance'),
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                      Text(
+                        tokenState.isUnlimitedPro
+                            ? (isEn ? 'Unlimited (Pro)' : 'غير محدود (Pro)')
+                            : (isEn
+                                ? '${tokenState.balance} / ${tokenState.dailyAllowance} Tokens'
+                                : '${ArabicFormatters.toArabicDigits(tokenState.balance)} / ${ArabicFormatters.toArabicDigits(tokenState.dailyAllowance)} توكن'),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: c.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: tokenState.fillRatio,
+                      minHeight: 9,
+                      backgroundColor: c.border.withValues(alpha: 0.4),
+                      valueColor: AlwaysStoppedAnimation<Color>(c.primary),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    isEn
-                        ? 'Playing Google Rewarded Ad... ($_countdown s)'
-                        : 'جاري عرض إعلان Google المكافئ... (${ArabicFormatters.toArabicDigits(_countdown)} ث)',
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: c.primary,
-                    ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _CostExplanationTile(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          title: appLang.tr('الرسالة النصية', 'Text Message'),
+                          cost: appLang.tr('٢ توكن', '2 Tokens'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _CostExplanationTile(
+                          icon: Icons.mic_none_rounded,
+                          title: appLang.tr('الرسالة الصوتية (فويس)', 'Voice Message'),
+                          cost: appLang.tr('٥ توكن', '5 Tokens'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            )
-          else
+            ),
+            const SizedBox(height: 16),
+
             ElevatedButton.icon(
-              onPressed: _startGoogleAdSimulation,
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.push('/subscription');
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: c.primary,
                 foregroundColor: c.textOnPrimary,
@@ -1084,11 +1006,11 @@ class _TokenRefillBottomSheetState
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              icon: const Icon(Icons.play_circle_fill_rounded, size: 22),
+              icon: const Icon(Icons.workspace_premium_outlined, size: 22),
               label: Text(
                 appLang.tr(
-                  'شاهد إعلان Google واحصل على +١٥ توكن مجانًا',
-                  'Watch Google Ad for +15 Free Tokens',
+                  'اشترك في هندلها Pro لتوكنز غير محدودة',
+                  'Upgrade to Handelha Pro for Unlimited Tokens',
                 ),
                 style: const TextStyle(
                   fontSize: 14,
@@ -1096,25 +1018,8 @@ class _TokenRefillBottomSheetState
                 ),
               ),
             ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              context.push('/subscription');
-            },
-            child: Text(
-              appLang.tr(
-                'أو اشترك في هندلها Pro لتوكنز غير محدودة وبدون إعلانات ←',
-                'Or upgrade to Handelha Pro for unlimited tokens & no ads →',
-              ),
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: c.primary,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

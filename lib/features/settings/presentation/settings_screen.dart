@@ -1133,16 +1133,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               const SizedBox(height: 5),
                               Builder(
                                 builder: (_) {
-                                  final startH =
-                                      _notifPrefs.quietHoursStartMinutes ~/ 60;
-                                  final endH =
-                                      _notifPrefs.quietHoursEndMinutes ~/ 60;
-                                  final startDisplay =
-                                      startH > 12 ? startH - 12 : startH;
+                                  String fmtTime(int mins, bool isEn) {
+                                    final h24 = (mins ~/ 60) % 24;
+                                    final m = mins % 60;
+                                    final isPm = h24 >= 12;
+                                    final h12 = h24 % 12 == 0 ? 12 : h24 % 12;
+                                    final mm = m == 0
+                                        ? ''
+                                        : ':${m.toString().padLeft(2, '0')}';
+                                    if (isEn) {
+                                      final enMm =
+                                          ':${m.toString().padLeft(2, '0')}';
+                                      return '$h12$enMm ${isPm ? 'PM' : 'AM'}';
+                                    }
+                                    final arTime = ArabicFormatters.toArabicDigits(
+                                      '$h12$mm',
+                                    );
+                                    return '$arTime ${isPm ? 'بالليل' : 'الصبح'}';
+                                  }
+
+                                  final startLabel = fmtTime(
+                                    _notifPrefs.quietHoursStartMinutes,
+                                    appLang.isEnglish,
+                                  );
+                                  final endLabel = fmtTime(
+                                    _notifPrefs.quietHoursEndMinutes,
+                                    appLang.isEnglish,
+                                  );
                                   return Text(
                                     appLang.isEnglish
-                                        ? 'From $endH:00 AM to $startDisplay:00 PM'
-                                        : 'من ${ArabicFormatters.toArabicDigits(endH)} الصبح لـ ${ArabicFormatters.toArabicDigits(startDisplay)} بالليل',
+                                        ? 'From $endLabel to $startLabel'
+                                        : 'من $endLabel لـ $startLabel',
                                     style: TextStyle(
                                       fontSize: 13,
                                       color: c.textSecondary,

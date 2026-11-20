@@ -14,6 +14,7 @@ import '../../../shared/widgets/handelha_bottom_nav.dart';
 import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../authentication/presentation/auth_providers.dart';
+import '../../notifications/native_alarm_bridge.dart';
 import '../../tasks/domain/task.dart';
 import '../../tasks/presentation/task_providers.dart';
 import '../domain/focus_session.dart';
@@ -61,6 +62,8 @@ class _HandelhaFocusSessionScreenState
   late _FocusViewTab _viewTab;
   Timer? _timer;
   DateTime? _startedAt;
+  DateTime? _targetEndTime;
+  DateTime? _lastTickWallTime;
   bool _sessionRecorded = false;
   int _lastCompletedMinutes = 25;
 
@@ -84,7 +87,31 @@ class _HandelhaFocusSessionScreenState
   void dispose() {
     _timer?.cancel();
     HandelhaSoundEngine.instance.stopAmbient();
+    NativeAlarmBridge.instance.stopFocusService();
     super.dispose();
+  }
+
+  void _syncForegroundService() {
+    if (!mounted) return;
+    if (_phase != _FocusPhase.active && _phase != _FocusPhase.onBreak) {
+      NativeAlarmBridge.instance.stopFocusService();
+      return;
+    }
+    final isEn = Directionality.of(context) == TextDirection.ltr;
+    final mmSs = ArabicFormatters.timerMmSs(_remainingSeconds);
+    final title = _phase == _FocusPhase.onBreak
+        ? (isEn ? 'Break Time • $mmSs' : 'وقت الاستراحة • $mmSs')
+        : (isEn
+            ? '${widget.taskTitle} • $mmSs'
+            : '${widget.taskTitle} • ${ArabicFormatters.toArabicDigits(mmSs)}');
+    final subtitle = _phase == _FocusPhase.onBreak
+        ? (isEn ? 'Take a calm breath' : 'خد نفس هادي واستريح')
+        : (isEn ? 'Handelha Focus Session active' : 'جلسة تركيز هندلها شغّالة');
+    NativeAlarmBridge.instance.startOrUpdateFocusService(
+      title: title,
+      subtitle: subtitle,
+      isEn: isEn,
+    );
   }
 
   Future<void> _loadFocusHistory() async {
@@ -101,13 +128,25 @@ class _HandelhaFocusSessionScreenState
 
   void _startTicker() {
     _timer?.cancel();
+    final now = DateTime.now();
+    _targetEndTime = now.add(Duration(seconds: _remainingSeconds));
+    _lastTickWallTime = now;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncForegroundService());
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (_phase != _FocusPhase.active && _phase != _FocusPhase.onBreak) {
         return;
       }
-      if (_remainingSeconds <= 1) {
+      final currentWall = DateTime.now();
+      final prevWall = _lastTickWallTime ?? currentWall;
+      _lastTickWallTime = currentWall;
+      final wallDelta = currentWall.difference(prevWall).inSeconds;
+      final nextRemaining = (wallDelta >= 2 && _targetEndTime != null)
+          ? _targetEndTime!.difference(currentWall).inSeconds
+          : _remainingSeconds - 1;
+      if (nextRemaining <= 0) {
         _timer?.cancel();
+        NativeAlarmBridge.instance.stopFocusService();
         if (_phase == _FocusPhase.active) {
           _completeFocusSession(completed: true);
         } else {
@@ -115,7 +154,10 @@ class _HandelhaFocusSessionScreenState
         }
         return;
       }
-      setState(() => _remainingSeconds -= 1);
+      setState(() => _remainingSeconds = nextRemaining);
+      if (_remainingSeconds % 5 == 0 || _remainingSeconds <= 10) {
+        _syncForegroundService();
+      }
     });
   }
 
@@ -148,6 +190,7 @@ class _HandelhaFocusSessionScreenState
   void _pause() {
     if (_phase != _FocusPhase.active) return;
     _timer?.cancel();
+    NativeAlarmBridge.instance.stopFocusService();
     setState(() => _phase = _FocusPhase.paused);
   }
 
@@ -202,6 +245,7 @@ class _HandelhaFocusSessionScreenState
   Future<void> _completeFocusSession({required bool completed}) async {
     _timer?.cancel();
     HandelhaSoundEngine.instance.stopAmbient();
+    NativeAlarmBridge.instance.stopFocusService();
     await _recordSessionOnce(completed: completed);
     if (!mounted) return;
     setState(() {
@@ -213,6 +257,7 @@ class _HandelhaFocusSessionScreenState
   Future<void> _endSessionManually() async {
     _timer?.cancel();
     HandelhaSoundEngine.instance.stopAmbient();
+    NativeAlarmBridge.instance.stopFocusService();
     await _recordSessionOnce(completed: true);
     if (!mounted) return;
     setState(() {
@@ -247,6 +292,7 @@ class _HandelhaFocusSessionScreenState
   void _exitScreen() {
     _timer?.cancel();
     HandelhaSoundEngine.instance.stopAmbient();
+    NativeAlarmBridge.instance.stopFocusService();
     final router = GoRouter.maybeOf(context);
     if (router != null) {
       if (router.canPop()) {

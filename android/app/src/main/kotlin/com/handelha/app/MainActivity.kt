@@ -35,17 +35,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Wake the screen and display alarm alerts over the lock screen across Android 7-16+.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
-            )
-        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -116,21 +105,35 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
                     try {
-                        val intent = AccountManager.newChooseAccountIntent(
-                            null,
-                            null,
-                            arrayOf("com.google"),
-                            null,
-                            null,
-                            null,
-                            null,
-                        )
+                        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            AccountManager.newChooseAccountIntent(
+                                null,
+                                null,
+                                arrayOf("com.google"),
+                                null,
+                                null,
+                                null,
+                                null,
+                            )
+                        } else {
+                            @Suppress("DEPRECATION")
+                            AccountManager.newChooseAccountIntent(
+                                null,
+                                null,
+                                arrayOf("com.google"),
+                                false,
+                                null,
+                                null,
+                                null,
+                                null,
+                            )
+                        }
                         pendingAccountResult = result
                         @Suppress("DEPRECATION")
                         startActivityForResult(intent, REQUEST_CODE_PICK_ACCOUNT)
                     } catch (_: Exception) {
                         pendingAccountResult = null
-                        result.success(null)
+                        result.success(mapOf("status" to "unavailable"))
                     }
                 }
 
@@ -150,6 +153,7 @@ class MainActivity : FlutterActivity() {
                         val triggerAtMs = (call.argument<Number>("scheduledAtMs")?.toLong() ?: 0L)
                         val alertMode = call.argument<String>("alertMode") ?: "alarm"
                         val taskId = call.argument<String>("taskId")
+                        val isEn = call.argument<Boolean>("isEn") ?: false
                         if (id.isNotBlank() && triggerAtMs > 0L) {
                             NativeAlarmScheduler.scheduleAlarm(
                                 context = applicationContext,
@@ -158,8 +162,31 @@ class MainActivity : FlutterActivity() {
                                 triggerAtMs = triggerAtMs,
                                 alertMode = alertMode,
                                 taskId = taskId,
+                                isEn = isEn,
                             )
                         }
+                        result.success(true)
+                    }
+
+                    "getDeviceTimeZone" -> {
+                        result.success(java.util.TimeZone.getDefault().id)
+                    }
+
+                    "startFocusService", "updateFocusService" -> {
+                        val title = call.argument<String>("title") ?: ""
+                        val subtitle = call.argument<String>("subtitle") ?: ""
+                        val isEn = call.argument<Boolean>("isEn") ?: false
+                        FocusTimerForegroundService.startOrUpdate(
+                            context = applicationContext,
+                            title = title,
+                            subtitle = subtitle,
+                            isEn = isEn,
+                        )
+                        result.success(true)
+                    }
+
+                    "stopFocusService" -> {
+                        FocusTimerForegroundService.stop(applicationContext)
                         result.success(true)
                     }
 
@@ -251,11 +278,16 @@ class MainActivity : FlutterActivity() {
                 if (resultCode == Activity.RESULT_OK && data != null) {
                     val email = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
                     if (!email.isNullOrBlank()) {
-                        callback.success(mapOf("email" to email.trim()))
+                        callback.success(
+                            mapOf(
+                                "status" to "selected",
+                                "email" to email.trim(),
+                            ),
+                        )
                         return
                     }
                 }
-                callback.success(null)
+                callback.success(mapOf("status" to "cancelled"))
             }
         }
     }

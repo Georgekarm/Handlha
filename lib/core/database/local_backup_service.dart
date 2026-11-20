@@ -1,14 +1,19 @@
 import 'dart:convert';
 import 'local_focus_session_database.dart';
+import 'local_project_database.dart';
 import 'local_task_database.dart';
+import '../../features/assistant/data/user_energy_preferences.dart';
+import '../../features/notifications/notification_preferences.dart';
+import '../../features/projects/data/exam_grades_store.dart';
 import '../../features/projects/domain/focus_session.dart';
+import '../../features/projects/domain/project.dart';
 import '../../features/subscriptions/data/local_subscription_store.dart';
 import '../../features/tasks/domain/task.dart';
 import '../result/result.dart';
 
 /// User-controlled JSON backup for the local-first MVP.
-/// It is deliberately explicit about ownership and schema; encryption of the
-/// exported file should be added before exposing file sharing in production.
+/// Exports and restores all user workspace data (tasks, projects, focus
+/// sessions, exam grades, energy & notification preferences, and subscription).
 class LocalBackupService {
   LocalBackupService._();
   static final instance = LocalBackupService._();
@@ -17,11 +22,18 @@ class LocalBackupService {
   Future<Result<String>> exportForUser(String userId) async {
     final tasksResult = await LocalTaskDatabase.instance.getTasksForUser(userId);
     final sessionsResult = await LocalFocusSessionDatabase.instance.forUser(userId);
+    final projectsResult = await LocalProjectDatabase.instance.forUser(userId);
     if (tasksResult is Failure<List<Task>>) return Failure(tasksResult.failure);
     if (sessionsResult is Failure<List<FocusSession>>) return Failure(sessionsResult.failure);
     final tasks = (tasksResult as Success<List<Task>>).data;
     final sessions = (sessionsResult as Success<List<FocusSession>>).data;
+    final projects = projectsResult is Success<List<Project>>
+        ? projectsResult.data
+        : const <Project>[];
     final subscription = await LocalSubscriptionStore.loadForUser(userId);
+    final grades = await ExamGradesStore.load(userId);
+    final energyPrefs = await UserEnergyPreferencesStore.load(userId);
+    final notifPrefs = await LocalNotificationPreferences.load(userId);
     return Success(jsonEncode({
       'schema': schemaVersion,
       'product': 'handelha',
@@ -29,7 +41,16 @@ class LocalBackupService {
       'userId': userId,
       'subscription': subscription.toJson(),
       'tasks': tasks.map(_taskToJson).toList(),
+      'projects': projects.map(_projectToJson).toList(),
       'focusSessions': sessions.map(_sessionToJson).toList(),
+      'examGrades': grades.map((g) => g.toJson()).toList(),
+      'energyPreferences': energyPrefs.toJson(),
+      'notificationPreferences': {
+        'enabled': notifPrefs.enabled,
+        'tone': notifPrefs.tone.name,
+        'quietHoursStartMinutes': notifPrefs.quietHoursStartMinutes,
+        'quietHoursEndMinutes': notifPrefs.quietHoursEndMinutes,
+      },
     }));
   }
 
@@ -38,6 +59,13 @@ class LocalBackupService {
       final root = jsonDecode(backupJson) as Map<String, dynamic>;
       if (root['product'] != 'handelha' || root['schema'] != schemaVersion) {
         return const Failure(ValidationFailure('ملف النسخة الاحتياطية غير مدعوم أو قديم.'));
+      }
+      final rawProjects = (root['projects'] as List<dynamic>? ?? const []);
+      for (final item in rawProjects) {
+        if (item is Map) {
+          final p = _projectFromJson(item.cast<String, dynamic>(), userId);
+          await LocalProjectDatabase.instance.save(p);
+        }
       }
       final rawTasks = (root['tasks'] as List<dynamic>? ?? const []);
       final tasks = rawTasks.map((item) => _taskFromJson((item as Map).cast<String, dynamic>(), userId)).toList();
@@ -80,4 +108,31 @@ class LocalBackupService {
     'id': s.id, 'taskId': s.taskId, 'taskTitle': s.taskTitle, 'startedAt': s.startedAt.toIso8601String(),
     'endedAt': s.endedAt.toIso8601String(), 'elapsedMinutes': s.elapsedMinutes, 'completed': s.completed,
   };
+  Map<String, dynamic> _projectToJson(Project p) => {
+    'id': p.id,
+    'title': p.title,
+    'description': p.description,
+    'status': p.status.name,
+    'progressPercent': p.progressPercent,
+    'nextStepTitle': p.nextStepTitle,
+    'targetDate': p.targetDate?.toIso8601String(),
+    'taskIds': p.taskIds,
+    'colorValue': p.colorValue,
+    'createdAt': p.createdAt.toIso8601String(),
+    'updatedAt': p.updatedAt.toIso8601String(),
+  };
+  Project _projectFromJson(Map<String, dynamic> j, String userId) => Project(
+    id: j['id'] as String,
+    userId: userId,
+    title: j['title'] as String,
+    description: j['description'] as String?,
+    status: ProjectStatus.values.byName((j['status'] as String?) ?? 'active'),
+    progressPercent: (j['progressPercent'] as num?)?.toDouble() ?? 0.0,
+    nextStepTitle: j['nextStepTitle'] as String?,
+    targetDate: _date(j['targetDate']),
+    taskIds: (j['taskIds'] as List<dynamic>? ?? const []).cast<String>(),
+    colorValue: (j['colorValue'] as num?)?.toInt() ?? 0xFF007067,
+    createdAt: _date(j['createdAt']) ?? DateTime.now(),
+    updatedAt: _date(j['updatedAt']) ?? DateTime.now(),
+  );
 }

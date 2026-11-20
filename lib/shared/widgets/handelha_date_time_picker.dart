@@ -475,8 +475,10 @@ class _HandelhaDateTimeSheetState extends State<_HandelhaDateTimeSheet> {
               Row(
                 children: [
                   _MonthNavButton(
-                    icon: Icons.chevron_left_rounded,
-                    onTap: () => _changeMonth(isEn ? -1 : 1),
+                    icon: isEn
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                    onTap: () => _changeMonth(-1),
                   ),
                   Expanded(
                     child: Column(
@@ -509,8 +511,10 @@ class _HandelhaDateTimeSheetState extends State<_HandelhaDateTimeSheet> {
                     ),
                   ),
                   _MonthNavButton(
-                    icon: Icons.chevron_right_rounded,
-                    onTap: () => _changeMonth(isEn ? 1 : -1),
+                    icon: isEn
+                        ? Icons.chevron_right_rounded
+                        : Icons.chevron_left_rounded,
+                    onTap: () => _changeMonth(1),
                   ),
                 ],
               ),

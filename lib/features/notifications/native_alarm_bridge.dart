@@ -74,6 +74,7 @@ class NativeAlarmBridge {
     required int scheduledAtMs,
     required String alertMode,
     String? taskId,
+    bool isEn = false,
   }) async {
     if (!_isAndroidNative) return false;
     try {
@@ -83,11 +84,43 @@ class NativeAlarmBridge {
         'scheduledAtMs': scheduledAtMs,
         'alertMode': alertMode,
         'taskId': ?taskId,
+        'isEn': isEn,
       });
       return res ?? false;
     } catch (_) {
       return false;
     }
+  }
+
+  Future<String?> getDeviceTimeZone() async {
+    if (!_isAndroidNative) return null;
+    try {
+      return await _channel.invokeMethod<String>('getDeviceTimeZone');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> startOrUpdateFocusService({
+    required String title,
+    required String subtitle,
+    bool isEn = false,
+  }) async {
+    if (!_isAndroidNative) return;
+    try {
+      await _channel.invokeMethod<bool>('startFocusService', {
+        'title': title,
+        'subtitle': subtitle,
+        'isEn': isEn,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> stopFocusService() async {
+    if (!_isAndroidNative) return;
+    try {
+      await _channel.invokeMethod<bool>('stopFocusService');
+    } catch (_) {}
   }
 
   Future<void> cancelAlarm(String id) async {

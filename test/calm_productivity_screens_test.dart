@@ -21,16 +21,27 @@ import 'package:handelha/features/projects/presentation/project_workspace_screen
 import 'package:handelha/features/projects/presentation/tracking_screen.dart';
 import 'package:handelha/features/projects/presentation/widgets/ai_breakdown_sheet.dart';
 import 'package:handelha/features/settings/presentation/settings_screen.dart';
+import 'package:handelha/features/subscriptions/data/local_subscription_store.dart';
+import 'package:handelha/features/subscriptions/data/subscription_repository.dart';
+import 'package:handelha/features/subscriptions/domain/subscription_models.dart';
+import 'package:handelha/features/subscriptions/presentation/subscription_providers.dart';
 import 'package:handelha/features/subscriptions/presentation/subscription_screen.dart';
 import 'package:handelha/features/tasks/domain/task.dart';
 import 'package:handelha/features/tasks/presentation/add_task_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Widget _buildTestApp(Widget home, {AiPlanningService? planningService}) {
+Widget _buildTestApp(
+  Widget home, {
+  AiPlanningService? planningService,
+  SubscriptionRepository? subscriptionRepository,
+}) {
   return ProviderScope(
+    key: UniqueKey(),
     overrides: [
       if (planningService != null)
         aiPlanningServiceProvider.overrideWithValue(planningService),
+      if (subscriptionRepository != null)
+        subscriptionRepositoryProvider.overrideWithValue(subscriptionRepository),
     ],
     child: MaterialApp(
       theme: AppTheme.lightTheme,
@@ -197,12 +208,26 @@ void main() {
     );
 
     testWidgets(
-      '7b. SubscriptionScreen activates Student or Regular Pro plan, shows active plan details, and allows switching tracks',
+      '7b. SubscriptionScreen denies unverified local bypass by default and renders active plan when verified store repository succeeds',
       (tester) async {
+        // 1. Default RevenueCat repository without store billing fails closed (no free local upgrade).
         await tester.pumpWidget(_buildTestApp(const SubscriptionScreen()));
         await tester.pumpAndSettle();
 
         expect(find.text('تصنيف الحساب الحالي: مجاني'), findsOneWidget);
+        await tester.ensureVisible(find.text('اختار باقة Pro').first);
+        await tester.tap(find.text('اختار باقة Pro').first);
+        await tester.pumpAndSettle();
+        expect(find.text('تصنيف الحساب الحالي: مجاني'), findsOneWidget);
+
+        // 2. When backed by a verified store repository, plan activation and track switching work cleanly.
+        await tester.pumpWidget(
+          _buildTestApp(
+            const SubscriptionScreen(),
+            subscriptionRepository: _VerifiedTestSubscriptionRepository(),
+          ),
+        );
+        await tester.pumpAndSettle();
 
         await tester.tap(find.text('باقات الطلاب'));
         await tester.pumpAndSettle();
@@ -216,6 +241,8 @@ void main() {
         expect(find.text('خطتك الحالية ✓'), findsOneWidget);
         expect(find.text('أنت مشترك في هذه الخطة ✓'), findsOneWidget);
 
+        await tester.ensureVisible(find.text('باقات Pro العادية'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('باقات Pro العادية'));
         await tester.pumpAndSettle();
 
@@ -437,4 +464,53 @@ class _PlanLlm implements LLMService {
   Future<LlmReply> complete(LlmRequest request) async {
     return const LlmReply(text: '{"title":"تطبيق","goal":"إطلاق MVP","clarification_question":"مين المستخدم الأساسي؟","phases":[{"id":"p1","title":"التنفيذ","description":null,"suggested_deadline":null,"tasks":[{"id":"t1","title":"بناء الواجهة","description":null,"estimated_duration_minutes":120,"duration_uncertainty":"تقدير أولي","priority":"high","suggested_deadline":null,"depends_on":[]}]}]}');
   }
+}
+
+class _VerifiedTestSubscriptionRepository implements SubscriptionRepository {
+  @override
+  Future<SubscriptionState> load(String? appUserId) async {
+    final saved = await LocalSubscriptionStore.loadForUser(appUserId);
+    return saved.toSubscriptionState();
+  }
+
+  @override
+  Future<SubscriptionState> purchase(String productIdentifier) async {
+    return load(null);
+  }
+
+  @override
+  Future<SubscriptionState> selectPlan({
+    required String? appUserId,
+    required SubscriptionPlanTrack track,
+    required String planId,
+    required String planTitle,
+    required String planPrice,
+    required bool isAnnual,
+  }) async {
+    final saved = await LocalSubscriptionStore.activatePlanForUser(
+      userId: appUserId,
+      track: track,
+      planId: planId,
+      planTitle: planTitle,
+      planPrice: planPrice,
+      isAnnual: isAnnual,
+      isLocalActivation: false,
+    );
+    return saved.toSubscriptionState();
+  }
+
+  @override
+  Future<SubscriptionState> cancelLocalPlan(String? appUserId) async {
+    await LocalSubscriptionStore.clearForUser(appUserId);
+    return const SubscriptionState(
+      status: SubscriptionStatus.free,
+      tier: SubscriptionTier.free,
+    );
+  }
+
+  @override
+  Future<SubscriptionState> restore(String? appUserId) => load(appUserId);
+
+  @override
+  Future<void> dispose() async {}
 }

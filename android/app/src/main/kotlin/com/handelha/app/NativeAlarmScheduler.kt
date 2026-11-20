@@ -52,8 +52,31 @@ object NativeAlarmScheduler {
         // No-op: SYSTEM_ALERT_WINDOW is removed to comply with Google Play policy.
     }
 
-    fun openExactAlarmSettings(@Suppress("UNUSED_PARAMETER") context: Context) {
-        // No-op: SCHEDULE_EXACT_ALARM is removed to comply with Google Play policy.
+    fun openExactAlarmSettings(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (canScheduleExactAlarms(context)) return
+            try {
+                val intent = Intent(
+                    Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                    Uri.parse("package:${context.packageName}"),
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return
+            } catch (_: Exception) {
+            }
+        }
+        try {
+            val fallback = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${context.packageName}"),
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(fallback)
+        } catch (_: Exception) {
+        }
     }
 
     fun scheduleAlarm(
@@ -63,6 +86,7 @@ object NativeAlarmScheduler {
         triggerAtMs: Long,
         alertMode: String,
         taskId: String?,
+        isEn: Boolean = false,
         saveRecord: Boolean = true,
     ) {
         val appContext = context.applicationContext
@@ -71,6 +95,9 @@ object NativeAlarmScheduler {
             return
         }
 
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = triggerAtMs
+        }
         if (saveRecord) {
             NativeAlarmStore.upsertAlarm(
                 appContext,
@@ -80,6 +107,9 @@ object NativeAlarmScheduler {
                     scheduledAtMs = triggerAtMs,
                     alertMode = "alarm",
                     taskId = taskId,
+                    hour = cal.get(java.util.Calendar.HOUR_OF_DAY),
+                    minute = cal.get(java.util.Calendar.MINUTE),
+                    isEn = isEn,
                 ),
             )
         }
@@ -97,6 +127,7 @@ object NativeAlarmScheduler {
             data = Uri.parse("handelha://alarm/$id")
             putExtra(EXTRA_ALARM_ID, id)
             putExtra(EXTRA_ALARM_TITLE, title)
+            putExtra(EXTRA_IS_EN, isEn)
             if (!taskId.isNullOrBlank()) {
                 putExtra(EXTRA_TASK_ID, taskId)
             }
@@ -117,9 +148,9 @@ object NativeAlarmScheduler {
                     pendingIntent,
                 )
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
             } else {
-                am.setExact(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
+                am.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
             }
         } catch (_: SecurityException) {
             try {

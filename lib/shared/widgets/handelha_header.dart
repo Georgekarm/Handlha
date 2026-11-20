@@ -53,17 +53,21 @@ class HandelhaHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (showBack) ...[
-            InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () => _handleBack(context),
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Icon(
-                  isEn
-                      ? Icons.chevron_left_rounded
-                      : Icons.chevron_right_rounded,
-                  size: 28,
-                  color: c.textPrimary,
+            Semantics(
+              button: true,
+              label: isEn ? 'Back' : 'رجوع',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _handleBack(context),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    isEn
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                    size: 28,
+                    color: c.textPrimary,
+                  ),
                 ),
               ),
             ),
@@ -165,9 +169,9 @@ class HandelhaHeaderIconButton extends StatelessWidget {
                   color: iconColor ?? c.textPrimary,
                 ),
                 if (showBadge)
-                  Positioned(
+                  PositionedDirectional(
                     top: 9,
-                    right: 9,
+                    end: 9,
                     child: Container(
                       width: 8,
                       height: 8,

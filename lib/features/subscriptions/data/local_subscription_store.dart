@@ -29,8 +29,13 @@ class StoredSubscriptionRecord {
   final DateTime? expirationDate;
   final bool isLocalActivation;
 
+  bool get isExpired =>
+      expirationDate != null && !expirationDate!.isAfter(DateTime.now());
+
   bool get isSubscribed =>
-      category != UserSubscriptionCategory.free && tier != SubscriptionTier.free;
+      category != UserSubscriptionCategory.free &&
+      tier != SubscriptionTier.free &&
+      !isExpired;
 
   Map<String, dynamic> toJson() => {
         'userId': userId,
@@ -82,6 +87,18 @@ class StoredSubscriptionRecord {
     List<SubscriptionOffer> offers = const [],
     String? message,
   }) {
+    if (isExpired &&
+        category != UserSubscriptionCategory.free &&
+        tier != SubscriptionTier.free) {
+      return SubscriptionState(
+        status: SubscriptionStatus.expired,
+        tier: SubscriptionTier.free,
+        offers: offers,
+        subscribedAt: subscribedAt,
+        expirationDate: expirationDate,
+        message: message,
+      );
+    }
     if (!isSubscribed) {
       return SubscriptionState(
         status: SubscriptionStatus.free,
@@ -121,9 +138,10 @@ class LocalSubscriptionStore {
 
   static Future<StoredSubscriptionRecord> loadForUser(String? userId) async {
     final uid = _normalizeUserId(userId);
+    final storageKey = _storageKey(uid);
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_storageKey(uid));
+      final raw = prefs.getString(storageKey);
       if (raw != null && raw.trim().isNotEmpty) {
         final decoded = jsonDecode(raw);
         if (decoded is Map<String, dynamic>) {
@@ -138,29 +156,15 @@ class LocalSubscriptionStore {
       }
     } catch (_) {}
 
-    // Fallback to session-scoped secure storage keys if prefs entry wasn't written yet.
+    // User-scoped fallback in SecureStorageService (never shared across different userIds).
     try {
-      final categoryRaw = await SecureStorageService.instance.read(
-        SecureStorageKeys.subscriptionCategory,
-      );
-      if (categoryRaw != null && categoryRaw.trim().isNotEmpty) {
-        final category = UserSubscriptionCategory.fromName(categoryRaw);
-        if (category != UserSubscriptionCategory.free) {
-          final planId = await SecureStorageService.instance.read(
-            SecureStorageKeys.activePlanId,
-          );
-          final planTitle = await SecureStorageService.instance.read(
-            SecureStorageKeys.activePlanTitle,
-          );
-          return StoredSubscriptionRecord(
-            userId: uid,
-            category: category,
-            tier: category == UserSubscriptionCategory.student
-                ? SubscriptionTier.student
-                : SubscriptionTier.pro,
-            activePlanId: planId,
-            activePlanTitle: planTitle,
-            isLocalActivation: true,
+      final secureRaw = await SecureStorageService.instance.read(storageKey);
+      if (secureRaw != null && secureRaw.trim().isNotEmpty) {
+        final decoded = jsonDecode(secureRaw);
+        if (decoded is Map) {
+          return StoredSubscriptionRecord.fromJson(
+            decoded.cast<String, dynamic>(),
+            fallbackUserId: uid,
           );
         }
       }
@@ -174,6 +178,7 @@ class LocalSubscriptionStore {
     StoredSubscriptionRecord record,
   ) async {
     final uid = _normalizeUserId(userId);
+    final storageKey = _storageKey(uid);
     final normalized = StoredSubscriptionRecord(
       userId: uid,
       category: record.category,
@@ -185,36 +190,14 @@ class LocalSubscriptionStore {
       expirationDate: record.expirationDate,
       isLocalActivation: record.isLocalActivation,
     );
+    final encoded = jsonEncode(normalized.toJson());
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_storageKey(uid), jsonEncode(normalized.toJson()));
+      await prefs.setString(storageKey, encoded);
     } catch (_) {}
 
-    await SecureStorageService.instance.write(
-      SecureStorageKeys.subscriptionCategory,
-      normalized.category.name,
-    );
-    if (normalized.activePlanId != null &&
-        normalized.activePlanId!.trim().isNotEmpty) {
-      await SecureStorageService.instance.write(
-        SecureStorageKeys.activePlanId,
-        normalized.activePlanId!,
-      );
-    } else {
-      await SecureStorageService.instance.delete(SecureStorageKeys.activePlanId);
-    }
-    if (normalized.activePlanTitle != null &&
-        normalized.activePlanTitle!.trim().isNotEmpty) {
-      await SecureStorageService.instance.write(
-        SecureStorageKeys.activePlanTitle,
-        normalized.activePlanTitle!,
-      );
-    } else {
-      await SecureStorageService.instance
-          .delete(SecureStorageKeys.activePlanTitle);
-    }
-
+    await SecureStorageService.instance.write(storageKey, encoded);
     return normalized;
   }
 
@@ -251,14 +234,14 @@ class LocalSubscriptionStore {
 
   static Future<void> clearForUser(String? userId) async {
     final uid = _normalizeUserId(userId);
+    final storageKey = _storageKey(uid);
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_storageKey(uid));
+      await prefs.remove(storageKey);
     } catch (_) {}
-    await SecureStorageService.instance.write(
-      SecureStorageKeys.subscriptionCategory,
-      UserSubscriptionCategory.free.name,
-    );
+    await SecureStorageService.instance.delete(storageKey);
+    await SecureStorageService.instance
+        .delete(SecureStorageKeys.subscriptionCategory);
     await SecureStorageService.instance.delete(SecureStorageKeys.activePlanId);
     await SecureStorageService.instance
         .delete(SecureStorageKeys.activePlanTitle);

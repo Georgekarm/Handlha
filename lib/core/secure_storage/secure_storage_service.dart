@@ -9,15 +9,12 @@ import '../logger/app_logger.dart';
 /// Backed by the Android KeyStore, with an automatic SharedPreferences fallback
 /// on legacy OEM devices with a broken Keystore.
 class SecureStorageService {
-  SecureStorageService._({
-    Future<void> Function(String key, String value)? onWrite,
-    Future<String?> Function(String key)? onRead,
-    Future<void> Function(String key)? onDelete,
-    Future<void> Function()? onDeleteAll,
-  }) : _onWrite = onWrite,
-       _onRead = onRead,
-       _onDelete = onDelete,
-       _onDeleteAll = onDeleteAll;
+  SecureStorageService._([
+    this._onWrite,
+    this._onRead,
+    this._onDelete,
+    this._onDeleteAll,
+  ]);
 
   @visibleForTesting
   factory SecureStorageService.forTesting({
@@ -25,12 +22,7 @@ class SecureStorageService {
     Future<String?> Function(String key)? onRead,
     Future<void> Function(String key)? onDelete,
     Future<void> Function()? onDeleteAll,
-  }) => SecureStorageService._(
-    onWrite: onWrite,
-    onRead: onRead,
-    onDelete: onDelete,
-    onDeleteAll: onDeleteAll,
-  );
+  }) => SecureStorageService._(onWrite, onRead, onDelete, onDeleteAll);
 
   static final SecureStorageService instance = SecureStorageService._();
   static const String _fallbackPrefix = 'handelha_sec_fb_';
@@ -81,6 +73,10 @@ class SecureStorageService {
     }
     try {
       await _nativeWrite(key, value);
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('$_fallbackPrefix$key');
+      } catch (_) {}
     } catch (e) {
       if (!_isPlatformStorageError(e)) rethrow;
       _usePrefsFallback = true;
@@ -189,9 +185,25 @@ class SecureStorageService {
     await delete(SecureStorageKeys.refreshToken);
     await delete(SecureStorageKeys.userId);
     await delete(SecureStorageKeys.userEmail);
+    await delete(SecureStorageKeys.userName);
     await delete(SecureStorageKeys.onboardingComplete);
     await delete(SecureStorageKeys.authProvider);
     await delete(SecureStorageKeys.userAvatarUrl);
+    await delete(SecureStorageKeys.subscriptionCategory);
+    await delete(SecureStorageKeys.activePlanId);
+    await delete(SecureStorageKeys.activePlanTitle);
+  }
+
+  /// Removes only the local email account credentials and session keys without
+  /// wiping other users' task/project/focus databases on the device.
+  Future<void> clearEmailAccountCredentials() async {
+    await clearSession();
+    await delete(SecureStorageKeys.localAccountId);
+    await delete(SecureStorageKeys.localEmail);
+    await delete(SecureStorageKeys.localPasswordHash);
+    await delete(SecureStorageKeys.localPasswordSalt);
+    await delete(SecureStorageKeys.localAccountName);
+    await delete(SecureStorageKeys.assistantTone);
   }
 }
 

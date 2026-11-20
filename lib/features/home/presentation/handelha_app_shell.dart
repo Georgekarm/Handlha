@@ -18,21 +18,24 @@ class HandelhaAppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentIndex = HandelhaBottomNav.indexForLocation(currentLocation);
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Scaffold(
-      extendBody: true,
+      extendBody: !keyboardOpen,
       body: HandelhaAmbientBackground(
         child: child,
       ),
-      bottomNavigationBar: HandelhaBottomNav(
-        currentIndex: currentIndex,
-        onTap: (index) {
-          final target = HandelhaBottomNav.tabs[index].route;
-          if (!currentLocation.startsWith(target)) {
-            context.go(target);
-          }
-        },
-      ),
+      bottomNavigationBar: keyboardOpen
+          ? null
+          : HandelhaBottomNav(
+              currentIndex: currentIndex,
+              onTap: (index) {
+                final target = HandelhaBottomNav.tabs[index].route;
+                if (!currentLocation.startsWith(target)) {
+                  context.go(target);
+                }
+              },
+            ),
     );
   }
 }

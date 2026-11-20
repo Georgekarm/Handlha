@@ -18,9 +18,15 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
 
   @override
   Future<SubscriptionState> load(String? appUserId) async {
-    _appUserId = appUserId;
     final local = await LocalSubscriptionStore.loadForUser(appUserId);
     if (!_hasStoreBilling) {
+      _appUserId = appUserId;
+      if (local.isLocalActivation) {
+        return const SubscriptionState(
+          status: SubscriptionStatus.free,
+          tier: SubscriptionTier.free,
+        );
+      }
       return local.toSubscriptionState();
     }
 
@@ -35,7 +41,12 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
         localFallback: local,
       );
     } catch (_) {
-      // Never lock out local subscription selection/display if store billing is offline.
+      if (local.isLocalActivation) {
+        return const SubscriptionState(
+          status: SubscriptionStatus.free,
+          tier: SubscriptionTier.free,
+        );
+      }
       return local.toSubscriptionState();
     }
   }
@@ -43,24 +54,14 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
   @override
   Future<SubscriptionState> purchase(String productIdentifier) async {
     if (!_hasStoreBilling) {
-      final isStudent = productIdentifier.toLowerCase().contains('student');
-      final isAnnual = productIdentifier.toLowerCase().contains('year') ||
-          productIdentifier.toLowerCase().contains('annual');
-      return selectPlan(
-        appUserId: _appUserId,
-        track: isStudent ? SubscriptionPlanTrack.student : SubscriptionPlanTrack.pro,
-        planId: productIdentifier,
-        planTitle: isStudent
-            ? (isAnnual ? 'باقة الطلاب السنوية' : 'باقة الطلاب الشهرية')
-            : (isAnnual ? 'باقة Pro السنوية' : 'باقة Pro الشهرية'),
-        planPrice: isStudent
-            ? (isAnnual ? '٣٩٩ ج.م' : '٤٩ ج.م')
-            : (isAnnual ? '٦٩٩ ج.م' : '٨٩ ج.م'),
-        isAnnual: isAnnual,
+      return const SubscriptionState(
+        status: SubscriptionStatus.free,
+        tier: SubscriptionTier.free,
+        message: 'خدمة الدفع عبر Google Play غير مهيّأة في هذه النسخة حاليًا.',
       );
     }
 
-    if (!_configured) await _configure(_appUserId);
+    await _configure(_appUserId);
     final offerings = await Purchases.getOfferings();
     final package = _findPackage(offerings, productIdentifier);
     if (package == null) {
@@ -70,12 +71,27 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
         message: 'الخطة غير متاحة في المتجر حاليًا.',
       );
     }
-    final result = await Purchases.purchase(PurchaseParams.package(package));
-    return _stateFrom(
-      result.customerInfo,
-      offerings,
-      appUserId: _appUserId,
-    );
+    try {
+      final result = await Purchases.purchase(PurchaseParams.package(package));
+      return await _stateFrom(
+        result.customerInfo,
+        offerings,
+        appUserId: _appUserId,
+      );
+    } catch (_) {
+      final current = await LocalSubscriptionStore.loadForUser(_appUserId);
+      return current.isLocalActivation
+          ? SubscriptionState(
+              status: SubscriptionStatus.free,
+              tier: SubscriptionTier.free,
+              offers: _offersFrom(offerings),
+              message: 'لم تكتمل عملية الشراء عبر Google Play.',
+            )
+          : current.toSubscriptionState(
+              offers: _offersFrom(offerings),
+              message: 'لم تكتمل عملية الشراء عبر Google Play.',
+            );
+    }
   }
 
   @override
@@ -87,39 +103,50 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
     required String planPrice,
     required bool isAnnual,
   }) async {
-    _appUserId = appUserId;
-
-    if (_hasStoreBilling) {
-      try {
-        if (!_configured) await _configure(appUserId);
-        final offerings = await Purchases.getOfferings();
-        final storeId = _resolveStoreIdentifier(track: track, planId: planId, isAnnual: isAnnual);
-        final package = _findPackage(offerings, planId) ?? _findPackage(offerings, storeId);
-        if (package != null) {
-          final result = await Purchases.purchase(PurchaseParams.package(package));
-          return await _stateFrom(
-            result.customerInfo,
-            offerings,
-            appUserId: appUserId,
-          );
-        }
-      } catch (_) {
-        // Fall through to local persisted classification if store package isn't linked yet.
-      }
+    final current = await LocalSubscriptionStore.loadForUser(appUserId);
+    SubscriptionState failClosed(String message, [List<SubscriptionOffer> offers = const []]) {
+      final base = current.isLocalActivation
+          ? SubscriptionState(
+              status: SubscriptionStatus.free,
+              tier: SubscriptionTier.free,
+              offers: offers,
+              message: message,
+            )
+          : current.toSubscriptionState(offers: offers, message: message);
+      onCustomerInfoChanged?.call(base);
+      return base;
     }
 
-    final saved = await LocalSubscriptionStore.activatePlanForUser(
-      userId: appUserId,
-      track: track,
-      planId: planId,
-      planTitle: planTitle,
-      planPrice: planPrice,
-      isAnnual: isAnnual,
-      isLocalActivation: true,
-    );
-    final state = saved.toSubscriptionState();
-    onCustomerInfoChanged?.call(state);
-    return state;
+    if (track == SubscriptionPlanTrack.student) {
+      return failClosed(
+        'خصم باقة الطلاب معلّق لحين تفعيل التحقق الأكاديمي من البريد الجامعي. يمكنك الاشتراك في باقات Handelha Pro.',
+      );
+    }
+
+    if (!_hasStoreBilling) {
+      _appUserId = appUserId;
+      return failClosed(
+        'خدمة الدفع عبر Google Play غير مفعّلة في هذه البيئة. لم يتم تفعيل أي اشتراك.',
+      );
+    }
+
+    try {
+      await _configure(appUserId);
+      final offerings = await Purchases.getOfferings();
+      final storeId = _resolveStoreIdentifier(track: track, planId: planId, isAnnual: isAnnual);
+      final package = _findPackage(offerings, planId) ?? _findPackage(offerings, storeId);
+      if (package == null) {
+        return failClosed('الخطة المختارة غير متاحة في متجر Google Play حاليًا.', _offersFrom(offerings));
+      }
+      final result = await Purchases.purchase(PurchaseParams.package(package));
+      return await _stateFrom(
+        result.customerInfo,
+        offerings,
+        appUserId: appUserId,
+      );
+    } catch (_) {
+      return failClosed('تم إلغاء أو تعذّر إتمام عملية الشراء عبر Google Play.');
+    }
   }
 
   @override
@@ -136,13 +163,13 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
 
   @override
   Future<SubscriptionState> restore(String? appUserId) async {
-    _appUserId = appUserId;
     final local = await LocalSubscriptionStore.loadForUser(appUserId);
     if (!_hasStoreBilling) {
-      return local.toSubscriptionState(
-        message: local.isSubscribed
-            ? 'تمت استعادة اشتراكك المحفوظ: ${local.toSubscriptionState().resolvedPlanTitle()}.'
-            : 'لا توجد مشتريات سابقة محفوظة على هذا الحساب.',
+      _appUserId = appUserId;
+      return const SubscriptionState(
+        status: SubscriptionStatus.free,
+        tier: SubscriptionTier.free,
+        message: 'لا توجد مشتريات سابقة مرتبطة بمتجر Google Play على هذا الحساب.',
       );
     }
 
@@ -157,7 +184,13 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
         localFallback: local,
       );
     } catch (_) {
-      return local.toSubscriptionState();
+      return local.isLocalActivation
+          ? const SubscriptionState(
+              status: SubscriptionStatus.free,
+              tier: SubscriptionTier.free,
+              message: 'تعذّر الاتصال بمتجر Google Play لاستعادة المشتريات.',
+            )
+          : local.toSubscriptionState();
     }
   }
 
@@ -178,17 +211,27 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
 
   Future<void> _configure(String? appUserId) async {
     if (!_hasStoreBilling) return;
+    final cleanId = (appUserId != null && appUserId.trim().isNotEmpty)
+        ? appUserId.trim()
+        : null;
     if (!_configured) {
       await Purchases.setLogLevel(LogLevel.warn);
-      await Purchases.configure(
-        PurchasesConfiguration(SubscriptionConfig.androidApiKey),
-      );
+      final config = PurchasesConfiguration(SubscriptionConfig.androidApiKey)
+        ..appUserID = cleanId;
+      await Purchases.configure(config);
       Purchases.addCustomerInfoUpdateListener(_onCustomerInfoUpdated);
       _configured = true;
+      _appUserId = cleanId;
+      return;
     }
-    if (appUserId != null && appUserId.isNotEmpty && appUserId != _appUserId) {
-      await Purchases.logIn(appUserId);
-      _appUserId = appUserId;
+    if (cleanId != null && cleanId != _appUserId) {
+      await Purchases.logIn(cleanId);
+      _appUserId = cleanId;
+    } else if (cleanId == null && _appUserId != null) {
+      try {
+        await Purchases.logOut();
+      } catch (_) {}
+      _appUserId = null;
     }
   }
 
@@ -237,14 +280,7 @@ class RevenueCatSubscriptionRepository implements SubscriptionRepository {
       return state;
     }
 
-    if (localFallback != null &&
-        localFallback.isLocalActivation &&
-        localFallback.isSubscribed) {
-      final state = localFallback.toSubscriptionState(offers: liveOffers);
-      onCustomerInfoChanged?.call(state);
-      return state;
-    }
-
+    await LocalSubscriptionStore.clearForUser(appUserId);
     final freeState = SubscriptionState(
       status: SubscriptionStatus.free,
       tier: SubscriptionTier.free,

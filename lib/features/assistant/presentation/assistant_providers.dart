@@ -77,13 +77,19 @@ final chatSessionProvider = ChangeNotifierProvider<ChatSessionController>((ref) 
     try {
       session.bind(await ref.read(assistantControllerProvider.future));
     } catch (e) {
-      session.reportError(e.toString());
+      session.reset();
     }
   }
 
   ref.listen<AsyncValue<AIAssistantController>>(
     assistantControllerProvider,
-    (_, next) => next.whenData(session.bind),
+    (_, next) {
+      next.when(
+        data: session.bind,
+        loading: () {},
+        error: (_, _) => session.reset(),
+      );
+    },
   );
   bind();
   return session;

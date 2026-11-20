@@ -10,6 +10,7 @@ import 'package:handelha/core/database/local_task_database.dart';
 import 'package:handelha/core/result/result.dart';
 import 'package:handelha/features/assistant/data/local_egyptian_llm_service.dart';
 import 'package:handelha/features/assistant/local_task_tool_executor.dart';
+import 'package:handelha/features/assistant/planning/ai_planning_service.dart';
 import 'package:handelha/features/assistant/planning/deterministic_planner.dart';
 import 'package:handelha/features/tasks/domain/task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -433,14 +434,21 @@ void main() {
       }
     });
 
-    test('honestly reports unimplemented reminder tool in app executor', () async {
+    test('clarifies alarm vs quiet notification mode and executes create_reminder in app executor', () async {
       final r = await controller.sendTextMessage(
         'فكرني بعد نص ساعة بمكالمة أحمد',
         conversationId: 'c-rem',
       );
       expect(r.needsUserInput, isTrue);
-      expect(r.text, contains('مش مفعّلة'));
+      expect(r.text, contains('منبه يرن'));
       expect(await allTasks(), isEmpty);
+
+      final r2 = await controller.sendTextMessage(
+        'منبه يرن',
+        conversationId: 'c-rem',
+      );
+      expect(r2.text, contains('مكالمة أحمد'));
+      expect(await allTasks(), hasLength(1));
     });
 
     test('interactive planning Q&A -> Draft -> drift inputHash invalidation -> confirm', () async {
@@ -509,6 +517,26 @@ void main() {
       final taskSlot = (json['slots']['tasks'] as List).first as Map;
       expect(taskSlot['date'], '2026-11-19');
       expect(taskSlot['time'], '20:00');
+    });
+
+    test('AiPlanningService works end-to-end with LocalEgyptianLlmService for breakdownProject and extractTask', () async {
+      final planning = AiPlanningService(llm);
+      final plan = await planning.breakdownProject(
+        title: 'مشروع التخرج',
+        goal: 'بناء تطبيق موبايل متكامل',
+        currentDatetime: nowIso,
+      );
+      expect(plan.title, 'مشروع التخرج');
+      expect(plan.phases, hasLength(3));
+      expect(plan.phases.expand((p) => p.tasks), hasLength(3));
+
+      final extracted = await planning.extractTask(
+        text: 'مذاكرة فيزياء بكرة الساعة 6 بالليل',
+        currentDatetime: nowIso,
+      );
+      expect(extracted.title, contains('فيزياء'));
+      expect(extracted.dueAt?.day, 14);
+      expect(extracted.dueAt?.hour, 18);
     });
 
     test('supports full English assistant & planning switch alongside Egyptian Arabic', () async {

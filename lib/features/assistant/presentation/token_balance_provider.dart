@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../authentication/presentation/auth_providers.dart';
+import '../../subscriptions/domain/subscription_models.dart';
+import '../../subscriptions/presentation/subscription_providers.dart';
 
 class TokenBalanceState {
   const TokenBalanceState({
@@ -12,6 +14,7 @@ class TokenBalanceState {
     required this.lastRenewalDate,
     required this.adsWatchedToday,
     this.isLoadingAd = false,
+    this.isUnlimitedPro = false,
   });
 
   static const int defaultDailyAllowance = 50;
@@ -24,12 +27,14 @@ class TokenBalanceState {
   final String lastRenewalDate;
   final int adsWatchedToday;
   final bool isLoadingAd;
+  final bool isUnlimitedPro;
 
-  bool get canSendText => balance >= textMessageCost;
-  bool get canSendVoice => balance >= voiceMessageCost;
+  bool get canSendText => isUnlimitedPro || balance >= textMessageCost;
+  bool get canSendVoice => isUnlimitedPro || balance >= voiceMessageCost;
 
-  double get fillRatio =>
-      dailyAllowance <= 0 ? 0.0 : (balance / dailyAllowance).clamp(0.0, 1.0);
+  double get fillRatio => isUnlimitedPro
+      ? 1.0
+      : (dailyAllowance <= 0 ? 0.0 : (balance / dailyAllowance).clamp(0.0, 1.0));
 
   TokenBalanceState copyWith({
     int? balance,
@@ -37,6 +42,7 @@ class TokenBalanceState {
     String? lastRenewalDate,
     int? adsWatchedToday,
     bool? isLoadingAd,
+    bool? isUnlimitedPro,
   }) {
     return TokenBalanceState(
       balance: balance ?? this.balance,
@@ -44,12 +50,13 @@ class TokenBalanceState {
       lastRenewalDate: lastRenewalDate ?? this.lastRenewalDate,
       adsWatchedToday: adsWatchedToday ?? this.adsWatchedToday,
       isLoadingAd: isLoadingAd ?? this.isLoadingAd,
+      isUnlimitedPro: isUnlimitedPro ?? this.isUnlimitedPro,
     );
   }
 }
 
 class TokenBalanceNotifier extends StateNotifier<TokenBalanceState> {
-  TokenBalanceNotifier({required String userId})
+  TokenBalanceNotifier({required String userId, bool isUnlimitedPro = false})
       // ignore: prefer_initializing_formals
       : _userId = userId,
         super(
@@ -58,6 +65,7 @@ class TokenBalanceNotifier extends StateNotifier<TokenBalanceState> {
             dailyAllowance: TokenBalanceState.defaultDailyAllowance,
             lastRenewalDate: _todayKey(),
             adsWatchedToday: 0,
+            isUnlimitedPro: isUnlimitedPro,
           ),
         ) {
     _load();
@@ -120,6 +128,7 @@ class TokenBalanceNotifier extends StateNotifier<TokenBalanceState> {
 
   Future<bool> _consume(int cost) async {
     await _ensureDailyRenewal();
+    if (state.isUnlimitedPro) return true;
     if (state.balance < cost) return false;
     final next = state.balance - cost;
     state = state.copyWith(balance: next);
@@ -180,5 +189,13 @@ class TokenBalanceNotifier extends StateNotifier<TokenBalanceState> {
 final tokenBalanceProvider =
     StateNotifierProvider<TokenBalanceNotifier, TokenBalanceState>((ref) {
   final user = ref.watch(authNotifierProvider).value;
-  return TokenBalanceNotifier(userId: user?.id ?? 'guest');
+  final isPro =
+      ref.watch(subscriptionProvider).value?.canUseFeature(
+            PremiumFeature.premiumAssistant,
+          ) ??
+      false;
+  return TokenBalanceNotifier(
+    userId: user?.id ?? 'guest',
+    isUnlimitedPro: isPro,
+  );
 });

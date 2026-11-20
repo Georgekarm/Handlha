@@ -35,6 +35,19 @@ class SocialSignInFailure extends AuthFailure {
   List<Object?> get props => [message, provider];
 }
 
+/// Outcome of launching the native Android system Google Account chooser.
+enum NativeGoogleAccountPickStatus { selected, cancelled, unavailable }
+
+class NativeGoogleAccountPickResult {
+  const NativeGoogleAccountPickResult({
+    required this.status,
+    this.email,
+  });
+
+  final NativeGoogleAccountPickStatus status;
+  final String? email;
+}
+
 /// Handles Google and Facebook authentication on Android devices and persists
 /// the linked social profile locally.
 class SocialAuthService {
@@ -67,26 +80,61 @@ class SocialAuthService {
     }
   }
 
-  /// Launches the native Android system Google account chooser when available.
-  static Future<String?> pickDeviceGoogleEmail() async {
+  /// Launches the native Android system Google account chooser and returns
+  /// a structured outcome distinguishing selection, user cancellation, and
+  /// platform unavailability.
+  static Future<NativeGoogleAccountPickResult>
+      pickDeviceGoogleAccountOutcome() async {
     try {
-      if (!Platform.isAndroid) return null;
+      if (!Platform.isAndroid) {
+        return const NativeGoogleAccountPickResult(
+          status: NativeGoogleAccountPickStatus.unavailable,
+        );
+      }
       final res = await _channel.invokeMapMethod<String, dynamic>(
         'pickGoogleAccount',
       );
-      final email = res?['email']?.toString().trim();
-      if (email != null && email.isNotEmpty) {
-        return email.toLowerCase();
+      if (res == null) {
+        return const NativeGoogleAccountPickResult(
+          status: NativeGoogleAccountPickStatus.unavailable,
+        );
       }
-      return null;
+      final email = res['email']?.toString().trim();
+      if (email != null && email.isNotEmpty) {
+        return NativeGoogleAccountPickResult(
+          status: NativeGoogleAccountPickStatus.selected,
+          email: email.toLowerCase(),
+        );
+      }
+      final status = res['status']?.toString();
+      if (status == 'cancelled') {
+        return const NativeGoogleAccountPickResult(
+          status: NativeGoogleAccountPickStatus.cancelled,
+        );
+      }
+      return const NativeGoogleAccountPickResult(
+        status: NativeGoogleAccountPickStatus.unavailable,
+      );
     } on MissingPluginException {
-      return null;
+      return const NativeGoogleAccountPickResult(
+        status: NativeGoogleAccountPickStatus.unavailable,
+      );
     } on PlatformException catch (e) {
       AppLogger.warning('Native account picker skipped', tag: _tag, error: e.code);
-      return null;
+      return const NativeGoogleAccountPickResult(
+        status: NativeGoogleAccountPickStatus.unavailable,
+      );
     } catch (_) {
-      return null;
+      return const NativeGoogleAccountPickResult(
+        status: NativeGoogleAccountPickStatus.unavailable,
+      );
     }
+  }
+
+  /// Launches the native Android system Google account chooser when available.
+  static Future<String?> pickDeviceGoogleEmail() async {
+    final outcome = await pickDeviceGoogleAccountOutcome();
+    return outcome.email;
   }
 
   Future<Result<SocialProfile>> signInWithGoogle({

@@ -6,7 +6,6 @@ import '../../../app/theme/app_theme_extension.dart';
 import '../../../core/result/result.dart';
 import '../../../shared/utils/arabic_formatters.dart';
 import '../../../shared/widgets/handelha_ambient_background.dart';
-import '../../../shared/widgets/handelha_bottom_nav.dart';
 import '../../../shared/widgets/handelha_date_time_picker.dart';
 import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
@@ -114,7 +113,11 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
   }
 
   void _onTextEdited() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (_titleController.text.trim().isNotEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.removeCurrentSnackBar();
+    }
+    setState(() {});
   }
 
   bool get _hasUnsavedChanges {
@@ -809,12 +812,10 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
         }
       },
       child: Scaffold(
-        extendBody: true,
         body: HandelhaAmbientBackground(
           child: SafeArea(
-            bottom: false,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 114),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -1220,8 +1221,8 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                                           Expanded(
                                             child: Text(
                                               isEn
-                                                  ? 'Allow notification & alarm permission'
-                                                  : 'تفعيل إذن الإشعارات والمنبه',
+                                                  ? 'Allow notification & exact alarm permission'
+                                                  : 'تفعيل إذن الإشعارات والمنبه الدقيق',
                                               style: TextStyle(
                                                 fontSize: 11.5,
                                                 fontWeight: FontWeight.w700,
@@ -1545,7 +1546,6 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
             ),
           ),
         ),
-        bottomNavigationBar: const HandelhaBottomNav(currentIndex: 1),
       ),
     );
   }

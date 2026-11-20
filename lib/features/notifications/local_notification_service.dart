@@ -117,13 +117,23 @@ class LocalNotificationService {
     }
     try {
       tz_data.initializeTimeZones();
+      var tzConfigured = false;
       try {
-        tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
-      } catch (_) {
-        // Keep package default timezone if Cairo lookup is unavailable.
+        final deviceTz = await NativeAlarmBridge.instance.getDeviceTimeZone();
+        if (deviceTz != null && deviceTz.trim().isNotEmpty) {
+          tz.setLocalLocation(tz.getLocation(deviceTz.trim()));
+          tzConfigured = true;
+        }
+      } catch (_) {}
+      if (!tzConfigured) {
+        try {
+          tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
+        } catch (_) {
+          // Keep package default timezone if Cairo lookup is unavailable.
+        }
       }
 
-      const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const android = AndroidInitializationSettings('@drawable/ic_stat_handelha');
       const darwin = DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
@@ -246,7 +256,11 @@ class LocalNotificationService {
           await androidPlugin.requestNotificationsPermission();
         } catch (_) {}
         final enabled = await _safeAreNotificationsEnabled(androidPlugin);
-        final exact = await _safeCanScheduleExact(androidPlugin);
+        var exact = await _safeCanScheduleExact(androidPlugin);
+        if (includeExactAlarm && !exact) {
+          await NativeAlarmBridge.instance.requestExactAlarmPermission();
+          exact = await _safeCanScheduleExact(androidPlugin);
+        }
         return NotificationPermissionStatus(
           notificationsGranted: enabled,
           exactAlarmsGranted: exact,
@@ -336,9 +350,9 @@ class LocalNotificationService {
                 category: AndroidNotificationCategory.alarm,
                 fullScreenIntent: true,
                 audioAttributesUsage: AudioAttributesUsage.alarm,
-                visibility: NotificationVisibility.public,
+                visibility: NotificationVisibility.private,
                 additionalFlags: Int32List.fromList(<int>[4]),
-                icon: '@mipmap/ic_launcher',
+                icon: '@drawable/ic_stat_handelha',
               ),
               iOS: const DarwinNotificationDetails(
                 presentAlert: true,
@@ -358,7 +372,8 @@ class LocalNotificationService {
                 importance: Importance.high,
                 priority: Priority.high,
                 category: AndroidNotificationCategory.reminder,
-                icon: '@mipmap/ic_launcher',
+                visibility: NotificationVisibility.private,
+                icon: '@drawable/ic_stat_handelha',
               ),
               iOS: DarwinNotificationDetails(),
               macOS: DarwinNotificationDetails(),
@@ -451,7 +466,7 @@ class LocalNotificationService {
     String Function(String taskId)? alertModeLookup,
   }) async {
     for (final task in tasks) {
-      final mode = alertModeLookup?.call(task.id) ?? 'notification';
+      final mode = alertModeLookup?.call(task.id);
       await scheduleTask(task, alertMode: mode);
     }
   }

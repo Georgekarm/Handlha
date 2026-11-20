@@ -86,7 +86,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _socialAuth(AuthProviderType provider) async {
     if (_isSubmitting) return;
-    final selection = await HandelhaSocialAuthSheet.show(
+    SocialAccountSelection? selection;
+    if (provider == AuthProviderType.google) {
+      final nativePick =
+          await SocialAuthService.pickDeviceGoogleAccountOutcome();
+      if (!mounted) return;
+      if (nativePick.status == NativeGoogleAccountPickStatus.cancelled) {
+        return;
+      }
+      if (nativePick.status == NativeGoogleAccountPickStatus.selected &&
+          nativePick.email != null) {
+        selection = SocialAccountSelection(email: nativePick.email);
+      }
+    }
+    selection ??= await HandelhaSocialAuthSheet.show(
       context,
       provider: provider,
     );

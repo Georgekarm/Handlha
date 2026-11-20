@@ -125,6 +125,13 @@ class LocalEgyptianLlmService implements LLMService {
       );
     }
 
+    if (cid == 'project-plan') {
+      return LlmReply(text: _buildStructuredProjectPlanJson(raw, now));
+    }
+    if (cid == 'task-extraction') {
+      return LlmReply(text: _buildStructuredTaskExtractionJson(raw, now));
+    }
+
     final norm = _nlu.normalize(raw);
 
     // 1. Gratitude & capability discovery (never writes)
@@ -208,16 +215,6 @@ class LocalEgyptianLlmService implements LLMService {
           'Welcome! How is your day going? Tell me what tasks are on your plate or say "plan my day" to organize them.',
         ),
       );
-    }
-
-    // Exam grade / score celebration ("جبت امتياز في امتحان العربي", "قفلت الامتحان", "جبت جيد جدا")
-    if (_isExamGradeReport(norm)) {
-      return LlmReply(text: _buildExamGradeReply(raw, norm, cid, request.messages));
-    }
-
-    // Energy & productivity preference update in chat ("انا بحب اشتغل بليل", "طاقتي الصبح")
-    if (_isEnergyPreferenceUpdate(norm)) {
-      return LlmReply(text: _handleEnergyPreferenceUpdate(norm));
     }
 
     // Exam grade / score celebration ("جبت امتياز في امتحان العربي", "قفلت الامتحان", "جبت جيد جدا")
@@ -784,7 +781,7 @@ class LocalEgyptianLlmService implements LLMService {
     final known = <String, dynamic>{
       'title': cleanTitle,
       if (targetDate != null) 'date': _ymd(targetDate),
-      if (targetTime != null) 'time': targetTime,
+      'time': ?targetTime,
       if (analysis.inMinutes != null) 'in_minutes': analysis.inMinutes,
       'priority': spec?.priority ?? 'high',
       if (spec?.category != null) 'category': spec!.category,
@@ -1816,6 +1813,162 @@ class LocalEgyptianLlmService implements LLMService {
       ToolCall(id: 'local_${++_callSeq}', name: name, arguments: args);
 
   String _ymd(DateTime dt) => WallClock.ymd(dt);
+
+  String _buildStructuredProjectPlanJson(String rawJson, DateTime now) {
+    Map<String, dynamic> input = const {};
+    try {
+      final decoded = jsonDecode(rawJson);
+      if (decoded is Map) input = Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+
+    final title = (input['title']?.toString().trim().isNotEmpty == true)
+        ? input['title'].toString().trim()
+        : _tr('مشروع جديد', 'New Project');
+    final goal = (input['goal']?.toString().trim().isNotEmpty == true)
+        ? input['goal'].toString().trim()
+        : title;
+    final refinement = input['refinement']?.toString().trim() ?? '';
+    final existingTasks = (input['existing_tasks'] is List)
+        ? (input['existing_tasks'] as List).whereType<Map>().toList()
+        : const <Map>[];
+    final existingIds = existingTasks
+        .map((t) => t['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    final seq = ++_callSeq;
+    String freshId(String suffix) {
+      var candidate = 'plan_${seq}_$suffix';
+      var i = 1;
+      while (existingIds.contains(candidate)) {
+        candidate = 'plan_${seq}_${suffix}_${++i}';
+      }
+      return candidate;
+    }
+
+    final t1 = freshId('t1');
+    final t2 = freshId('t2');
+    final t3 = freshId('t3');
+    final d1 = _ymd(now.add(const Duration(days: 1)));
+    final d2 = _ymd(now.add(const Duration(days: 2)));
+    final d3 = _ymd(now.add(const Duration(days: 3)));
+    final prevDep = existingIds.isNotEmpty ? [existingIds.first] : <String>[];
+
+    final plan = {
+      'title': title,
+      'goal': goal,
+      'clarification_question': refinement.isEmpty
+          ? _tr(
+              'هل تحب نركّز على خطوات سريعة في الأول ولا نقسّمها على أيام أكتر؟',
+              'Would you like to focus on quick wins first or spread the steps across more days?',
+            )
+          : null,
+      'phases': [
+        {
+          'id': 'phase_${seq}_1',
+          'title': _tr('١. التحضير وتحديد الأولويات', '1. Preparation & Scope'),
+          'description': _tr('تجهيز الأساسيات اللازمة لـ $title', 'Setting up the foundation for $title'),
+          'estimated_duration_minutes': 45,
+          'suggested_deadline': d1,
+          'tasks': [
+            {
+              'id': t1,
+              'title': _tr('تحديد المتطلبات الأساسية لـ $title', 'Define core requirements for $title'),
+              'description': goal,
+              'estimated_duration_minutes': 45,
+              'duration_uncertainty': _tr('تقدير مبدئي قابل للتعديل', 'Initial estimate'),
+              'priority': 'high',
+              'suggested_deadline': d1,
+              'depends_on': prevDep,
+            },
+          ],
+        },
+        {
+          'id': 'phase_${seq}_2',
+          'title': _tr('٢. التنفيذ الأساسي', '2. Core Execution'),
+          'description': refinement.isNotEmpty
+              ? refinement
+              : _tr('إنجاز الجزء الأكبر من الهدف خطوة بخطوة', 'Completing the primary deliverables step by step'),
+          'estimated_duration_minutes': 90,
+          'suggested_deadline': d2,
+          'tasks': [
+            {
+              'id': t2,
+              'title': _tr('تنفيذ الخطوة الرئيسية في $title', 'Execute core milestone for $title'),
+              'description': refinement.isNotEmpty ? refinement : goal,
+              'estimated_duration_minutes': 90,
+              'duration_uncertainty': _tr('يعتمد على تفاصيل التنفيذ', 'Depends on implementation scope'),
+              'priority': 'high',
+              'suggested_deadline': d2,
+              'depends_on': [t1],
+            },
+          ],
+        },
+        {
+          'id': 'phase_${seq}_3',
+          'title': _tr('٣. المراجعة والإنهاء', '3. Review & Finalization'),
+          'description': _tr('مراجعة المخرجات والتأكد من اكتمال الهدف', 'Review deliverables and finalize'),
+          'estimated_duration_minutes': 45,
+          'suggested_deadline': d3,
+          'tasks': [
+            {
+              'id': t3,
+              'title': _tr('مراجعة وتسليم $title', 'Review and finalize $title'),
+              'description': null,
+              'estimated_duration_minutes': 45,
+              'duration_uncertainty': _tr('تقدير مبدئي', 'Initial estimate'),
+              'priority': 'medium',
+              'suggested_deadline': d3,
+              'depends_on': [t2],
+            },
+          ],
+        },
+      ],
+    };
+    return jsonEncode(plan);
+  }
+
+  String _buildStructuredTaskExtractionJson(String rawJson, DateTime now) {
+    Map<String, dynamic> input = const {};
+    try {
+      final decoded = jsonDecode(rawJson);
+      if (decoded is Map) input = Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+
+    final text = input['text']?.toString().trim() ?? rawJson.trim();
+    final analysis = _nlu.analyze(
+      text,
+      now: now,
+      hasPendingClarification: false,
+      hasActiveDraft: false,
+      languageCode: _langCode,
+    );
+    final spec = analysis.taskSpecs.isNotEmpty ? analysis.taskSpecs.first : null;
+    final cleanTitle = (spec != null && spec.title.trim().isNotEmpty)
+        ? spec.title.trim()
+        : _nlu.extractCleanClauseTitle(text);
+    String? dueAtIso;
+    if (spec?.date != null) {
+      final d = spec!.date!;
+      if (spec.time != null && spec.time!.contains(':')) {
+        final parts = spec.time!.split(':');
+        final h = int.tryParse(parts[0]) ?? 9;
+        final m = int.tryParse(parts[1]) ?? 0;
+        dueAtIso = DateTime(d.year, d.month, d.day, h, m).toIso8601String();
+      } else {
+        dueAtIso = DateTime(d.year, d.month, d.day).toIso8601String();
+      }
+    }
+    return jsonEncode({
+      'title': cleanTitle.isEmpty ? text : cleanTitle,
+      'description': null,
+      'estimated_duration_minutes': analysis.inMinutes,
+      'due_at': dueAtIso,
+      'priority': spec?.priority,
+      'depends_on': const <String>[],
+      'clarification_question': analysis.understanding.clarificationQuestion,
+    });
+  }
 
   String? _extractCurrentIso(String systemPrompt) {
     final nowMatch = RegExp(

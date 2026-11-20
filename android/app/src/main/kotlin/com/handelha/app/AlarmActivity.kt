@@ -3,6 +3,7 @@ package com.handelha.app
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.KeyguardManager
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -105,18 +106,26 @@ class AlarmActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        configureLockScreenWindow()
-        readExtras(intent)
-        buildContentView()
+        try {
+            configureLockScreenWindowBeforeContent()
+            readExtras(intent)
+            cancelPostedAlarmNotification()
+            buildContentView()
+            configureSystemBarsAfterContent()
 
-        // Start native chime + vibration immediately if not already playing (e.g. direct preview launch)
-        AlarmAudioController.start(this)
+            // Start native chime + vibration asynchronously off the main thread
+            AlarmAudioController.start(this)
+        } catch (_: Throwable) {
+            AlarmAudioController.stop(this)
+            finish()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         readExtras(intent)
+        cancelPostedAlarmNotification()
         if (::taskTitleView.isInitialized) {
             taskTitleView.text = alarmTitle
         }
@@ -154,27 +163,48 @@ class AlarmActivity : Activity() {
         handleDismiss()
     }
 
-    private fun configureLockScreenWindow() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
-            )
+    private fun configureLockScreenWindowBeforeContent() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(true)
+                setTurnScreenOn(true)
+            } else {
+                @Suppress("DEPRECATION")
+                window.addFlags(
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+                )
+            }
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } catch (_: Throwable) {
         }
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.statusBarColor = Color.parseColor("#091C17")
-        window.navigationBarColor = Color.parseColor("#071612")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.setSystemBarsAppearance(
-                0,
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                    WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-            )
+    }
+
+    private fun configureSystemBarsAfterContent() {
+        try {
+            @Suppress("DEPRECATION")
+            window.statusBarColor = Color.parseColor("#091C17")
+            @Suppress("DEPRECATION")
+            window.navigationBarColor = Color.parseColor("#071612")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.insetsController?.setSystemBarsAppearance(
+                    0,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                        WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                )
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun cancelPostedAlarmNotification() {
+        try {
+            if (alarmId.isNotBlank()) {
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                nm?.cancel(NativeAlarmScheduler.stableRequestCode(alarmId))
+            }
+        } catch (_: Throwable) {
         }
     }
 
@@ -721,6 +751,7 @@ class AlarmActivity : Activity() {
             triggerAtMs = nextAt,
             alertMode = "alarm",
             taskId = taskId,
+            isEn = isEn,
             saveRecord = !isPreview,
         )
         NativeAlarmStore.enqueuePendingAction(
@@ -779,10 +810,10 @@ class AlarmActivity : Activity() {
     }
 
     private fun finishSafely() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            finishAndRemoveTask()
-        } else {
+        cancelPostedAlarmNotification()
+        try {
             finish()
+        } catch (_: Throwable) {
         }
     }
 

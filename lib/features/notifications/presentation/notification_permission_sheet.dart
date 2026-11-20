@@ -236,7 +236,7 @@ class _HandelhaPermissionSheetState
                               ok = await ref
                                   .read(alarmReminderProvider.notifier)
                                   .requestPermission(
-                                    includeExactAlarm: false,
+                                    includeExactAlarm: widget.includeExactAlarm,
                                   );
                             }
                             if (!context.mounted) return;

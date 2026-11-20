@@ -12,6 +12,26 @@ class EgyptianNluFeatures {
   static final _conditionalRegex = RegExp(r'(?:^|\s)(لو\s+كنت|لو\s+حبيت|لو\s+ينفع)(?=\s|$)');
   static final _quoteRegex = RegExp(r'["«»“”]');
   static final _questionPrefixRegex = RegExp(r'(?:^|\s)(هل|ينفع|ممكن|ايه|امتي|ازاي|كام)(?=\s|$)');
+  static final _relTimeCueRegex = RegExp(
+    r'(?:(?:بعد|كمان|خلال)\s+(?:\d+\s*(?:دقيق[هة]|دقايق|دقائق|ساع[هة]|ساعات|ثواني|ثاني[هة]|ايام|يوم)|دقيق[هة]|دقيقتين|ساع[هة]|ساعتين|نص\s+ساع[هة]|ربع\s+ساع[هة]|تلت\s+ساع[هة]|شوي[هة])|\b(?:in|after)\s+(?:\d+|a|an|one|two|half\s+an)\s*(?:min|mins|minute|minutes|hr|hrs|hour|hours)\b)',
+    caseSensitive: false,
+  );
+  static final _clockTimeCueRegex = RegExp(
+    r'(?:(?:الساع[هة]|ساع[هة])\s*\d{1,2}|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:am|pm)\b|(?:^|\s)(?:الصبح|الضهر|الظهر|العصر|المغرب|بليل|بالليل|مساء)(?=\s|$))',
+    caseSensitive: false,
+  );
+  static final _dateRefCueRegex = RegExp(
+    r'(?:(?:^|\s)(?:النهارد[هة]|انهارد[هة]|اليوم|بكر[هة]|غدا|السبت|الاحد|الحد|الاتنين|الاثنين|التلات|الثلاثاء|الاربع|الاربعاء|الخميس|الجمع[هة]|الاسبوع\s+الجاي)(?=\s|$)|\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b)',
+    caseSensitive: false,
+  );
+  static final _reminderCueRegex = RegExp(
+    r'(?:فكرني|ذكرني|نبهني|تذكير|تنبيه|منبه|صحيني|\b(?:remind|alarm|ping|notify)\b)',
+    caseSensitive: false,
+  );
+  static final _coachingCueRegex = RegExp(
+    r'(?:مش\s+قادر\s+اركز|مشتت|مضغوط|زهقت|مكسل|تعبان|مش\s+عارف\s+(?:اذاكر|ابدا)|ازاي\s+(?:اذاكر|اركز|انظم)|نصيح[هة]|مشكله\s+في\s+التركيز|بومودورو|\b(?:focus\s+tip|study\s+tip|overwhelmed|procrastinat|can.?t\s+focus|pomodoro)\b)',
+    caseSensitive: false,
+  );
 
   /// Normalizes raw input for intent classification while preserving negation,
   /// self-correction cues, question markers, and normalized Latin tokens.
@@ -24,7 +44,8 @@ class EgyptianNluFeatures {
   }
 
   /// Extracts L2-normalized features combining exact word forms, lightweight
-  /// Egyptian stems, boundary bigrams, char 3-grams, and grammatical safety cues.
+  /// Egyptian stems, boundary bigrams, char 3-grams, and generalizing
+  /// grammatical + semantic slot cues.
   static Map<String, double> extract(String raw) {
     final normalized = normalizeInput(raw);
     if (normalized.isEmpty) return const {};
@@ -33,7 +54,7 @@ class EgyptianNluFeatures {
     final words = normalized.split(' ').where((w) => w.isNotEmpty).toList();
     if (words.isEmpty) return const {};
 
-    // Grammatical & pragmatic structure cues (general Arabic signals).
+    // Grammatical & pragmatic structure cues (general Arabic + English signals).
     if (raw.contains('؟') || raw.contains('?') || _questionPrefixRegex.hasMatch(normalized)) {
       _add(counts, 'cue:question', 1.5);
     }
@@ -48,6 +69,22 @@ class EgyptianNluFeatures {
     }
     if (RegExp(r'(?:^|\s)(لسه\s+ه|بفكر\s+ممكن|ممكن\s+ابقي)(?=\s|$)').hasMatch(normalized)) {
       _add(counts, 'cue:tentative_future', 1.9);
+    }
+    // Generalizing semantic slot cues so unseen dates/times/topics transfer cleanly.
+    if (_relTimeCueRegex.hasMatch(normalized)) {
+      _add(counts, 'cue:rel_time', 1.6);
+    }
+    if (_clockTimeCueRegex.hasMatch(normalized)) {
+      _add(counts, 'cue:clock_time', 1.1);
+    }
+    if (_dateRefCueRegex.hasMatch(normalized)) {
+      _add(counts, 'cue:date_ref', 1.0);
+    }
+    if (_reminderCueRegex.hasMatch(normalized)) {
+      _add(counts, 'cue:reminder_verb', 2.1);
+    }
+    if (_coachingCueRegex.hasMatch(normalized)) {
+      _add(counts, 'cue:coaching_vent', 1.8);
     }
 
     for (var i = 0; i < words.length; i++) {

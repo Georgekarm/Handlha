@@ -210,12 +210,37 @@
     {"id":"en-tr-046","text":"don't add that meeting tomorrow","intent":"unknown","family":"en_neg_add","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true},
     {"id":"en-tr-047","text":"if you had scheduled it at 5 it would clash","intent":"unknown","family":"en_hyp_clash","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true},
     {"id":"en-tr-048","text":"can you create reminders without internet?","intent":"unknown","family":"en_q_offline","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true},
-    {"id":"en-tr-049","text":"the email said \"finish the report tomorrow\"","intent":"unknown","family":"en_quote_email","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true}
+    {"id":"en-tr-049","text":"the email said \"finish the report tomorrow\"","intent":"unknown","family":"en_quote_email","source":"adversarial-hard-negative","input":"text","locale":"en-US","must_not_execute":true},
+
+    {"id":"tr-301","text":"عندي تاسك بعد 5 دقايق","intent":"create_task","family":"rel_min_generic_task","source":"user-observed-real","input":"text","locale":"ar-EG"},
+    {"id":"tr-302","text":"عندي مهمة مراجعة بعد دقيقتين","intent":"create_task","family":"rel_two_min_review","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-303","text":"ورايا مكالمة كمان ربع ساعة","intent":"create_task","family":"rel_kaman_quarter_call","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-304","text":"لازم أبعت التقرير خلال نص ساعة","intent":"create_task","family":"rel_within_half_hour","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-305","text":"عندي اجتماع بعد ساعة ونص","intent":"create_task","family":"rel_hour_and_half","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-306","text":"فكرني بعد دقيقة أكلم أحمد","intent":"reminder","family":"remind_in_one_min","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-307","text":"اضبطلي منبه بعد 10 دقايق عشان الدوا","intent":"reminder","family":"alarm_in_ten_mins","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-308","text":"صحيني الساعة 7 الصبح عندي كلية","intent":"reminder","family":"wake_me_college","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-309","text":"نبهني كمان تلت ساعة للمراجعة","intent":"reminder","family":"ping_twenty_min","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-310","text":"مش قادر أركز ومشتت ساعدني أنظّم يومي","intent":"schedule","family":"distracted_organize","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-311","text":"مضغوط من الامتحانات اعمللي خطة مذاكرة","intent":"schedule","family":"stressed_study_plan","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-312","text":"عايز أبدأ جلسة تركيز بومودورو دلوقتي","intent":"schedule","family":"start_pomodoro_focus","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-313","text":"إزاي أذاكر بتركيز من غير ما أزهق؟","intent":"unknown","family":"study_advice_question","source":"authored-template","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-314","text":"أنا عندي مشكلة في التركيز الأيام دي","intent":"unknown","family":"focus_vent_statement","source":"authored-template","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-315","text":"محتاج نصيحة عشان أبطّل تسويف","intent":"unknown","family":"procrastination_advice","source":"authored-template","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-316","text":"حاسس إني مكسل ومش قادر أعمل حاجة النهارده","intent":"unknown","family":"lazy_vent_today","source":"authored-template","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-317","text":"ازاي اتعامل مع ضغط الامتحانات؟","intent":"unknown","family":"exam_stress_advice_q","source":"authored-template","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-318","text":"بعتذر تعبان شوية النهارده","intent":"unknown","family":"tired_vent_statement","source":"authored-template","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"tr-319","text":"خليها منبه يرن","intent":"clarification_answer","family":"pick_alarm_mode_reply","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-320","text":"رسالة إشعار هادية بس","intent":"clarification_answer","family":"pick_notif_mode_reply","source":"authored-template","input":"text","locale":"ar-EG"},
+    {"id":"tr-321","text":"سمّيها مراجعة الكيمياء","intent":"clarification_answer","family":"supply_task_title_reply","source":"authored-template","input":"text","locale":"ar-EG"}
   ],
   "dev": [
     {"id":"dev-001","text":"محتاج أسجل مراجعة UI بكرة بعد الضهر","intent":"create_task","family":"dev_need_record","source":"held-out-template","input":"text","locale":"ar-EG+en"},
     {"id":"dev-002","text":"تاسك كتابة البروبوزال يوم الجمعة الصبح","intent":"create_task","family":"dev_bare_task_date","source":"held-out-template","input":"text","locale":"ar-EG"},
     {"id":"dev-003","text":"حط معاد دكتور الأسنان بعد بكرة الساعة 6","intent":"create_task","family":"dev_put_doctor","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-017","text":"عندي تاسك بعد دقيقة","intent":"create_task","family":"dev_rel_one_min_task","source":"user-observed-real","input":"text","locale":"ar-EG"},
+    {"id":"dev-018","text":"اعمللي منبه كمان 5 دقايق","intent":"reminder","family":"dev_alarm_five_mins","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"dev-019","text":"عندي مشكلة إني بسوّف كتير، أعمل إيه؟","intent":"unknown","family":"dev_vent_procrastinate","source":"held-out-template","input":"text","locale":"ar-EG","must_not_execute":true},
 
     {"id":"dev-004","text":"عدّل ميعاد الجلسة ليوم السبت","intent":"update_task","family":"dev_edit_session","source":"held-out-template","input":"text","locale":"ar-EG"},
     {"id":"dev-005","text":"انقلها للأحد الجاي الساعة 4","intent":"update_task","family":"dev_move_sunday","source":"held-out-template","input":"voice-transcript","locale":"ar-EG"},
@@ -270,6 +295,9 @@
     {"id":"te-024","text":"ما تحذفش ميعاد الدكتور لو سمحت","intent":"unknown","family":"te_neg_dont_delete","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true},
     {"id":"te-025","text":"لسه هخلّص كورس البايثون الأسبوع الجاي","intent":"unknown","family":"te_neg_future_intent","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true},
     {"id":"te-026","text":"المدرس قال أكتب \"امسح الورقة\" في الدفتر","intent":"unknown","family":"te_neg_quoted_cmd","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true},
-    {"id":"te-027","text":"لو كنت مسحت المهمة دي كان حصل إيه","intent":"unknown","family":"te_neg_hypothetical_if","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true}
+    {"id":"te-027","text":"لو كنت مسحت المهمة دي كان حصل إيه","intent":"unknown","family":"te_neg_hypothetical_if","source":"adversarial-held-out","input":"text","locale":"ar-EG","must_not_execute":true},
+    {"id":"te-028","text":"عندي تسليم مهم بعد عشر دقايق","intent":"create_task","family":"te_rel_ten_min_delivery","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-029","text":"فكّرني بعد دقيقتين أرد على الدكتور","intent":"reminder","family":"te_remind_two_mins","source":"held-out-template","input":"text","locale":"ar-EG"},
+    {"id":"te-030","text":"أنا مشتت أوي ومش عارف أركز في المذاكرة","intent":"unknown","family":"te_vent_distracted_study","source":"held-out-template","input":"text","locale":"ar-EG","must_not_execute":true}
   ]
 }

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:ui' show Color;
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -133,7 +133,7 @@ class LocalNotificationService {
         }
       }
 
-      const android = AndroidInitializationSettings('@drawable/ic_stat_handelha');
+      const android = AndroidInitializationSettings('ic_stat_handelha');
       const darwin = DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
@@ -339,6 +339,12 @@ class LocalNotificationService {
         taskId: taskId,
       ).encode();
 
+      final notificationTitle = isAlarm ? 'منبه هندلها' : 'تذكير من هندلها';
+      final styleInfo = BigTextStyleInformation(
+        title,
+        contentTitle: notificationTitle,
+        summaryText: 'هندلها',
+      );
       final details = isAlarm
           ? NotificationDetails(
               android: AndroidNotificationDetails(
@@ -350,9 +356,13 @@ class LocalNotificationService {
                 category: AndroidNotificationCategory.alarm,
                 fullScreenIntent: true,
                 audioAttributesUsage: AudioAttributesUsage.alarm,
-                visibility: NotificationVisibility.private,
-                additionalFlags: Int32List.fromList(<int>[4]),
-                icon: '@drawable/ic_stat_handelha',
+                visibility: NotificationVisibility.public,
+                autoCancel: true,
+                ongoing: false,
+                color: const Color(0xFF007067),
+                subText: 'هندلها',
+                styleInformation: styleInfo,
+                icon: 'ic_stat_handelha',
               ),
               iOS: const DarwinNotificationDetails(
                 presentAlert: true,
@@ -364,7 +374,7 @@ class LocalNotificationService {
                 presentSound: true,
               ),
             )
-          : const NotificationDetails(
+          : NotificationDetails(
               android: AndroidNotificationDetails(
                 _channelId,
                 _channelName,
@@ -372,14 +382,18 @@ class LocalNotificationService {
                 importance: Importance.high,
                 priority: Priority.high,
                 category: AndroidNotificationCategory.reminder,
-                visibility: NotificationVisibility.private,
-                icon: '@drawable/ic_stat_handelha',
+                visibility: NotificationVisibility.public,
+                autoCancel: true,
+                ongoing: false,
+                color: const Color(0xFF007067),
+                subText: 'هندلها',
+                styleInformation: styleInfo,
+                icon: 'ic_stat_handelha',
               ),
-              iOS: DarwinNotificationDetails(),
-              macOS: DarwinNotificationDetails(),
+              iOS: const DarwinNotificationDetails(),
+              macOS: const DarwinNotificationDetails(),
             );
 
-      final notificationTitle = isAlarm ? 'منبه هندلها' : 'تذكير من هندلها';
       final notificationId = _notificationId(id);
       try {
         await _plugin.zonedSchedule(

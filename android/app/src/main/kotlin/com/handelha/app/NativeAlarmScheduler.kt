@@ -225,7 +225,7 @@ object NativeAlarmScheduler {
         taskId: String?,
         isEn: Boolean = false,
         isPreview: Boolean = false,
-    ) {
+    ): Boolean {
         val intent = buildAlarmActivityIntent(
             context = context,
             id = id,
@@ -234,9 +234,14 @@ object NativeAlarmScheduler {
             isEn = isEn,
             isPreview = isPreview,
         )
-        try {
+        if (context is android.app.Activity) {
+            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        return try {
             context.startActivity(intent)
-        } catch (_: Exception) {
+            true
+        } catch (_: Throwable) {
+            false
         }
     }
 }

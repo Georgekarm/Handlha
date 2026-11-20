@@ -52,12 +52,11 @@
         <activity
             android:name=".AlarmActivity"
             android:exported="false"
-            android:taskAffinity=""
+            android:taskAffinity="com.handelha.app.alarm"
             android:excludeFromRecents="true"
-            android:launchMode="singleInstance"
+            android:launchMode="singleTop"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
-            android:screenOrientation="portrait"
             android:theme="@style/AlarmTheme" />
         <receiver
             android:name=".AlarmReceiver"

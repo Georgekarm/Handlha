@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Color
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -74,7 +75,7 @@ class FocusTimerForegroundService : Service() {
             ensureChannel(nm, isEn)
         }
 
-        val notification = buildNotification(title, subtitle)
+        val notification = buildNotification(title, subtitle, isEn)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
@@ -89,6 +90,12 @@ class FocusTimerForegroundService : Service() {
         }
 
         return START_NOT_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopForegroundCompat()
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
@@ -108,24 +115,32 @@ class FocusTimerForegroundService : Service() {
         }
     }
 
-    private fun buildNotification(title: String, subtitle: String): Notification {
+    private fun buildNotification(title: String, subtitle: String, isEn: Boolean): Notification {
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val contentPi = PendingIntent.getActivity(this, NOTIFICATION_ID, openAppIntent, piFlags)
 
+        val stopIntent = Intent(this, FocusTimerForegroundService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPi = PendingIntent.getService(this, NOTIFICATION_ID + 1, stopIntent, piFlags)
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_handelha)
+            .setColor(Color.parseColor("#007067"))
+            .setSubText(if (isEn) "Handelha Focus" else "تركيز هندلها")
             .setContentTitle(title)
             .setContentText(subtitle)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setContentIntent(contentPi)
+            .addAction(0, if (isEn) "Stop" else "إيقاف", stopPi)
             .build()
     }
 

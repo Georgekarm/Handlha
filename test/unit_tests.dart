@@ -3,11 +3,15 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:handelha/core/database/local_backup_service.dart';
+import 'package:handelha/core/database/local_focus_session_database.dart';
+import 'package:handelha/core/database/local_project_database.dart';
 import 'package:handelha/core/database/local_task_database.dart';
 import 'package:handelha/core/result/result.dart';
 import 'package:handelha/core/secure_storage/secure_storage_service.dart';
 import 'package:handelha/features/authentication/data/local_auth_repository.dart';
+import 'package:handelha/features/authentication/data/student_preview_seeder.dart';
 import 'package:handelha/features/authentication/domain/app_user.dart';
+import 'package:handelha/features/projects/data/exam_grades_store.dart';
 import 'package:handelha/features/subscriptions/data/local_subscription_store.dart';
 import 'package:handelha/features/subscriptions/domain/subscription_models.dart';
 import 'package:handelha/features/tasks/domain/task.dart';
@@ -392,6 +396,43 @@ void main() {
           .data;
       expect(userBTasks, hasLength(1));
       expect(userBTasks.single.title, 'مهمة المستخدم ب المحمية');
+    });
+
+    test('pre-provisioned Student preview account signs in with active Student plan and academic seed data', () async {
+      final repo = LocalAuthRepository();
+      final res = await repo.signInWithEmail(
+        email: StudentPreviewAccount.email,
+        password: StudentPreviewAccount.password,
+      );
+      expect(res, isA<Success<AppUser>>());
+      final student = (res as Success<AppUser>).data;
+      expect(student.id, StudentPreviewAccount.userId);
+      expect(student.subscriptionCategory, UserSubscriptionCategory.student);
+      expect(student.onboardingComplete, isTrue);
+
+      final sub = await LocalSubscriptionStore.loadForUser(student.id);
+      expect(sub.isSubscribed, isTrue);
+      expect(sub.tier, SubscriptionTier.student);
+      expect(sub.isLocalActivation, isFalse);
+
+      final tasks = (await LocalTaskDatabase.instance.getTasksForUser(student.id)
+              as Success<List<Task>>)
+          .data;
+      expect(tasks.length, greaterThanOrEqualTo(3));
+
+      final projects = (await LocalProjectDatabase.instance.forUser(student.id)
+              as Success)
+          .data;
+      expect(projects, isNotEmpty);
+
+      final sessions =
+          (await LocalFocusSessionDatabase.instance.forUser(student.id)
+                  as Success)
+              .data;
+      expect(sessions, isNotEmpty);
+
+      final grades = await ExamGradesStore.load(student.id);
+      expect(grades.length, greaterThanOrEqualTo(3));
     });
   });
 }

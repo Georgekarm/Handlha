@@ -138,11 +138,14 @@ class _HandelhaAlarmCoordinatorState
     if (!mounted || HandelhaAlarmRingingDialog.isShowing) return;
     final state = ref.read(alarmReminderProvider);
     final now = DateTime.now();
+    // Allow 4s grace window so native Android AlarmReceiver doesn't collide
+    // with the foreground poll loop at the exact trigger second.
+    final triggerBoundary = now.subtract(const Duration(seconds: 4));
     final recentCutoff = now.subtract(const Duration(minutes: 2));
 
     for (final item in state.items) {
       if (!item.isEnabled || !item.isFullAlarm) continue;
-      if (item.scheduledAt.isAfter(now)) continue;
+      if (item.scheduledAt.isAfter(triggerBoundary)) continue;
       if (item.scheduledAt.isBefore(recentCutoff)) continue;
 
       final fireKey = '${item.id}_${item.scheduledAt.millisecondsSinceEpoch}';

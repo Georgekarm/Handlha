@@ -94,13 +94,15 @@ void main() {
       expect(find.text('لسه الصفحة فاضية؟'), findsOneWidget);
     });
 
-    testWidgets('ChatScreen renders the real assistant state and composer', (tester) async {
+    testWidgets('ChatScreen renders the real assistant state and composer without stale ad labels', (tester) async {
       await tester.pumpWidget(_buildTestApp(const ChatScreen()));
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('مساعد هندلها'), findsOneWidget);
       expect(find.text('معاك، مش مستعجلك'), findsOneWidget);
       expect(find.text('مش لازم ترتّب كلامك، أنا معاك.'), findsOneWidget);
+      expect(find.textContaining('بإعلان'), findsNothing);
+      expect(find.textContaining('+15 Ad'), findsNothing);
       expect(find.byType(TextField), findsOneWidget);
     });
 

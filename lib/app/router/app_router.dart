@@ -29,9 +29,28 @@ Page<T> _buildCalmTransition<T>({
   required GoRouterState state,
   required Widget child,
 }) {
-  return MaterialPage<T>(
+  return CustomTransitionPage<T>(
     key: state.pageKey,
     child: child,
+    transitionDuration: const Duration(milliseconds: 165),
+    reverseTransitionDuration: const Duration(milliseconds: 140),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.025),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      );
+    },
   );
 }
 
@@ -113,19 +132,34 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/splash',
-        builder: (context, state) => const SplashScreen(),
+        pageBuilder: (context, state) => NoTransitionPage<void>(
+          key: state.pageKey,
+          child: const SplashScreen(),
+        ),
       ),
       GoRoute(
         path: '/login',
-        builder: (context, state) => const LoginScreen(),
+        pageBuilder: (context, state) => _buildCalmTransition(
+          context: context,
+          state: state,
+          child: const LoginScreen(),
+        ),
       ),
       GoRoute(
         path: '/signup',
-        builder: (context, state) => const SignUpScreen(),
+        pageBuilder: (context, state) => _buildCalmTransition(
+          context: context,
+          state: state,
+          child: const SignUpScreen(),
+        ),
       ),
       GoRoute(
         path: '/forgot-password',
-        builder: (context, state) => const ForgotPasswordScreen(),
+        pageBuilder: (context, state) => _buildCalmTransition(
+          context: context,
+          state: state,
+          child: const ForgotPasswordScreen(),
+        ),
       ),
       GoRoute(
         path: '/onboarding',
@@ -135,51 +169,64 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: const OnboardingScreen(),
         ),
       ),
-      ShellRoute(
-        builder: (context, state, child) => HandelhaAppShell(
-          currentLocation: state.uri.toString(),
-          child: child,
-        ),
-        routes: [
-          GoRoute(
-            path: '/home',
-            pageBuilder: (context, state) => _buildCalmTransition(
-              context: context,
-              state: state,
-              child: const DashboardScreen(),
-            ),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            HandelhaAppShell.fromShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/home',
+                pageBuilder: (context, state) => NoTransitionPage<void>(
+                  key: state.pageKey,
+                  child: const DashboardScreen(),
+                ),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/tasks',
-            pageBuilder: (context, state) => _buildCalmTransition(
-              context: context,
-              state: state,
-              child: const TasksScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/tasks',
+                pageBuilder: (context, state) => NoTransitionPage<void>(
+                  key: state.pageKey,
+                  child: const TasksScreen(),
+                ),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/chat',
-            pageBuilder: (context, state) => _buildCalmTransition(
-              context: context,
-              state: state,
-              child: const ChatScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/projects',
+                pageBuilder: (context, state) => NoTransitionPage<void>(
+                  key: state.pageKey,
+                  child: const ProjectsScreen(),
+                ),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/projects',
-            pageBuilder: (context, state) => _buildCalmTransition(
-              context: context,
-              state: state,
-              child: const ProjectsScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/chat',
+                pageBuilder: (context, state) => NoTransitionPage<void>(
+                  key: state.pageKey,
+                  child: const ChatScreen(),
+                ),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/tracking',
-            pageBuilder: (context, state) => _buildCalmTransition(
-              context: context,
-              state: state,
-              child: const TrackingScreen(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/tracking',
+                pageBuilder: (context, state) => NoTransitionPage<void>(
+                  key: state.pageKey,
+                  child: const TrackingScreen(),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -21,8 +21,52 @@ class HandelhaAmbientBackground extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Base background
-        ColoredBox(color: c.background),
+        // Cached GPU layer for the ambient glows, arcs, and dot matrix so
+        // scrolling and tab switches never trigger background repaints or lag.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: RepaintBoundary(
+              child: _AmbientBackdropLayer(
+                backgroundColor: c.background,
+                glowTopRight: c.glowTopRight,
+                glowBottomLeft: c.glowBottomLeft,
+                primaryColor: c.primary,
+                isDark: isDark,
+                showDecorations: showDecorations,
+              ),
+            ),
+          ),
+        ),
+
+        child,
+      ],
+    );
+  }
+}
+
+class _AmbientBackdropLayer extends StatelessWidget {
+  final Color backgroundColor;
+  final Color glowTopRight;
+  final Color glowBottomLeft;
+  final Color primaryColor;
+  final bool isDark;
+  final bool showDecorations;
+
+  const _AmbientBackdropLayer({
+    required this.backgroundColor,
+    required this.glowTopRight,
+    required this.glowBottomLeft,
+    required this.primaryColor,
+    required this.isDark,
+    required this.showDecorations,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(color: backgroundColor),
 
         // Top-right soft teal radial glow
         Positioned(
@@ -30,17 +74,15 @@ class HandelhaAmbientBackground extends StatelessWidget {
           right: -110,
           width: 420,
           height: 420,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    c.glowTopRight.withValues(alpha: isDark ? 0.85 : 0.90),
-                    c.glowTopRight.withValues(alpha: 0.0),
-                  ],
-                  stops: const [0.0, 0.72],
-                ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  glowTopRight.withValues(alpha: isDark ? 0.85 : 0.90),
+                  glowTopRight.withValues(alpha: 0.0),
+                ],
+                stops: const [0.0, 0.72],
               ),
             ),
           ),
@@ -52,17 +94,15 @@ class HandelhaAmbientBackground extends StatelessWidget {
           left: -120,
           width: 440,
           height: 440,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    c.glowBottomLeft.withValues(alpha: isDark ? 0.88 : 0.85),
-                    c.glowBottomLeft.withValues(alpha: 0.0),
-                  ],
-                  stops: const [0.0, 0.74],
-                ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  glowBottomLeft.withValues(alpha: isDark ? 0.88 : 0.85),
+                  glowBottomLeft.withValues(alpha: 0.0),
+                ],
+                stops: const [0.0, 0.74],
               ),
             ),
           ),
@@ -70,19 +110,17 @@ class HandelhaAmbientBackground extends StatelessWidget {
 
         if (showDecorations)
           Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: _AmbientPatternPainter(
-                  arcColor: (isDark ? Colors.white : c.primary)
-                      .withValues(alpha: isDark ? 0.045 : 0.055),
-                  dotColor: (isDark ? Colors.white : c.primary)
-                      .withValues(alpha: isDark ? 0.065 : 0.085),
-                ),
+            child: CustomPaint(
+              isComplex: true,
+              willChange: false,
+              painter: _AmbientPatternPainter(
+                arcColor: (isDark ? Colors.white : primaryColor)
+                    .withValues(alpha: isDark ? 0.045 : 0.055),
+                dotColor: (isDark ? Colors.white : primaryColor)
+                    .withValues(alpha: isDark ? 0.065 : 0.085),
               ),
             ),
           ),
-
-        child,
       ],
     );
   }

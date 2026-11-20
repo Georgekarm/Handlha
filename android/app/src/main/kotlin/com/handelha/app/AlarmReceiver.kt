@@ -7,16 +7,18 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Build
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 
 class AlarmReceiver : BroadcastReceiver() {
     companion object {
-        private const val ALARM_CHANNEL_ID = "handelha_native_alarms_v1"
+        private const val ALARM_CHANNEL_ID = "handelha_native_alarms_v2"
         private const val ACTION_DISMISS_NOTIF = "com.handelha.app.ACTION_DISMISS_ALARM_NOTIF"
         private const val ACTION_SNOOZE_NOTIF = "com.handelha.app.ACTION_SNOOZE_ALARM_NOTIF"
         private const val SNOOZE_MS = 10 * 60 * 1000L
+        private val BRAND_TEAL = Color.parseColor("#007067")
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -144,25 +146,45 @@ class AlarmReceiver : BroadcastReceiver() {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             if (nm != null) {
                 ensureChannel(nm, isEn)
+                val notifTitle = if (isEn) "Handelha Alarm" else "منبه هندلها"
+                val subLabel = if (isEn) "Scheduled Alarm" else "هندلها"
+                val publicNotif = NotificationCompat.Builder(context, ALARM_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_handelha)
+                    .setColor(BRAND_TEAL)
+                    .setContentTitle(notifTitle)
+                    .setContentText(
+                        if (isEn) "Tap to open your scheduled alarm" else "اضغط لفتح منبه مهمتك المجدولة",
+                    )
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .build()
+
                 val builder = NotificationCompat.Builder(context, ALARM_CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_stat_handelha)
-                    .setContentTitle(if (isEn) "Handelha Alarm" else "منبه هندلها")
+                    .setColor(BRAND_TEAL)
+                    .setSubText(subLabel)
+                    .setContentTitle(notifTitle)
                     .setContentText(title)
+                    .setStyle(
+                        NotificationCompat.BigTextStyle()
+                            .setBigContentTitle(notifTitle)
+                            .bigText(title)
+                            .setSummaryText(subLabel),
+                    )
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_ALARM)
                     .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                    .setOngoing(true)
-                    .setAutoCancel(false)
-                    .setSilent(true) // Audio played directly by AlarmAudioController on USAGE_ALARM
+                    .setPublicVersion(publicNotif)
+                    .setOngoing(false)
+                    .setAutoCancel(true)
+                    .setSilent(true) // Audio played asynchronously by AlarmAudioController on USAGE_ALARM
                     .setContentIntent(fullScreenPi)
+                    .setDeleteIntent(dismissPi)
                     .addAction(0, if (isEn) "Snooze 10m" else "غفوة ١٠ د", snoozePi)
                     .addAction(0, if (isEn) "Dismiss" else "إيقاف", dismissPi)
                 if (NativeAlarmScheduler.canUseFullScreenIntent(context)) {
                     builder.setFullScreenIntent(fullScreenPi, true)
                 }
-                val notification = builder.build()
-                notification.flags = notification.flags or Notification.FLAG_INSISTENT
-                nm.notify(reqCode, notification)
+                nm.notify(reqCode, builder.build())
             }
         } finally {
             try {

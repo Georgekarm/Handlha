@@ -10,6 +10,8 @@ class ExtractedTaskSpec {
     required this.isReminder,
     required this.explicitNoDate,
     required this.isVagueTitle,
+    this.inMinutes,
+    this.isMissingTitle = false,
   });
 
   final String title;
@@ -20,6 +22,8 @@ class ExtractedTaskSpec {
   final bool isReminder;
   final bool explicitNoDate;
   final bool isVagueTitle;
+  final int? inMinutes;
+  final bool isMissingTitle;
 }
 
 class NluAnalysisOutcome {
@@ -168,9 +172,17 @@ class EgyptianNluAnalyzer {
           : 'تم إيقاف التنفيذ لحماية جدولك (نفي/سؤال/اقتباس/صيغة مستقبلية).';
     } else if (intent == EgyptianIntent.createTask && specs.isNotEmpty) {
       final first = specs.first;
-      if (specs.length == 1 &&
+      if (specs.length == 1 && first.isMissingTitle) {
+        needsClar = true;
+        pendingAct = 'create_task';
+        clarQ = _clarificationForMissingTitle(first, now: now, isEnglish: isEn);
+        rationale = isEn
+            ? 'Time was understood, but the task title is missing; asking one concise clarifying question.'
+            : 'تم فهم الميعاد لكن اسم المهمة غير محدد؛ يلزم سؤال استيضاحي واحد.';
+      } else if (specs.length == 1 &&
           first.date == null &&
           first.time == null &&
+          first.inMinutes == null &&
           !first.explicitNoDate) {
         needsClar = true;
         pendingAct = 'create_task';
@@ -322,6 +334,41 @@ class EgyptianNluAnalyzer {
         : 'فهمت إن ده سؤال أو افتراض ومش أمر تنفيذ مباشر، فما عدّلتش جدولك. تحب أنفّذ خطوة معينة؟';
   }
 
+  String _clarificationForMissingTitle(
+    ExtractedTaskSpec spec, {
+    required DateTime now,
+    bool isEnglish = false,
+  }) {
+    final inMins = spec.inMinutes;
+    if (inMins != null) {
+      final shifted = now.add(Duration(minutes: inMins));
+      final hh = shifted.hour % 12 == 0 ? 12 : shifted.hour % 12;
+      final mm = shifted.minute.toString().padLeft(2, '0');
+      final periodEn = shifted.hour >= 12 ? 'PM' : 'AM';
+      final periodAr = shifted.hour >= 12 ? 'م' : 'ص';
+      if (isEnglish) {
+        final unit = inMins == 1 ? '1 minute' : '$inMins minutes';
+        return 'Got it — I have the time locked in ($unit from now, at $hh:$mm $periodEn). What should I name this task? (Tell me if you also want a ringing alarm.)';
+      }
+      final minsAr = inMins == 1
+          ? 'دقيقة'
+          : (inMins == 2 ? 'دقيقتين' : '$inMins دقايق');
+      return 'تمام! فهمت إن الميعاد بعد $minsAr (الساعة $hh:$mm $periodAr) — تحب نسمّي المهمة إيه بالظبط؟ (ولو عايزها منبه يرن قولّي)';
+    }
+    if (spec.date != null || spec.time != null) {
+      final whenPart = [
+        if (spec.date != null) WallClock.ymd(spec.date!),
+        if (spec.time != null) spec.time!,
+      ].join(' • ');
+      return isEnglish
+          ? 'Got the timing ($whenPart) — what should I name this task?'
+          : 'فهمت الميعاد ($whenPart) — تحب نسمّي المهمة إيه بالظبط؟';
+    }
+    return isEnglish
+        ? 'Sure! What task would you like me to add, and when should it happen?'
+        : 'أكيد! إيه اسم المهمة اللي تحب نضيفها، وإمتى ميعادها؟';
+  }
+
   String _clarificationForUnderspecifiedTask(
     ExtractedTaskSpec spec, {
     bool isEnglish = false,
@@ -377,14 +424,41 @@ class EgyptianNluAnalyzer {
       }
       if (segDate != null) carriedDate = segDate;
 
-      final segTime = parseTime(segNorm);
-      if (segTime != null && segDate == null) {
+      final segInMins = parseInMinutes(segNorm);
+      var segTime = parseTime(segNorm);
+      if (segInMins != null && segDate == null && segTime == null) {
+        final shifted = now.add(Duration(minutes: segInMins));
+        segDate = DateTime(shifted.year, shifted.month, shifted.day);
+        segTime =
+            '${shifted.hour.toString().padLeft(2, '0')}:${shifted.minute.toString().padLeft(2, '0')}';
+        carriedDate = segDate;
+      } else if (segTime != null && segDate == null) {
         segDate = DateTime(now.year, now.month, now.day);
         carriedDate = segDate;
       }
 
       var cleanTitle = extractCleanClauseTitle(seg.text);
-      if (cleanTitle.isEmpty) continue;
+      final isMissingTitle =
+          cleanTitle.isEmpty || _isGenericPlaceholderOnly(normalize(cleanTitle));
+      if (isMissingTitle) {
+        if (segDate != null || segTime != null || segInMins != null) {
+          specs.add(
+            ExtractedTaskSpec(
+              title: '',
+              date: segDate,
+              time: segTime,
+              priority: parsePriority(segNorm),
+              category: inferCategory(segNorm),
+              isReminder: _isPureReminderVerb(segNorm) || segInMins != null,
+              explicitNoDate: explicitNoDate,
+              isVagueTitle: true,
+              inMinutes: segInMins,
+              isMissingTitle: true,
+            ),
+          );
+        }
+        continue;
+      }
 
       final clauseHead = detectHeadNoun(normalize(cleanTitle));
       if (clauseHead != null) {
@@ -411,6 +485,8 @@ class EgyptianNluAnalyzer {
           isReminder: _isPureReminderVerb(segNorm),
           explicitNoDate: explicitNoDate,
           isVagueTitle: isVague,
+          inMinutes: segInMins,
+          isMissingTitle: false,
         ),
       );
     }
@@ -603,14 +679,23 @@ class EgyptianNluAnalyzer {
       ' ',
     );
     text = text.replaceAll(
-      RegExp(r'(?:^|\s)بعد\s+(?:[0-9٠-٩]+|يومين|ساع[هة]|ساعتين|نص\s+ساع[هة]|ربع\s+ساع[هة]|دق[اي]+[ق]?)\s*(?:ايام|أيام|يوم)?(?=\s|$)'),
+      RegExp(
+        r'(?:^|\s)(?:بعد|كمان|خلال)\s+(?:[0-9٠-٩]+\s*(?:دقيق[هة]|دقايق|دقائق|د|ساع[هة]|ساعات|ايام|أيام|يوم|ثاني[هة]|ثواني)|'
+        r'(?:تلات|ثلاث|اربع|أربع|خمس|خمسة|ست|سبع|تمان|تسع|عشر|عشرة|عشرين|تلاتين)\s*(?:دقايق|دقائق|دقيق[هة]|ساعات|ايام|أيام)|'
+        r'دقيقتين|دقيق[هة](?:\s+واحد[هة])?|ساعتين|ساع[هة]\s+ونص|ساع[هة]\s+وربع|ساع[هة]|'
+        r'نص\s+ساع[هة]|ربع\s+ساع[هة]|تلت\s+ساع[هة]|ثلث\s+ساع[هة]|يومين)(?=\s|$)',
+      ),
       ' ',
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(?:in|after)\s+(?:\d+|two|an?|half\s+an)\s*(?:minutes?|mins?|hours?|hrs?|days?)\b',
+        r'\b(?:in|after)\s+(?:\d+|one|two|an?|half\s+an)\s*(?:minutes?|mins?|hours?|hrs?|days?)\b',
         caseSensitive: false,
       ),
+      ' ',
+    );
+    text = text.replaceAll(
+      RegExp(r'(?:^|\s)(?:بمنبه|كمنبه|منبه\s+يرن|بإشعار|باشعار|كإشعار|كاشعار)(?=\s|$)'),
       ' ',
     );
     text = text.replaceAll(
@@ -633,6 +718,18 @@ class EgyptianNluAnalyzer {
     text = text.replaceAll(RegExp(r'\s+(?:at|on|by|for|to)$', caseSensitive: false), '').trim();
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     return text;
+  }
+
+  bool _isGenericPlaceholderOnly(String normTitle) {
+    final cleaned = normTitle.trim();
+    if (cleaned.isEmpty) return true;
+    const placeholders = {
+      'تاسك', 'مهمه', 'حاجه', 'شغله', 'منبه', 'تذكير', 'تنبيه',
+      'معاد', 'ميعاد', 'موعد', 'الامر', 'حاجة', 'مهمة', 'تاسك جديد',
+      'مهمه جديده', 'منبه جديد', 'تذكير جديد',
+      'task', 'new task', 'reminder', 'alarm', 'item', 'something', 'thing',
+    };
+    return placeholders.contains(cleaned);
   }
 
   bool _isVagueSubjectOnly(String normTitle) {
@@ -853,14 +950,87 @@ class EgyptianNluAnalyzer {
   }
 
   int? parseInMinutes(String normText) {
-    if (normText.contains('بعد نص ساعه') || normText.contains('half an hour')) return 30;
-    if (normText.contains('بعد ربع ساعه') || normText.contains('quarter hour')) return 15;
-    if (normText.contains('بعد ساعتين') || normText.contains('two hours')) return 120;
-    if (normText.contains('بعد ساعه') || RegExp(r'\b(?:in|after)\s+(?:an?|1)\s+hour\b').hasMatch(normText)) {
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+ساعه\s+ونص').hasMatch(normText) ||
+        normText.contains('hour and a half')) {
+      return 90;
+    }
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+ساعه\s+وربع').hasMatch(normText)) {
+      return 75;
+    }
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+نص\s+ساعه').hasMatch(normText) ||
+        normText.contains('half an hour')) {
+      return 30;
+    }
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+تلت\s+ساعه').hasMatch(normText) ||
+        RegExp(r'(?:بعد|كمان|خلال)\s+ثلث\s+ساعه').hasMatch(normText)) {
+      return 20;
+    }
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+ربع\s+ساعه').hasMatch(normText) ||
+        normText.contains('quarter hour')) {
+      return 15;
+    }
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+ساعتين').hasMatch(normText) ||
+        normText.contains('two hours')) {
+      return 120;
+    }
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+ساعه(?=\s|$)').hasMatch(normText) ||
+        RegExp(r'\b(?:in|after)\s+(?:an?|1|one)\s+hour\b').hasMatch(normText)) {
       return 60;
     }
-    final m = RegExp(r'(?:بعد|in|after)\s+(\d+)\s*(?:دقيقه|دقايق|دقيقة|min|mins|minutes?)').firstMatch(normText);
-    if (m != null) return int.tryParse(m.group(1)!);
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+دقيقتين(?=\s|$)').hasMatch(normText) ||
+        RegExp(r'\b(?:in|after)\s+(?:two|2)\s+(?:mins?|minutes?)\b')
+            .hasMatch(normText)) {
+      return 2;
+    }
+    if (RegExp(r'(?:بعد|كمان|خلال)\s+دقيقه(?:\s+واحده)?(?=\s|$)')
+            .hasMatch(normText) ||
+        RegExp(r'\b(?:in|after)\s+(?:a|an|one|1)\s+(?:min|minute)\b')
+            .hasMatch(normText)) {
+      return 1;
+    }
+    final m = RegExp(
+      r'(?:بعد|كمان|خلال|in|after)\s+(\d+)\s*(?:دقيقه|دقايق|دقائق|د(?=\s|$)|min|mins|minutes?)',
+    ).firstMatch(normText);
+    if (m != null) {
+      final n = int.tryParse(m.group(1)!);
+      if (n != null && n > 0 && n <= 1440) return n;
+    }
+    const wordNums = <String, int>{
+      'تلات': 3,
+      'ثلاث': 3,
+      'اربع': 4,
+      'خمس': 5,
+      'خمسه': 5,
+      'ست': 6,
+      'سبع': 7,
+      'تمان': 8,
+      'تسع': 9,
+      'عشر': 10,
+      'عشره': 10,
+      'خمسطاشر': 15,
+      'عشرين': 20,
+      'تلاتين': 30,
+      'خمس واربعين': 45,
+    };
+    final wordMinMatch = RegExp(
+      r'(?:بعد|كمان|خلال)\s+(خمس واربعين|تلاتين|عشرين|خمسطاشر|عشره|عشر|تسع|تمان|سبع|ست|خمسه|خمس|اربع|ثلاث|تلات)\s*(?:دقايق|دقائق|دقيقه)',
+    ).firstMatch(normText);
+    if (wordMinMatch != null) {
+      return wordNums[wordMinMatch.group(1)];
+    }
+    final arHr = RegExp(r'(?:بعد|كمان|خلال)\s+(\d+)\s*(?:ساعات|ساعه)')
+        .firstMatch(normText);
+    if (arHr != null) {
+      final n = int.tryParse(arHr.group(1)!);
+      if (n != null && n > 0 && n <= 24) return n * 60;
+    }
+    final wordHrMatch = RegExp(
+      r'(?:بعد|كمان|خلال)\s+(تلات|ثلاث|اربع|خمس|ست)\s*ساعات',
+    ).firstMatch(normText);
+    if (wordHrMatch != null) {
+      final n = wordNums[wordHrMatch.group(1)];
+      if (n != null) return n * 60;
+    }
     final hr = RegExp(r'\b(?:in|after)\s+(\d+)\s*(?:hr|hrs|hours?)\b').firstMatch(normText);
     if (hr != null) {
       final n = int.tryParse(hr.group(1)!);
@@ -1034,23 +1204,43 @@ class EgyptianNluAnalyzer {
   bool _isPureReminderIntent(String norm, EgyptianIntent pred) =>
       _isPureReminderVerb(norm) || pred == EgyptianIntent.reminder;
 
+  bool isConversationalCoachingQuery(String norm) => containsAny(norm, const [
+        'مش قادر اركز', 'مشتت', 'مشكله في التركيز', 'مشكله اني بسوف',
+        'تسويف', 'بسوف', 'مكسل', 'زهقت', 'تعبان شويه', 'مش عارف اذاكر',
+        'ازاي اذاكر', 'ازاي اركز', 'ازاي انظم', 'ازاي اتعامل مع',
+        'نصيحه', 'اديني نصيحه', 'شجعني', 'فقدت الشغف', 'ماليش نفس',
+        'بومودورو', 'جلسه تركيز', 'جلسة تركيز', 'ابدا تركيز',
+        'how do i study', 'how to focus', 'study tip', 'focus tip',
+        'cant focus', "can't focus", 'procrastinat', 'burnt out', 'burned out',
+        'no motivation', 'pomodoro',
+      ]);
+
   bool _isCreateIntent(String norm, EgyptianIntent pred) {
     if (RegExp(r'^(?:عندي\s+ايه|ايه\s+اللي\s+عندي|وريني|اعرض|هل\s+عندي|what\s+tasks|show\s+me|list\s+)').hasMatch(norm)) {
       return false;
     }
-    if (containsAny(norm, [
-      'ضيف', 'سجل', 'حطلي', 'حط ', 'اكتبلي', 'تاسك ', 'عاوز اذاكر', 'عايز اذاكر',
-      'add a task', 'add task', 'create a task', 'create a new task', 'new task', 'i need to',
-    ])) {
+    final hasExplicitCreateVerb = containsAny(norm, [
+      'ضيف', 'سجل', 'حطلي', 'حط ', 'اكتبلي', 'عاوز اذاكر', 'عايز اذاكر',
+      'add a task', 'add task', 'create a task', 'create a new task', 'new task',
+    ]);
+    if (isConversationalCoachingQuery(norm) && !hasExplicitCreateVerb) {
+      return false;
+    }
+    if (hasExplicitCreateVerb || containsAny(norm, ['تاسك ', 'i need to'])) {
       return true;
     }
     final hasCommitment = RegExp(
       r'(?:^|\s)(?:عندي|ورايا|لازم|محتاج|مفروض|علي|عليا|مضطر|معايا|هعمل|هروح|هسلم|هقدم|هحضر|هراجع)(?=\s|$)',
     ).hasMatch(norm);
-    if (hasCommitment && (detectHeadNoun(norm) != null || norm.split(' ').length >= 3)) {
+    final hasTemporalOrActionCue = parseDate(norm, DateTime(2026)) != null ||
+        parseTime(norm) != null ||
+        parseInMinutes(norm) != null ||
+        detectHeadNoun(norm) != null ||
+        containsAny(norm, const ['تاسك', 'مهمه', 'شغل', 'كشف', 'ميعاد', 'معاد']);
+    if (hasCommitment && hasTemporalOrActionCue) {
       return true;
     }
-    return pred == EgyptianIntent.createTask;
+    return pred == EgyptianIntent.createTask && !isConversationalCoachingQuery(norm);
   }
 
   bool _looksLikeShortAnswer(String norm) =>

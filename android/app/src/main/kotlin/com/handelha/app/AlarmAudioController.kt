@@ -5,6 +5,8 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -15,20 +17,27 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.PI
 import kotlin.math.exp
 import kotlin.math.sin
 
 object AlarmAudioController {
-    private const val AUTO_STOP_MS = 120_000L
+    private const val AUTO_STOP_MS = 90_000L
     private const val SAMPLE_RATE = 22050
     private const val CHIME_FILE_NAME = "handelha_native_alarm_v1.wav"
 
     private val lock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val audioExecutor = Executors.newSingleThreadExecutor()
+    private val generation = AtomicLong(0L)
 
     @Volatile
     private var mediaPlayer: MediaPlayer? = null
+
+    @Volatile
+    private var fallbackRingtone: Ringtone? = null
 
     @Volatile
     private var vibrator: Vibrator? = null
@@ -46,77 +55,134 @@ object AlarmAudioController {
         stopInternal()
     }
 
+    /**
+     * Starts alarm audio and vibration asynchronously off the main thread so
+     * [AlarmActivity] and [AlarmReceiver] never block or ANR on slower devices.
+     */
     fun start(context: Context) {
         val appContext = context.applicationContext
+        val myGen: Long
         synchronized(lock) {
-            if (isActive && mediaPlayer != null) {
+            if (isActive && (mediaPlayer != null || fallbackRingtone != null)) {
                 return
             }
-            stopLocked()
+            myGen = generation.incrementAndGet()
             isActive = true
+        }
 
-            val am = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            audioManager = am
-            requestAlarmFocus(am)
+        mainHandler.removeCallbacks(autoStopRunnable)
+        mainHandler.postDelayed(autoStopRunnable, AUTO_STOP_MS)
 
-            val wavFile = ensureAlarmWavFile(appContext)
+        audioExecutor.execute {
+            if (generation.get() != myGen) return@execute
             try {
-                val player = MediaPlayer().apply {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        setAudioAttributes(
-                            AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_ALARM)
-                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                                .build(),
-                        )
-                    } else {
-                        @Suppress("DEPRECATION")
-                        setAudioStreamType(AudioManager.STREAM_ALARM)
-                    }
-                    setDataSource(wavFile.absolutePath)
-                    isLooping = true
-                    setVolume(0.9f, 0.9f)
-                    prepare()
-                    start()
+                val am = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                synchronized(lock) {
+                    if (generation.get() != myGen) return@execute
+                    stopPlayersOnlyLocked()
+                    audioManager = am
+                    requestAlarmFocus(am)
                 }
-                mediaPlayer = player
-            } catch (_: Exception) {
-                mediaPlayer = null
+
+                val wavFile = try {
+                    ensureAlarmWavFile(appContext)
+                } catch (_: Throwable) {
+                    null
+                }
+                if (generation.get() != myGen) return@execute
+
+                var started = false
+                if (wavFile != null && wavFile.exists()) {
+                    try {
+                        val player = MediaPlayer().apply {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                setAudioAttributes(
+                                    AudioAttributes.Builder()
+                                        .setUsage(AudioAttributes.USAGE_ALARM)
+                                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                        .build(),
+                                )
+                            } else {
+                                @Suppress("DEPRECATION")
+                                setAudioStreamType(AudioManager.STREAM_ALARM)
+                            }
+                            setDataSource(wavFile.absolutePath)
+                            isLooping = true
+                            setVolume(0.9f, 0.9f)
+                            prepare()
+                        }
+                        synchronized(lock) {
+                            if (generation.get() != myGen) {
+                                try {
+                                    player.release()
+                                } catch (_: Throwable) {
+                                }
+                                return@execute
+                            }
+                            player.start()
+                            mediaPlayer = player
+                            started = true
+                        }
+                    } catch (_: Throwable) {
+                        started = false
+                    }
+                }
+
+                if (!started && generation.get() == myGen) {
+                    startSystemFallbackRingtone(appContext, myGen)
+                }
+
+                if (generation.get() == myGen) {
+                    startVibration(appContext)
+                }
+            } catch (_: Throwable) {
+                // Never propagate audio errors to crash the process.
             }
-
-            startVibration(appContext)
-
-            mainHandler.removeCallbacks(autoStopRunnable)
-            mainHandler.postDelayed(autoStopRunnable, AUTO_STOP_MS)
         }
     }
 
-    fun stop(context: Context? = null) {
+    fun stop(@Suppress("UNUSED_PARAMETER") context: Context? = null) {
         stopInternal()
     }
 
     private fun stopInternal() {
+        generation.incrementAndGet()
+        mainHandler.removeCallbacks(autoStopRunnable)
         synchronized(lock) {
-            mainHandler.removeCallbacks(autoStopRunnable)
-            stopLocked()
+            isActive = false
+            stopPlayersOnlyLocked()
         }
     }
 
-    private fun stopLocked() {
-        isActive = false
+    private fun stopPlayersOnlyLocked() {
         try {
             mediaPlayer?.apply {
-                if (isPlaying) stop()
-                reset()
-                release()
+                try {
+                    if (isPlaying) stop()
+                } catch (_: Throwable) {
+                }
+                try {
+                    reset()
+                } catch (_: Throwable) {
+                }
+                try {
+                    release()
+                } catch (_: Throwable) {
+                }
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
         mediaPlayer = null
 
         try {
+            fallbackRingtone?.stop()
+        } catch (_: Throwable) {
+        }
+        fallbackRingtone = null
+
+        try {
             vibrator?.cancel()
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
         vibrator = null
 
@@ -131,9 +197,33 @@ object AlarmAudioController {
                     am.abandonAudioFocus(null)
                 }
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
         audioManager = null
+    }
+
+    private fun startSystemFallbackRingtone(context: Context, myGen: Long) {
+        try {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                ?: return
+            val ringtone = RingtoneManager.getRingtone(context, uri) ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                ringtone.isLooping = true
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                ringtone.audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            }
+            synchronized(lock) {
+                if (generation.get() != myGen) return
+                ringtone.play()
+                fallbackRingtone = ringtone
+            }
+        } catch (_: Throwable) {
+        }
     }
 
     private fun requestAlarmFocus(am: AudioManager?) {
@@ -158,7 +248,7 @@ object AlarmAudioController {
                     AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
                 )
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
     }
 
@@ -171,15 +261,19 @@ object AlarmAudioController {
                 @Suppress("DEPRECATION")
                 context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             }
-            vibrator = vib
+            if (vib == null || !vib.hasVibrator()) return
+            synchronized(lock) {
+                if (!isActive) return
+                vibrator = vib
+            }
             val pattern = longArrayOf(0L, 260L, 380L, 260L, 980L)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vib?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+                vib.vibrate(VibrationEffect.createWaveform(pattern, 0))
             } else {
                 @Suppress("DEPRECATION")
-                vib?.vibrate(pattern, 0)
+                vib.vibrate(pattern, 0)
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
     }
 
@@ -196,7 +290,6 @@ object AlarmAudioController {
         val numSamples = (SAMPLE_RATE * totalSeconds).toInt()
         val pcm = ShortArray(numSamples)
 
-        // Warm soothing ascending major-ninth bell progression: C5, E5, G5, D6
         val notes = doubleArrayOf(523.25, 659.25, 783.99, 1174.66)
         val onsets = doubleArrayOf(0.05, 0.27, 0.49, 0.72)
 
@@ -216,7 +309,6 @@ object AlarmAudioController {
                     mix += tone * env * 0.42
                 }
             }
-            // Fade-out tail cleanly so loop seam is zero-click
             val tailFade = if (t > 2.35) ((2.6 - t) / 0.25).coerceIn(0.0, 1.0) else 1.0
             val sample = (mix * tailFade).coerceIn(-0.96, 0.96)
             pcm[i] = (sample * Short.MAX_VALUE).toInt().toShort()
@@ -228,18 +320,19 @@ object AlarmAudioController {
             putInt(36 + dataSize)
             put("WAVE".toByteArray(Charsets.US_ASCII))
             put("fmt ".toByteArray(Charsets.US_ASCII))
-            putInt(16) // Subchunk1Size for PCM
-            putShort(1) // PCM format
-            putShort(1) // Mono
+            putInt(16)
+            putShort(1)
+            putShort(1)
             putInt(SAMPLE_RATE)
-            putInt(SAMPLE_RATE * 2) // ByteRate
-            putShort(2) // BlockAlign
-            putShort(16) // BitsPerSample
+            putInt(SAMPLE_RATE * 2)
+            putShort(2)
+            putShort(16)
             put("data".toByteArray(Charsets.US_ASCII))
             putInt(dataSize)
         }.array()
 
-        FileOutputStream(outFile).use { fos ->
+        val tempFile = File(dir, "$CHIME_FILE_NAME.tmp")
+        FileOutputStream(tempFile).use { fos ->
             fos.write(header)
             val byteBuf = ByteBuffer.allocate(dataSize).order(ByteOrder.LITTLE_ENDIAN)
             for (s in pcm) {
@@ -247,6 +340,10 @@ object AlarmAudioController {
             }
             fos.write(byteBuf.array())
             fos.flush()
+        }
+        if (!tempFile.renameTo(outFile)) {
+            tempFile.copyTo(outFile, overwrite = true)
+            tempFile.delete()
         }
         return outFile
     }

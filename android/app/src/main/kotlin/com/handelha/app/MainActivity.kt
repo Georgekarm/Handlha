@@ -18,6 +18,8 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : FlutterActivity() {
     companion object {
@@ -27,8 +29,18 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_CODE_PICK_ACCOUNT = 9401
     }
 
+    private val audioLock = Any()
+    private val audioExecutor = Executors.newSingleThreadExecutor()
+    private val ambientGen = AtomicLong(0L)
+    private val alarmGen = AtomicLong(0L)
+
+    @Volatile
     private var ambientPlayer: MediaPlayer? = null
+
+    @Volatile
     private var alarmPlayer: MediaPlayer? = null
+
+    @Volatile
     private var ambientVolume: Float = 0.6f
     private var pendingAccountResult: MethodChannel.Result? = null
     private var alarmChannel: MethodChannel? = null
@@ -211,15 +223,15 @@ class MainActivity : FlutterActivity() {
                         val taskId = call.argument<String>("taskId")
                         val isEn = call.argument<Boolean>("isEn") ?: false
                         val isPreview = call.argument<Boolean>("isPreview") ?: true
-                        NativeAlarmScheduler.launchAlarmActivityNow(
-                            context = applicationContext,
+                        val launched = NativeAlarmScheduler.launchAlarmActivityNow(
+                            context = this@MainActivity,
                             id = id,
                             title = title,
                             taskId = taskId,
                             isEn = isEn,
                             isPreview = isPreview,
                         )
-                        result.success(true)
+                        result.success(launched)
                     }
 
                     "stopAlarmAudio" -> {
@@ -299,33 +311,60 @@ class MainActivity : FlutterActivity() {
         volume: Float,
         isAlarm: Boolean,
     ): Boolean {
-        return try {
-            val bytes = Base64.decode(base64Wav, Base64.DEFAULT)
-            val safeKey = key.replace(Regex("[^a-zA-Z0-9_-]"), "_")
-            if (!cacheDir.exists()) {
-                cacheDir.mkdirs()
-            }
-            val file = File(cacheDir, "handelha_audio_$safeKey.wav")
-            if (!file.exists() || file.length().toInt() != bytes.size) {
-                file.writeBytes(bytes)
-            }
-
-            if (isAlarm) {
-                stopAlarmPlayer()
-                alarmPlayer = createWavPlayer(file, loop, volume, isAlarm = true)
-                triggerAlarmVibration(loop)
-            } else {
-                stopAmbientPlayer()
-                ambientVolume = volume
-                ambientPlayer = createWavPlayer(file, loop, ambientVolume, isAlarm = false)
-            }
-            true
-        } catch (_: Exception) {
-            false
+        val targetGen = if (isAlarm) alarmGen.incrementAndGet() else ambientGen.incrementAndGet()
+        if (!isAlarm) {
+            ambientVolume = volume
         }
+        val appCacheDir = applicationContext.cacheDir
+        audioExecutor.execute {
+            val currentGen = if (isAlarm) alarmGen.get() else ambientGen.get()
+            if (currentGen != targetGen) return@execute
+            try {
+                val bytes = Base64.decode(base64Wav, Base64.DEFAULT)
+                val safeKey = key.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                if (!appCacheDir.exists()) {
+                    appCacheDir.mkdirs()
+                }
+                val file = File(appCacheDir, "handelha_audio_$safeKey.wav")
+                if (!file.exists() || file.length().toInt() != bytes.size) {
+                    val tmp = File(appCacheDir, "handelha_audio_$safeKey.tmp")
+                    tmp.writeBytes(bytes)
+                    if (!tmp.renameTo(file)) {
+                        tmp.copyTo(file, overwrite = true)
+                        tmp.delete()
+                    }
+                }
+                val stillCurrent = (if (isAlarm) alarmGen.get() else ambientGen.get()) == targetGen
+                if (!stillCurrent) return@execute
+
+                val player = createPreparedWavPlayer(file, loop, if (isAlarm) volume else ambientVolume, isAlarm)
+                synchronized(audioLock) {
+                    val activeGen = if (isAlarm) alarmGen.get() else ambientGen.get()
+                    if (activeGen != targetGen) {
+                        try {
+                            player.release()
+                        } catch (_: Throwable) {
+                        }
+                        return@execute
+                    }
+                    if (isAlarm) {
+                        stopAlarmPlayerLocked()
+                        alarmPlayer = player
+                        player.start()
+                        triggerAlarmVibration(loop)
+                    } else {
+                        stopAmbientPlayerLocked()
+                        ambientPlayer = player
+                        player.start()
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+        }
+        return true
     }
 
-    private fun createWavPlayer(
+    private fun createPreparedWavPlayer(
         file: File,
         loop: Boolean,
         volume: Float,
@@ -370,23 +409,31 @@ class MainActivity : FlutterActivity() {
             true
         }
         player.prepare()
-        player.start()
         return player
     }
 
     private fun releaseHandledPlayer(mp: MediaPlayer, isAlarm: Boolean) {
-        try {
-            mp.release()
-        } catch (_: Exception) {
-        }
-        if (isAlarm && alarmPlayer === mp) {
-            alarmPlayer = null
-        } else if (!isAlarm && ambientPlayer === mp) {
-            ambientPlayer = null
+        synchronized(audioLock) {
+            try {
+                mp.release()
+            } catch (_: Throwable) {
+            }
+            if (isAlarm && alarmPlayer === mp) {
+                alarmPlayer = null
+            } else if (!isAlarm && ambientPlayer === mp) {
+                ambientPlayer = null
+            }
         }
     }
 
     private fun stopAmbientPlayer() {
+        ambientGen.incrementAndGet()
+        synchronized(audioLock) {
+            stopAmbientPlayerLocked()
+        }
+    }
+
+    private fun stopAmbientPlayerLocked() {
         try {
             ambientPlayer?.let { mp ->
                 if (mp.isPlaying) {
@@ -394,13 +441,20 @@ class MainActivity : FlutterActivity() {
                 }
                 mp.release()
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         } finally {
             ambientPlayer = null
         }
     }
 
     private fun stopAlarmPlayer() {
+        alarmGen.incrementAndGet()
+        synchronized(audioLock) {
+            stopAlarmPlayerLocked()
+        }
+    }
+
+    private fun stopAlarmPlayerLocked() {
         try {
             alarmPlayer?.let { mp ->
                 if (mp.isPlaying) {
@@ -408,7 +462,7 @@ class MainActivity : FlutterActivity() {
                 }
                 mp.release()
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         } finally {
             alarmPlayer = null
         }
@@ -455,6 +509,10 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         stopAmbientPlayer()
         stopAlarmPlayer()
+        try {
+            audioExecutor.shutdownNow()
+        } catch (_: Throwable) {
+        }
         super.onDestroy()
     }
 }

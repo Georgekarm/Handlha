@@ -31,6 +31,8 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  int _lastMessageCount = 0;
+  bool _lastIsSending = false;
 
   @override
   void dispose() {
@@ -127,192 +129,213 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .firstOrNull;
     final voiceStatus =
         _voiceBannerLabel(session.assistantState, appLang.isEnglish);
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+
+    if (session.messages.length != _lastMessageCount ||
+        session.isSending != _lastIsSending) {
+      _lastMessageCount = session.messages.length;
+      _lastIsSending = session.isSending;
+      _scrollToBottom();
+    }
 
     return Material(
       type: MaterialType.transparency,
       child: SafeArea(
         bottom: false,
         child: Column(
-        children: [
-          // Header + Token Pill & Executive Secretary Desk Bar
-          Container(
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: c.border.withValues(alpha: 0.45),
-                  width: 1,
+          children: [
+            // Header + Clean Single Quota & Energy Profile Bar
+            Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: c.border.withValues(alpha: 0.45),
+                    width: 1,
+                  ),
                 ),
               ),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: c.primarySoft,
-                        borderRadius: BorderRadius.circular(14),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: c.primarySoft,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          Icons.auto_awesome_outlined,
+                          size: 21,
+                          color: c.primary,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.auto_awesome_outlined,
-                        size: 21,
-                        color: c.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            appLang.tr('مساعد هندلها', 'Handelha Assistant'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: c.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            appLang.tr('معاك، مش مستعجلك', 'With you, no rush'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: c.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    _TokenHeaderBadge(
-                      balance: tokenState.balance,
-                      isEnglish: appLang.isEnglish,
-                      onTap: () => _showTokenRefillSheet(context),
-                    ),
-                    const SizedBox(width: 6),
-                    HandelhaHeaderIconButton(
-                      icon: Icons.format_list_bulleted_rounded,
-                      tooltip: appLang.tr('سجل المحادثات', 'Chat History'),
-                      iconColor: c.primary,
-                      onTap: () => context.push('/chat/history'),
-                    ),
-                    const SizedBox(width: 6),
-                    HandelhaHeaderIconButton(
-                      icon: Icons.settings_outlined,
-                      tooltip: appLang.tr('الإعدادات', 'Settings'),
-                      onTap: () => context.push('/settings'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // Token Quota & Energy Profile Bar
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _showTokenRefillSheet(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 7,
-                          ),
-                          decoration: BoxDecoration(
-                            color: c.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: c.border),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.bolt_rounded,
-                                size: 15,
-                                color: tokenState.balance <= 10
-                                    ? c.danger
-                                    : c.warning,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              appLang.tr('مساعد هندلها', 'Handelha Assistant'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: c.textPrimary,
                               ),
-                              const SizedBox(width: 5),
-                              Expanded(
-                                child: Text(
-                                  appLang.isEnglish
-                                      ? 'Tokens: ${tokenState.balance}/${tokenState.dailyAllowance} (+15 Ad)'
-                                      : 'التوكنز: ${ArabicFormatters.toArabicDigits(tokenState.balance)}/${ArabicFormatters.toArabicDigits(tokenState.dailyAllowance)} (+١٥ بإعلان)',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: c.textSecondary,
+                            ),
+                            Text(
+                              appLang.tr('معاك، مش مستعجلك', 'With you, no rush'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      HandelhaHeaderIconButton(
+                        icon: Icons.format_list_bulleted_rounded,
+                        tooltip: appLang.tr('سجل المحادثات', 'Chat History'),
+                        iconColor: c.primary,
+                        onTap: () => context.push('/chat/history'),
+                      ),
+                      const SizedBox(width: 6),
+                      HandelhaHeaderIconButton(
+                        icon: Icons.settings_outlined,
+                        tooltip: appLang.tr('الإعدادات', 'Settings'),
+                        onTap: () => context.push('/settings'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Clean Single Quota & Energy Profile Row (no duplicate badges, no fake ads)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _showTokenRefillSheet(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: tokenState.isUnlimitedPro
+                                  ? c.primarySoft
+                                  : c.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: tokenState.isUnlimitedPro
+                                    ? c.primary.withValues(alpha: 0.4)
+                                    : c.border,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  tokenState.isUnlimitedPro
+                                      ? Icons.workspace_premium_rounded
+                                      : Icons.bolt_rounded,
+                                  size: 15,
+                                  color: tokenState.isUnlimitedPro
+                                      ? c.primary
+                                      : (tokenState.balance <= 10
+                                          ? c.danger
+                                          : c.warning),
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    tokenState.isUnlimitedPro
+                                        ? (appLang.isEnglish
+                                            ? 'Pro ∞ • Unlimited'
+                                            : 'Pro ∞ • توكنز غير محدودة')
+                                        : (appLang.isEnglish
+                                            ? 'Daily Tokens: ${tokenState.balance}/${tokenState.dailyAllowance}'
+                                            : 'التوكنز اليومية: ${ArabicFormatters.toArabicDigits(tokenState.balance)}/${ArabicFormatters.toArabicDigits(tokenState.dailyAllowance)}'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: tokenState.isUnlimitedPro
+                                          ? c.primary
+                                          : c.textSecondary,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => EnergyPreferencesWizardSheet.show(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 7,
-                          ),
-                          decoration: BoxDecoration(
-                            color: c.primarySoft,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: c.primary.withValues(alpha: 0.35),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => EnergyPreferencesWizardSheet.show(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.tune_rounded,
-                                size: 14,
-                                color: c.primary,
+                            decoration: BoxDecoration(
+                              color: c.primarySoft,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: c.primary.withValues(alpha: 0.35),
                               ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  appLang.isEnglish
-                                      ? 'Energy: ${energyPrefs.peakShortEn}'
-                                      : 'طاقتك: ${energyPrefs.peakShortAr}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: c.primary,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.tune_rounded,
+                                  size: 14,
+                                  color: c.primary,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    appLang.isEnglish
+                                        ? 'Energy: ${energyPrefs.peakShortEn}'
+                                        : 'طاقتك: ${energyPrefs.peakShortAr}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: c.primary,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          Expanded(
-            child: ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-              children: [
+            Expanded(
+              child: ListView(
+                controller: _scrollController,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                children: [
                 Center(
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 14),
@@ -437,189 +460,230 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
 
-          // Voice state banner if active
-          if (voiceStatus != null)
+            // Dedicated Bottom Composer Dock — cleanly separated from the message list
+            // so chat bubbles can never overlap or get clipped behind quick pills.
             Container(
-              margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: c.primarySoft,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.graphic_eq_rounded, size: 20, color: c.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      session.partialTranscript.isNotEmpty
-                          ? session.partialTranscript
-                          : voiceStatus,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: c.primary,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: session.stopVoiceOrSpeaking,
-                    child: Text(
-                      appLang.tr('إيقاف', 'Stop'),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: c.danger,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // Quick suggestion pills
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _QuickSuggestionPill(
-                    label: appLang.tr('رتّب مهامي', 'Plan my tasks'),
-                    onTap: () => _send(
-                      appLang.tr(
-                        'رتّب معايا أولويات مهامي النهارده',
-                        'Plan and prioritize my tasks for today',
-                      ),
-                    ),
+                color: c.background.withValues(alpha: 0.94),
+                border: Border(
+                  top: BorderSide(
+                    color: c.border.withValues(alpha: 0.55),
+                    width: 1,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _QuickSuggestionPill(
-                    label: appLang.tr('اختار أول خطوة', 'Pick first step'),
-                    onTap: () => _send(
-                      appLang.tr(
-                        'اختار لي أول خطوة أبدأ بيها دلوقتي',
-                        'Pick the best first step for me to start now',
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Composer pill
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: c.surface,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: c.border),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
-              child: Row(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                10,
+                16,
+                keyboardOpen ? 8 : (86 + safeBottom),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    tooltip: appLang.tr('إضافة مهمة', 'Add Task'),
-                    onPressed: () => context.push('/tasks/add'),
-                    icon: Icon(
-                      Icons.add_rounded,
-                      color: c.textSecondary,
-                      size: 22,
+                  if (voiceStatus != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color: c.primarySoft,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.graphic_eq_rounded, size: 19, color: c.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              session.partialTranscript.isNotEmpty
+                                  ? session.partialTranscript
+                                  : voiceStatus,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: c.primary,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: session.stopVoiceOrSpeaking,
+                            style: TextButton.styleFrom(
+                              minimumSize: Size.zero,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: Text(
+                              appLang.tr('إيقاف', 'Stop'),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: c.danger,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  if (!keyboardOpen) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _QuickSuggestionPill(
+                            label: appLang.tr('رتّب مهامي', 'Plan my tasks'),
+                            onTap: () => _send(
+                              appLang.tr(
+                                'رتّب معايا أولويات مهامي النهارده',
+                                'Plan and prioritize my tasks for today',
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _QuickSuggestionPill(
+                            label: appLang.tr('اختار أول خطوة', 'Pick first step'),
+                            onTap: () => _send(
+                              appLang.tr(
+                                'اختار لي أول خطوة أبدأ بيها دلوقتي',
+                                'Pick the best first step for me to start now',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+
+                  // Composer pill
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: c.surface,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: c.border),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: appLang.tr('إضافة مهمة', 'Add Task'),
+                          onPressed: () => context.push('/tasks/add'),
+                          icon: Icon(
+                            Icons.add_rounded,
+                            color: c.textSecondary,
+                            size: 22,
+                          ),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            enabled: !session.isSending,
+                            minLines: 1,
+                            maxLines: 3,
+                            onSubmitted: (_) => _send(),
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              color: c.textPrimary,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: appLang.tr(
+                                'اكتب اللي في بالك...',
+                                "Type what's on your mind...",
+                              ),
+                              hintStyle: TextStyle(
+                                fontSize: 14,
+                                color: c.textSecondary,
+                              ),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              filled: false,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: appLang.tr(
+                            'أمر صوتي (٥ توكن)',
+                            'Voice Input (5 Tokens)',
+                          ),
+                          onPressed: _handleVoiceTap,
+                          icon: Icon(
+                            session.assistantState == AssistantState.listening
+                                ? Icons.stop_circle_rounded
+                                : Icons.mic_none_rounded,
+                            color: session.assistantState ==
+                                    AssistantState.listening
+                                ? c.danger
+                                : c.textSecondary,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Material(
+                          color: c.primary,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: session.isSending ? null : () => _send(),
+                            child: SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: Icon(
+                                Icons.send_rounded,
+                                size: 19,
+                                color: c.textOnPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      enabled: !session.isSending,
-                      minLines: 1,
-                      maxLines: 3,
-                      onSubmitted: (_) => _send(),
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        color: c.textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: appLang.tr('اكتب اللي في بالك...', "Type what's on your mind..."),
-                        hintStyle: TextStyle(
-                          fontSize: 14,
+
+                  if (!keyboardOpen)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        appLang.tr(
+                          'مش لازم ترتّب كلامك، أنا معاك.',
+                          "You don't have to organize your thoughts — I'm here.",
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
                           color: c.textSecondary,
                         ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        filled: false,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 8,
-                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: appLang.tr(
-                      'أمر صوتي (٥ توكن)',
-                      'Voice Input (5 Tokens)',
-                    ),
-                    onPressed: _handleVoiceTap,
-                    icon: Icon(
-                      session.assistantState == AssistantState.listening
-                          ? Icons.stop_circle_rounded
-                          : Icons.mic_none_rounded,
-                      color: session.assistantState == AssistantState.listening
-                          ? c.danger
-                          : c.textSecondary,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Material(
-                    color: c.primary,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: session.isSending ? null : () => _send(),
-                      child: SizedBox(
-                        width: 42,
-                        height: 42,
-                        child: Icon(
-                          Icons.send_rounded,
-                          size: 19,
-                          color: c.textOnPrimary,
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.only(bottom: 92, top: 2),
-            child: Text(
-              appLang.tr(
-                'مش لازم ترتّب كلامك، أنا معاك.',
-                "You don't have to organize your thoughts — I'm here.",
-              ),
-              style: TextStyle(
-                fontSize: 11.5,
-                color: c.textSecondary,
-              ),
-            ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -770,80 +834,6 @@ class _MessageItem extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TokenHeaderBadge extends StatelessWidget {
-  const _TokenHeaderBadge({
-    required this.balance,
-    required this.isEnglish,
-    required this.onTap,
-  });
-
-  final int balance;
-  final bool isEnglish;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.appColors;
-    final isLow = balance <= 10;
-
-    return Material(
-      color: isLow ? c.danger.withValues(alpha: 0.12) : c.primarySoft,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Container(
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isLow
-                  ? c.danger.withValues(alpha: 0.4)
-                  : c.primary.withValues(alpha: 0.35),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.bolt_rounded,
-                size: 16,
-                color: isLow ? c.danger : c.warning,
-              ),
-              const SizedBox(width: 3),
-              Text(
-                isEnglish
-                    ? '$balance'
-                    : ArabicFormatters.toArabicDigits(balance),
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: isLow ? c.danger : c.textPrimary,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: c.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.add_rounded,
-                  size: 12,
-                  color: c.textOnPrimary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1272,7 +1262,8 @@ class _QuickSuggestionPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Container(
-          height: 40,
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
@@ -1280,8 +1271,10 @@ class _QuickSuggestionPill extends StatelessWidget {
           ),
           child: Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12.5,
               fontWeight: FontWeight.w700,
               color: c.primary,
             ),

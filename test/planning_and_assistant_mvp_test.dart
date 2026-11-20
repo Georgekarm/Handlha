@@ -605,6 +605,53 @@ void main() {
       );
       expect(arGreet.text, contains('أهلًا بيك'));
     });
+
+    test('understands relative time with missing title ("عندي تاسك بعد دقيقه" -> "عندي تاسك بعد 5 دقايق" -> "مراجعة الكيمياء") and never creates fake tasks for coaching queries', () async {
+      // 1. "عندي تاسك بعد دقيقه" must recognize 1 minute & ask for the title (NOT title it "بعد دقيقه")
+      final r1 = await controller.sendTextMessage(
+        'عندي تاسك بعد دقيقه',
+        conversationId: 'c-rel-1',
+      );
+      expect(r1.needsUserInput, isTrue);
+      expect(r1.text, isNot(contains('«بعد دقيقه»')));
+      expect(r1.text, contains('بعد دقيقة'));
+      expect(await allTasks(), isEmpty);
+
+      // 2. Immediately sending "عندي تاسك بعد 5 دقايق" cleanly supersedes previous pending frame
+      final r2 = await controller.sendTextMessage(
+        'عندي تاسك بعد 5 دقايق',
+        conversationId: 'c-rel-1',
+      );
+      expect(r2.needsUserInput, isTrue);
+      expect(r2.text, isNot(contains('«بعد 5 دقايق»')));
+      expect(r2.text, contains('5 دقايق'));
+      expect(await allTasks(), isEmpty);
+
+      // 3. Supplying the missing title creates the real task/reminder with the locked 5-minute time
+      final r3 = await controller.sendTextMessage(
+        'مراجعة الكيمياء',
+        conversationId: 'c-rel-1',
+      );
+      final saved = await allTasks();
+      expect(saved, hasLength(1));
+      expect(saved.first.title, 'مراجعة الكيمياء');
+      expect(r3.text, contains('مراجعة الكيمياء'));
+
+      // 4. Conversational study/focus advice must NOT create a task
+      final advice = await controller.sendTextMessage(
+        'إزاي أذاكر بتركيز من غير ما أزهق؟',
+        conversationId: 'c-advice',
+      );
+      expect(advice.text, isNotEmpty);
+      expect(await allTasks(), hasLength(1));
+
+      final vent = await controller.sendTextMessage(
+        'أنا عندي مشكلة في التركيز الأيام دي',
+        conversationId: 'c-vent',
+      );
+      expect(vent.text, isNotEmpty);
+      expect(await allTasks(), hasLength(1));
+    });
   });
 
   group('AppLanguageNotifier persistence & properties', () {

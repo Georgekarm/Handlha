@@ -193,7 +193,7 @@ class LocalEgyptianLlmService implements LLMService {
     final u = analysis.understanding;
 
     // Strict write-safety gate (negations, hypotheticals, quotes, future statements)
-    if (u.safetyFlags.blocksWrite) {
+    if (u.safetyFlags.blocksWrite && !_nlu.isConversationalCoachingQuery(norm)) {
       return _clarificationReply(
         cid: cid,
         request: request,
@@ -205,6 +205,16 @@ class LocalEgyptianLlmService implements LLMService {
         pendingAction: u.pendingAction ?? 'other',
         knownFields: u.slots,
       );
+    }
+
+    // Conversational study/focus/procrastination coaching (never blindly turned into a task)
+    if (_nlu.isConversationalCoachingQuery(norm)) {
+      if (_isOverwhelmOrCoaching(norm)) {
+        return LlmReply(
+          toolCalls: [_call('get_tasks', {'status': 'pending', 'limit': 15})],
+        );
+      }
+      return LlmReply(text: _buildSmartCoachingAdviceReply(norm));
     }
 
     // Greeting
@@ -307,15 +317,28 @@ class LocalEgyptianLlmService implements LLMService {
     if (u.intent == EgyptianIntent.createTask) {
       if (u.needsClarification) {
         final spec = analysis.taskSpecs.isNotEmpty ? analysis.taskSpecs.first : null;
+        final isMissingTitle = spec?.isMissingTitle == true;
+        final explicitAlarm = _nlu.containsAny(norm, ['منبه', 'منبهه', 'يرن', 'alarm']);
+        final explicitNotif = _nlu.containsAny(norm, ['رساله', 'اشعار', 'نوتفيكيشن', 'notification']);
+        if (explicitAlarm || explicitNotif) {
+          onAlertModeSelected?.call(
+            explicitNotif && !explicitAlarm ? 'notification' : 'alarm',
+          );
+        }
         return _clarificationReply(
           cid: cid,
           request: request,
           question: u.clarificationQuestion!,
           pendingAction: 'create_task',
           knownFields: {
-            if (spec != null) 'title': spec.title,
+            if (spec != null && spec.title.isNotEmpty) 'title': spec.title,
+            if (spec?.date != null) 'date': _ymd(spec!.date!),
+            if (spec?.time != null) 'time': spec!.time,
+            if (spec?.inMinutes != null) 'in_minutes': spec!.inMinutes,
             if (spec?.category != null) 'category': spec!.category,
             if (spec != null) 'priority': spec.priority,
+            if (isMissingTitle) 'missing_slot': 'title',
+            if (spec?.inMinutes != null || explicitAlarm) 'prefer_reminder': true,
           },
         );
       }
@@ -411,9 +434,10 @@ class LocalEgyptianLlmService implements LLMService {
       );
     }
 
-    // If the user switches abruptly to an explicit other verb command, discard stale clarification.
+    // If the user switches abruptly to an explicit other verb command or starts
+    // a brand-new task/reminder utterance, discard stale clarification cleanly.
     if (RegExp(
-      r'^(?:وريني|ايه\s+اللي\s+ورايا|رتبلي|لخص|امسح\s+\S+\s+\S+|احكيلي|show\s+me|what\s+tasks|plan\s+my\s+day|delete\s+\S+)',
+      r'^(?:وريني|ايه\s+اللي\s+ورايا|رتبلي|لخص|امسح\s+\S+\s+\S+|احكيلي|عندي\s+|ورايا\s+|فكرني\s+|ذكرني\s+|نبهني\s+|اضبط\s+|show\s+me|what\s+tasks|plan\s+my\s+day|delete\s+\S+|remind\s+me|add\s+a?\s*task)',
       caseSensitive: false,
     ).hasMatch(norm)) {
       _pendingByCid.remove(cid);
@@ -446,15 +470,17 @@ class LocalEgyptianLlmService implements LLMService {
       );
     }
 
-    // Completing `create_task` clarification (e.g., "ضيف العربي" -> "مذاكرة عربي بكرة الساعة 6" or "من غير ميعاد").
+    // Completing `create_task` clarification (missing time OR missing title).
     if (pending.action == 'create_task') {
       final date = _nlu.parseDate(norm, now);
       final time = _nlu.parseTime(norm);
+      final replyInMinutes = _nlu.parseInMinutes(norm);
       final explicitNoDate = RegExp(
         r'(?:من\s+غير\s+ميعاد|بدون\s+ميعاد|مفتوح[هة]?|اي\s+وقت|no\s+(?:specific\s+)?date|any\s*time|undated)',
         caseSensitive: false,
       ).hasMatch(norm);
 
+      final missingSlot = pending.knownFields['missing_slot']?.toString();
       final prevTitle = (pending.knownFields['title'] ?? '').toString();
       final rawWithoutNoDate = explicitNoDate
           ? raw
@@ -471,7 +497,6 @@ class LocalEgyptianLlmService implements LLMService {
           ? ''
           : _nlu.extractCleanClauseTitle(rawWithoutNoDate);
 
-      // If reply only supplied a date/time/acknowledgement or alarm/notification mode choice -> keep `prevTitle`.
       final wantsNotif = _nlu.containsAny(norm, [
         'رساله', 'اشعار', 'نوتفيكيشن', 'notification',
       ]);
@@ -484,36 +509,82 @@ class LocalEgyptianLlmService implements LLMService {
           wantsNotif && !wantsAlarm ? 'notification' : 'alarm',
         );
       }
+      // Strip pure alert-mode words from resolvedTitle when user writes e.g. "مراجعة الكيمياء منبه".
+      final cleanedOfMode = resolvedTitle
+          .replaceAll(
+            RegExp(
+              r'(?:^|\s)(?:سميها|سمّيها|اسمها|خليها|خلّيها|ب?منبه(?:\s+يرن)?|ب?رسالة\s+إشعار|ب?اشعار|ب?إشعار|هادي[هة]?|alarm|notification)(?=\s|$)',
+              caseSensitive: false,
+            ),
+            ' ',
+          )
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (cleanedOfMode.isNotEmpty) {
+        resolvedTitle = cleanedOfMode;
+      }
+
       if (resolvedTitle.isEmpty ||
-          isAlarmOrNotifChoice ||
+          (isAlarmOrNotifChoice && cleanedOfMode.isEmpty) ||
           RegExp(
             r'^(?:بكره|بكرة|النهارده|اليوم|الخميس|الجمعه|محدد|ميعاد|معاد|من\s+غير|بدون|تمام|ايوه|اه|ok|yes|yeah|sure|tomorrow|today)$',
             caseSensitive: false,
           ).hasMatch(_nlu.normalize(resolvedTitle))) {
         resolvedTitle = prevTitle;
-      } else if (_nlu.normalize(resolvedTitle) != _nlu.normalize(prevTitle)) {
+      } else if (prevTitle.isNotEmpty &&
+          _nlu.normalize(resolvedTitle) != _nlu.normalize(prevTitle)) {
         // Combine activity verb like "مذاكرة" + "العربي" if omitted subject.
         if (RegExp(r'^(?:مذاكر[هة]|مراجع[هة]|واجب|امتحان)$')
-                .hasMatch(_nlu.normalize(resolvedTitle)) &&
-            prevTitle.isNotEmpty) {
+            .hasMatch(_nlu.normalize(resolvedTitle))) {
           resolvedTitle = '$resolvedTitle $prevTitle';
         }
       }
 
       if (resolvedTitle.isEmpty) resolvedTitle = prevTitle;
 
-      // Also absorb self-correction date/time if present.
-      final pendingInMinutes = pending.knownFields['in_minutes'] as int?;
+      // If we are still waiting for the title and user only picked alarm/notif mode -> ask for title once.
+      if (missingSlot == 'title' && resolvedTitle.isEmpty) {
+        _pendingByCid[cid] = _PendingClarification(
+          action: 'create_task',
+          knownFields: {
+            ...pending.knownFields,
+            if (isAlarmOrNotifChoice) 'prefer_reminder': true,
+          },
+        );
+        return _clarificationReply(
+          cid: cid,
+          request: request,
+          question: _tr(
+            'تمام، ظبّطت نوع التنبيه! اكتبلي بس اسم المهمة اللي تحب نضيفها في الميعاد ده.',
+            'Got the alert style set! Just tell me what you want to name this task.',
+          ),
+          pendingAction: 'create_task',
+          knownFields: {
+            ...pending.knownFields,
+            if (isAlarmOrNotifChoice) 'prefer_reminder': true,
+          },
+        );
+      }
+
+      // Absorb explicit or relative date/time from reply or pending state.
+      final pendingInMinutes =
+          replyInMinutes ?? (pending.knownFields['in_minutes'] as int?);
       var finalDate = date ??
           (pending.knownFields['date'] != null
               ? DateTime.tryParse(pending.knownFields['date'].toString())
               : null);
-      final finalTime = time ?? pending.knownFields['time']?.toString();
-      if (finalTime != null && finalDate == null) {
+      var finalTime = time ?? pending.knownFields['time']?.toString();
+      if (replyInMinutes != null && date == null && time == null) {
+        final shifted = now.add(Duration(minutes: replyInMinutes));
+        finalDate = DateTime(shifted.year, shifted.month, shifted.day);
+        finalTime =
+            '${shifted.hour.toString().padLeft(2, '0')}:${shifted.minute.toString().padLeft(2, '0')}';
+      } else if (finalTime != null && finalDate == null) {
         finalDate = DateTime(now.year, now.month, now.day);
       }
 
-      final preferReminder = pending.knownFields['prefer_reminder'] == true;
+      final preferReminder =
+          pending.knownFields['prefer_reminder'] == true || isAlarmOrNotifChoice;
       if (preferReminder &&
           _hasTool(request, 'create_reminder') &&
           date == null &&
@@ -533,6 +604,7 @@ class LocalEgyptianLlmService implements LLMService {
       // If still NO date AND NO explicitNoDate -> ask once for timing.
       if (finalDate == null &&
           finalTime == null &&
+          pendingInMinutes == null &&
           !explicitNoDate &&
           resolvedTitle.isNotEmpty) {
         _pendingByCid[cid] = _PendingClarification(
@@ -731,7 +803,8 @@ class LocalEgyptianLlmService implements LLMService {
     DateTime now,
   ) {
     final spec = analysis.taskSpecs.isNotEmpty ? analysis.taskSpecs.first : null;
-    final cleanTitle = spec?.title ?? _tr('تذكير مهمة', 'Reminder task');
+    final hasMissingTitle = spec == null || spec.isMissingTitle || spec.title.trim().isEmpty;
+    final cleanTitle = hasMissingTitle ? '' : spec.title;
     final hasReminderTool = _hasTool(request, 'create_reminder');
     final norm = analysis.understanding.normalizedText;
     final explicitAlarm = _nlu.containsAny(norm, [
@@ -743,23 +816,55 @@ class LocalEgyptianLlmService implements LLMService {
 
     DateTime? targetDate = spec?.date;
     String? targetTime = spec?.time;
-    if (analysis.inMinutes != null && targetDate == null && targetTime == null) {
-      final shifted = now.add(Duration(minutes: analysis.inMinutes!));
+    final relMinutes = analysis.inMinutes ?? spec?.inMinutes;
+    if (relMinutes != null && targetDate == null && targetTime == null) {
+      final shifted = now.add(Duration(minutes: relMinutes));
       targetDate = DateTime(shifted.year, shifted.month, shifted.day);
       targetTime =
           '${shifted.hour.toString().padLeft(2, '0')}:${shifted.minute.toString().padLeft(2, '0')}';
+    }
+
+    if (hasMissingTitle) {
+      if (explicitAlarm || explicitNotif) {
+        onAlertModeSelected?.call(
+          explicitNotif && !explicitAlarm ? 'notification' : 'alarm',
+        );
+      }
+      final whenPreview = targetDate != null
+          ? _formatWhen(_ymd(targetDate), targetTime, now)
+          : '';
+      final whenClause = whenPreview.isEmpty
+          ? ''
+          : _tr(' ($whenPreview)', ' ($whenPreview)');
+      return _clarificationReply(
+        cid: cid,
+        request: request,
+        question: _tr(
+          'تمام، جاهز أظبّطلك ${explicitAlarm ? 'المنبه' : 'التذكير'}$whenClause — تحب أفكّرك بإيه بالظبط؟',
+          'Got it — I am ready to set your ${explicitAlarm ? 'alarm' : 'reminder'}$whenClause. What should I remind you about?',
+        ),
+        pendingAction: 'create_task',
+        knownFields: {
+          if (targetDate != null) 'date': _ymd(targetDate),
+          if (targetTime != null) 'time': targetTime,
+          if (relMinutes != null) 'in_minutes': relMinutes,
+          'priority': spec?.priority ?? 'high',
+          'prefer_reminder': true,
+          'missing_slot': 'title',
+        },
+      );
     }
 
     if (explicitAlarm || explicitNotif) {
       final mode = explicitNotif && !explicitAlarm ? 'notification' : 'alarm';
       onAlertModeSelected?.call(mode);
       if (hasReminderTool) {
-        if (analysis.inMinutes != null) {
+        if (relMinutes != null) {
           return LlmReply(
             toolCalls: [
               _call('create_reminder', {
                 'title': cleanTitle,
-                'in_minutes': analysis.inMinutes,
+                'in_minutes': relMinutes,
               }),
             ],
           );
@@ -782,9 +887,9 @@ class LocalEgyptianLlmService implements LLMService {
       'title': cleanTitle,
       if (targetDate != null) 'date': _ymd(targetDate),
       'time': ?targetTime,
-      if (analysis.inMinutes != null) 'in_minutes': analysis.inMinutes,
-      'priority': spec?.priority ?? 'high',
-      if (spec?.category != null) 'category': spec!.category,
+      if (relMinutes != null) 'in_minutes': relMinutes,
+      'priority': spec.priority,
+      if (spec.category != null) 'category': spec.category,
       'prefer_reminder': true,
     };
     final whenPreview = targetDate != null
@@ -1705,8 +1810,66 @@ class LocalEgyptianLlmService implements LLMService {
 
   bool _isOverwhelmOrCoaching(String norm) => _nlu.containsAny(norm, [
         'مضغوط', 'متلخبط', 'زهقت', 'زهقان', 'مكسل', 'مش قادر اركز', 'تعبان', 'تايه',
-        'overwhelmed', 'stressed', 'procrastinating', "can't focus", 'stuck',
+        'مشتت', 'overwhelmed', 'stressed', 'procrastinating', "can't focus", 'stuck',
       ]);
+
+  String _buildSmartCoachingAdviceReply(String norm) {
+    final energy = UserEnergyPreferencesStore.current;
+    final mins = energy.preferredSessionMinutes;
+    final isStudent = StudentModeStore.isActive;
+
+    if (_nlu.containsAny(norm, ['بومودورو', 'جلسه تركيز', 'جلسة تركيز', 'ابدا تركيز', 'pomodoro'])) {
+      return _tr(
+        'ممتاز! جلسة تركيز قصيرة لمدة ${ArabicFormatters.toArabicDigits(mins)} دقيقة وبعدها استراحة ٥ دقايق هي أسرع طريقة تدخل بيها في المود.\n'
+        '• اختار مهمة واحدة بس (أصغر خطوة فيها).\n'
+        '• حط الموبايل على الصامت وشغّل صوت المطر أو الضوضاء الدافئة من شاشة التركيز.\n'
+        'تحب أختارلك أنسب أول خطوة من مهامك تبدأ بيها دلوقتي؟',
+        'Awesome! A focused $mins-minute sprint followed by a 5-minute break is the fastest way into flow.\n'
+        '• Pick just ONE concrete micro-step.\n'
+        '• Mute distractions and turn on Gentle Rain or Warm Focus noise.\n'
+        'Want me to pick the best first task from your list right now?',
+      );
+    }
+
+    if (_nlu.containsAny(norm, ['تسويف', 'بسوف', 'مكسل', 'ماليش نفس', 'شجعني', 'procrastinat', 'motivation'])) {
+      return _tr(
+        'التسويف مش كسل — غالبًا المهمة شكلها كبير فالمخ بيهرب منها. جرب قاعدة الـ ٥ دقايق معايا دلوقتي:\n'
+        '١) افتح أصغر جزء في المهمة لمدة ٥ دقايق بس من غير ضغط تكمّل.\n'
+        '٢) لو كملت بعدها، ندخل في جلسة ${ArabicFormatters.toArabicDigits(mins)} دقيقة في وقت ذروة طاقتك (${energy.peakShortAr}).\n'
+        'قولّي إيه الحاجة اللي بتأجّلها وهقسّمهالك لـ ٣ خطوات سهلة جدًا.',
+        'Procrastination usually means a task feels too big, not laziness. Try the 5-minute rule:\n'
+        '1) Spend just 5 low-pressure minutes opening the smallest piece.\n'
+        '2) Once momentum kicks in, switch into a $mins-minute block during your peak (${energy.peakShortEn}).\n'
+        'Tell me what you have been putting off and I will break it into 3 easy steps.',
+      );
+    }
+
+    if (isStudent || _nlu.containsAny(norm, ['اذاكر', 'مذاكر', 'امتحان', 'study', 'exam'])) {
+      return _tr(
+        'أقوى طريقة تذاكر بيها بتركيز من غير ما تزهق:\n'
+        '١) الاسترجاع النشط (Active Recall): بعد كل ٢٠ دقيقة اقفل الكتاب واكتب أهم ٣ أفكار بإيدك.\n'
+        '٢) جلسات ${ArabicFormatters.toArabicDigits(mins)} دقيقة مركّزة + ٥ دقايق راحة بعيد عن الموبايل.\n'
+        '٣) ابدأ بالمادة الأهم في وقت ذروتك (${energy.peakShortAr}).\n'
+        'لو قولتلي اسم المادة اللي هتذاكرها، أقدر أقسّمهالك لخطة خطوة بخطوة دلوقتي!',
+        'The strongest way to study deeply without burning out:\n'
+        '1) Active Recall: every 20 minutes, close your notes and summarize 3 key takeaways from memory.\n'
+        '2) Run $mins-minute focus blocks + 5-minute screen-free breaks.\n'
+        '3) Tackle the hardest subject during your peak (${energy.peakShortEn}).\n'
+        'Tell me which subject you are studying and I can break it down into steps right now!',
+      );
+    }
+
+    return _tr(
+      'فاهمك تمامًا — تشتت التركيز بيحصل لما يكون في كذا حاجة مفتوحة في دماغك مرة واحدة.\n'
+      '• فرّغ اللي في بالك هنا في جملة واحدة وهرتّبهولك.\n'
+      '• نختار مهمة واحدة بس لمدة ${ArabicFormatters.toArabicDigits(mins)} دقيقة في وقت نشاطك (${energy.peakShortAr}).\n'
+      'تحب أرتّبلك مهام النهارده ونختار أسهل أول خطوة سوا؟',
+      'Totally get it — losing focus usually happens when too many open loops compete in your head.\n'
+      '• Brain-dump what is on your mind here and I will organize it.\n'
+      '• Pick ONE task for a $mins-minute sprint during your peak (${energy.peakShortEn}).\n'
+      'Want me to sort today’s tasks and pick the easiest first step?',
+    );
+  }
 
   bool _isExamGradeReport(String norm) => _nlu.containsAny(norm, [
         'جبت امتياز', 'جبت جيد جدا', 'جبت جيد', 'جبت مقبول', 'تقديري',

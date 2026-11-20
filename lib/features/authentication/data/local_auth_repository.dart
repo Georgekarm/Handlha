@@ -26,6 +26,7 @@ import '../../subscriptions/domain/subscription_models.dart';
 import '../domain/app_user.dart';
 import 'auth_repository.dart';
 import 'social_auth_service.dart';
+import 'student_preview_seeder.dart';
 
 /// On-device authentication: email/password accounts plus Google and
 /// Facebook sign-in. All user data stays on the device, keyed by user id.
@@ -98,6 +99,24 @@ final class LocalAuthRepository implements AuthRepository {
     final normalizedEmail = email.trim().toLowerCase();
     final validation = _validateEmail(normalizedEmail);
     if (validation != null) return Failure(ValidationFailure(validation));
+
+    if (StudentPreviewAccount.matchesCredentials(normalizedEmail, password)) {
+      final subRecord = await StudentPreviewAccount.ensureProvisioned();
+      final tone = await _loadTone();
+      await markOnboardingComplete();
+      final user = _buildUser(
+        userId: StudentPreviewAccount.userId,
+        email: StudentPreviewAccount.email,
+        displayName: StudentPreviewAccount.displayName,
+        provider: AuthProviderType.email,
+        onboardingComplete: true,
+        tone: tone,
+        subscriptionCategory: subRecord.category,
+        activePlanId: subRecord.activePlanId,
+      );
+      await _startSession(user);
+      return Success(user);
+    }
 
     if (FirebaseCloudService.instance.isEnabled) {
       final cloudRes = await FirebaseCloudService.instance.signInWithEmail(

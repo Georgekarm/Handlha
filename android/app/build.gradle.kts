@@ -37,6 +37,20 @@ val hasReleaseSigning =
         releaseKeyPassword != null &&
         rootProject.file(releaseStoreFilePath).exists()
 
+val allowDebugReleaseSigning =
+    project.findProperty("allowDebugReleaseSigning")?.toString()?.toBoolean() == true
+val isReleaseTaskRequested = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = true)
+}
+
+if (isReleaseTaskRequested && !hasReleaseSigning && !allowDebugReleaseSigning) {
+    throw org.gradle.api.GradleException(
+        "Release signing is required for production builds. Configure android/key.properties " +
+            "or UPLOAD_STORE_FILE / UPLOAD_STORE_PASSWORD / UPLOAD_KEY_ALIAS / UPLOAD_KEY_PASSWORD. " +
+            "For local-only sideload testing, pass -PallowDebugReleaseSigning=true explicitly."
+    )
+}
+
 android {
     namespace = "com.handelha.app"
     compileSdk = maxOf(flutter.compileSdkVersion, 36)

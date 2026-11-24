@@ -9,9 +9,11 @@ import '../../../app/locale/language_controller.dart';
 import '../../../app/mode/student_mode_controller.dart';
 import '../../../app/theme/app_theme_extension.dart';
 import '../../../app/theme/theme_controller.dart';
+import '../../../core/cloud/firebase_cloud_service.dart';
 import '../../../core/database/local_backup_service.dart';
 import '../../../core/database/shared_preferences_conversation_store.dart';
 import '../../../core/result/result.dart';
+import '../../../core/telemetry/local_core_loop_telemetry.dart';
 import '../../../shared/utils/arabic_formatters.dart';
 import '../../../shared/widgets/handelha_ambient_background.dart';
 import '../../../shared/widgets/handelha_bottom_nav.dart';
@@ -25,8 +27,11 @@ import '../../assistant/presentation/assistant_providers.dart';
 import '../../onboarding/presentation/energy_preferences_sheet.dart';
 import '../../authentication/domain/app_user.dart';
 import '../../authentication/presentation/auth_providers.dart';
+import '../../notifications/alarm_reminder_store.dart';
 import '../../notifications/local_notification_service.dart';
 import '../../notifications/notification_preferences.dart';
+import '../../projects/presentation/project_providers.dart';
+import '../../subscriptions/data/subscription_repository.dart';
 import '../../subscriptions/domain/subscription_models.dart';
 import '../../subscriptions/presentation/subscription_providers.dart';
 import '../../tasks/presentation/task_providers.dart';
@@ -351,14 +356,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _openPrivacySheet(AppUser user) async {
     final c = context.appColors;
     final appLang = ref.read(appLanguageProvider);
+    final isExcluded = LocalCoreLoopTelemetry.isExcludedAccount(user.id);
+    final initialSnap = isExcluded
+        ? const CoreLoopTelemetrySnapshot(consentGranted: false)
+        : await LocalCoreLoopTelemetry.instance.load(user.id);
+    var telemetryEnabled = initialSnap.consentGranted;
+    PilotSegment? selectedSegment = initialSnap.segment;
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => SafeArea(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => SafeArea(
         top: false,
-        child: Container(
+        child: SingleChildScrollView(
+          child: Container(
           decoration: BoxDecoration(
             color: c.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -419,7 +433,246 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 style: TextStyle(fontSize: 13.5, color: c.textSecondary),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: c.surfaceSoft,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: c.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.analytics_outlined,
+                          size: 19,
+                          color: c.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                appLang.tr(
+                                  'مقاييس جودة المساعد (مجهولة ومغلقة افتراضيًا)',
+                                  'Anonymous Core-Loop Counters (Opt-In)',
+                                ),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: c.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                isExcluded
+                                    ? appLang.tr(
+                                        'حساب المعاينة مستبعد تلقائيًا من أي قياسات.',
+                                        'Preview QA accounts are automatically excluded from telemetry.',
+                                      )
+                                    : appLang.tr(
+                                        'تحسب فقط معدلات التأكيد والتعديل والإلغاء بدون أي نصوص مهام أو بيانات شخصية.',
+                                        'Counts confirm/edit/cancel rates only — zero task text or PII stored.',
+                                      ),
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: c.textSecondary,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch.adaptive(
+                          value: telemetryEnabled,
+                          onChanged: isExcluded
+                              ? null
+                              : (val) async {
+                                  await LocalCoreLoopTelemetry.instance
+                                      .setConsent(user.id, val);
+                                  setSheetState(() => telemetryEnabled = val);
+                                },
+                        ),
+                      ],
+                    ),
+                    if (telemetryEnabled && !isExcluded) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        appLang.tr(
+                          'فئتك (اختياري ومجهول للتجربة):',
+                          'Anonymous pilot segment (optional):',
+                        ),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final seg in PilotSegment.values)
+                            ChoiceChip(
+                              label: Text(
+                                switch (seg) {
+                                  PilotSegment.student =>
+                                    appLang.tr('طالب', 'Student'),
+                                  PilotSegment.freelancer =>
+                                    appLang.tr('مستقل', 'Freelancer'),
+                                  PilotSegment.employee =>
+                                    appLang.tr('موظف', 'Employee'),
+                                  PilotSegment.other =>
+                                    appLang.tr('أخرى', 'Other'),
+                                },
+                                style: const TextStyle(fontSize: 11.5),
+                              ),
+                              selected: selectedSegment == seg,
+                              onSelected: (_) async {
+                                await LocalCoreLoopTelemetry.instance
+                                    .setPilotMetadata(user.id, segment: seg);
+                                setSheetState(() => selectedSegment = seg);
+                              },
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final snap = await LocalCoreLoopTelemetry.instance
+                              .load(user.id);
+                          final pretty = const JsonEncoder.withIndent('  ')
+                              .convert(snap.toAnonymousJson());
+                          if (!ctx.mounted) return;
+                          Navigator.of(ctx).pop();
+                          if (!mounted) return;
+                          await HandelhaDialog.showCustom<void>(
+                            context,
+                            builder: (dCtx) {
+                              final dc = dCtx.appColors;
+                              return Dialog(
+                                backgroundColor: Colors.transparent,
+                                elevation: 0,
+                                insetPadding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 24,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: dc.surface,
+                                    borderRadius: BorderRadius.circular(26),
+                                    border: Border.all(color: dc.border),
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Text(
+                                        appLang.tr(
+                                          'ملخص المقاييس المجهول (JSON)',
+                                          'Anonymous Metrics Export (JSON)',
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: 15.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: dc.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        height: 220,
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: dc.surfaceSoft,
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                          border: Border.all(color: dc.border),
+                                        ),
+                                        child: SingleChildScrollView(
+                                          child: SelectableText(
+                                            pretty,
+                                            textDirection: TextDirection.ltr,
+                                            style: TextStyle(
+                                              fontSize: 11.5,
+                                              color: dc.textPrimary,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: OutlinedButton(
+                                              onPressed: () =>
+                                                  Navigator.of(dCtx).pop(),
+                                              child: Text(
+                                                appLang.tr('إغلاق', 'Close'),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: FilledButton.icon(
+                                              onPressed: () async {
+                                                await Clipboard.setData(
+                                                  ClipboardData(text: pretty),
+                                                );
+                                                if (!dCtx.mounted) return;
+                                                Navigator.of(dCtx).pop();
+                                                if (mounted) {
+                                                  HandelhaFeedback.showSuccess(
+                                                    context,
+                                                    appLang.tr(
+                                                      'تم نسخ الملخص المجهول!',
+                                                      'Anonymous metrics copied!',
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                              icon: const Icon(
+                                                Icons.copy_rounded,
+                                                size: 16,
+                                              ),
+                                              label: Text(
+                                                appLang.tr('نسخ', 'Copy'),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.data_object_rounded, size: 17),
+                        label: Text(
+                          appLang.tr(
+                            'تصدير ملخص المقاييس المجهول (JSON)',
+                            'Export Anonymous Metrics (JSON)',
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () {
                   Navigator.of(ctx).pop();
@@ -609,6 +862,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               OutlinedButton.icon(
                 onPressed: () async {
                   Navigator.of(ctx).pop();
+                  await _openRestoreBackupDialog(user);
+                },
+                icon: const Icon(Icons.upload_file_outlined),
+                label: Text(
+                  appLang.tr(
+                    'استعادة نسخة احتياطية (JSON)',
+                    'Restore Backup (JSON)',
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
                   await SharedPreferencesConversationStore.clearForUser(user.id);
                   await ref.read(chatSessionProvider).newConversation();
                   if (mounted) {
@@ -658,8 +931,228 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
         ),
+        ),
+        ),
       ),
     );
+  }
+
+  Future<void> _openRestoreBackupDialog(AppUser user) async {
+    final appLang = ref.read(appLanguageProvider);
+    final controller = TextEditingController();
+    String? errorText;
+    BackupRestoreSummary? preview;
+    bool restoring = false;
+
+    await HandelhaDialog.showCustom<void>(
+      context,
+      builder: (dCtx) {
+        final dc = dCtx.appColors;
+        return StatefulBuilder(
+          builder: (dCtx, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 24,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: dc.surface,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: dc.border),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: dc.primarySoft,
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(
+                            Icons.restore_page_outlined,
+                            color: dc.primary,
+                            size: 19,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            appLang.tr(
+                              'استعادة نسخة احتياطية (JSON)',
+                              'Restore Backup (JSON)',
+                            ),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: dc.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      appLang.tr(
+                        'الصق نص النسخة الاحتياطية (JSON) للمعاينة قبل الاستعادة الكاملة والآمنة.',
+                        'Paste your JSON backup to preview its contents before safe atomic restore.',
+                      ),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: dc.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: controller,
+                      maxLines: 5,
+                      textDirection: TextDirection.ltr,
+                      style: TextStyle(fontSize: 11.5, color: dc.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: '{"schema": 2, "product": "handelha", ...}',
+                        filled: true,
+                        fillColor: dc.surfaceSoft,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: dc.border),
+                        ),
+                      ),
+                      onChanged: (raw) {
+                        if (raw.trim().isEmpty) {
+                          setDialogState(() {
+                            preview = null;
+                            errorText = null;
+                          });
+                          return;
+                        }
+                        final check = LocalBackupService.instance.validateBackup(
+                          userId: user.id,
+                          backupJson: raw,
+                        );
+                        setDialogState(() {
+                          switch (check) {
+                            case Success<BackupRestoreSummary>(data: final s):
+                              preview = s;
+                              errorText = null;
+                            case Failure<BackupRestoreSummary>(failure: final f):
+                              preview = null;
+                              errorText = f.message;
+                          }
+                        });
+                      },
+                    ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        errorText!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: dc.danger,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    if (preview != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: dc.primarySoft.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          appLang.isEnglish
+                              ? 'Valid v${preview!.schemaVersion} backup: ${preview!.tasksCount} tasks, ${preview!.projectsCount} projects, ${preview!.focusSessionsCount} focus sessions, ${preview!.examGradesCount} grades, ${preview!.alarmRemindersCount} alarms.'
+                              : 'نسخة صالحة (إصدار ${preview!.schemaVersion}): ${preview!.tasksCount} مهام، ${preview!.projectsCount} مشاريع، ${preview!.focusSessionsCount} جلسات تركيز، ${preview!.examGradesCount} درجات، ${preview!.alarmRemindersCount} منبهات.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: dc.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: restoring
+                                ? null
+                                : () => Navigator.of(dCtx).pop(),
+                            child: Text(appLang.tr('إلغاء', 'Cancel')),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: (preview == null || restoring)
+                                ? null
+                                : () async {
+                                    setDialogState(() => restoring = true);
+                                    final res = await LocalBackupService.instance
+                                        .restoreForUser(
+                                      userId: user.id,
+                                      backupJson: controller.text,
+                                    );
+                                    if (!dCtx.mounted) return;
+                                    setDialogState(() => restoring = false);
+                                    switch (res) {
+                                      case Failure<BackupRestoreSummary>(
+                                          failure: final f
+                                        ):
+                                        setDialogState(
+                                          () => errorText = f.message,
+                                        );
+                                      case Success<BackupRestoreSummary>(
+                                          data: final summary
+                                        ):
+                                        Navigator.of(dCtx).pop();
+                                        ref.invalidate(todayTasksProvider);
+                                        ref.invalidate(allTasksProvider);
+                                        ref.invalidate(projectsProvider);
+                                        ref.invalidate(focusSessionsProvider);
+                                        ref.invalidate(
+                                          userEnergyPreferencesProvider,
+                                        );
+                                        ref.invalidate(alarmReminderProvider);
+                                        await _loadNotifPrefs(user.id);
+                                        if (mounted) {
+                                          HandelhaFeedback.showSuccess(
+                                            context,
+                                            appLang.isEnglish
+                                                ? 'Restored ${summary.tasksCount} tasks, ${summary.projectsCount} projects, and ${summary.focusSessionsCount} focus sessions.'
+                                                : 'تمت استعادة ${summary.tasksCount} مهام و${summary.projectsCount} مشاريع و${summary.focusSessionsCount} جلسات تركيز بنجاح!',
+                                          );
+                                        }
+                                    }
+                                  },
+                            child: Text(
+                              restoring
+                                  ? appLang.tr('جاري الاستعادة...', 'Restoring...')
+                                  : appLang.tr('استعادة الآن', 'Restore Now'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
   }
 
   Future<void> _confirmDeleteAccount(AppUser user) async {
@@ -1186,77 +1679,172 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // Handelha Pro subscription
-                Material(
-                  color: c.surface,
-                  borderRadius: BorderRadius.circular(22),
-                  child: InkWell(
+                // Storage & Sync Status (strictly truthful about active mode)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: c.surface,
                     borderRadius: BorderRadius.circular(22),
-                    onTap: () => context.push('/subscription'),
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: c.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                            child: Icon(Icons.auto_awesome_rounded, color: c.primary),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  appLang.tr(
-                                    'باقات الطلاب و Pro',
-                                    'Student & Pro Plans',
-                                  ),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: c.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  subState?.isPro == true
-                                      ? (isEn
-                                          ? 'Active: ${subState!.resolvedPlanTitle(isEnglish: true)} • ${subState.category.shortBadge(isEnglish: true)}'
-                                          : 'مشترك حاليًا في: ${subState!.resolvedPlanTitle(isEnglish: false)} • ${subState.category.shortBadge(isEnglish: false)}')
-                                      : appLang.tr(
-                                          'باقات الطلاب بشكل وسعر خاص، وباقات Pro العادية',
-                                          'Special Student pricing & visuals, or regular Pro plans',
-                                        ),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: subState?.isPro == true
-                                        ? c.primary
-                                        : c.textSecondary,
-                                    fontWeight: subState?.isPro == true
-                                        ? FontWeight.w700
-                                        : FontWeight.normal,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            appLang.isEnglish
-                                ? Icons.chevron_right_rounded
-                                : Icons.chevron_left_rounded,
-                            color: c.textSecondary,
-                          ),
-                        ],
+                    border: Border.all(color: c.border),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: c.primarySoft,
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Icon(
+                          FirebaseCloudService.instance.isEnabled
+                              ? Icons.cloud_sync_outlined
+                              : Icons.phonelink_lock_rounded,
+                          color: c.primary,
+                          size: 21,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              FirebaseCloudService.instance.isEnabled
+                                  ? appLang.tr(
+                                      'حالة المزامنة السحابية',
+                                      'Cloud Sync Status',
+                                    )
+                                  : appLang.tr(
+                                      'التخزين محلي على جهازك',
+                                      'Local-First Storage',
+                                    ),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Builder(
+                              builder: (_) {
+                                final syncStatus =
+                                    FirebaseCloudService.instance.lastSyncStatus;
+                                final text = !FirebaseCloudService.instance.isEnabled
+                                    ? appLang.tr(
+                                        'كل بياناتك محفوظة محليًا على الجهاز فقط. استخدم التصدير والاستعادة (JSON) من قسم الخصوصية لحفظ نسختك.',
+                                        'All workspace data stays on this device. Use Export & Restore (JSON) in Privacy anytime.',
+                                      )
+                                    : (syncStatus.lastError != null
+                                        ? syncStatus.lastError!
+                                        : (syncStatus.lastSyncedAt != null
+                                            ? appLang.tr(
+                                                'آخر مزامنة ناجحة: ${syncStatus.lastSyncedAt!.toLocal()}',
+                                                'Last synced: ${syncStatus.lastSyncedAt!.toLocal()}',
+                                              )
+                                            : appLang.tr(
+                                                'المزامنة السحابية مفعّلة كنسخة لقطة عند الدخول والخروج.',
+                                                'Cloud snapshot sync is active on sign-in and sign-out.',
+                                              )));
+                                return Text(
+                                  text,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: syncStatus.lastError != null
+                                        ? c.danger
+                                        : c.textSecondary,
+                                    height: 1.4,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 20),
+
+                // Handelha Pro subscription — shown ONLY when store billing is configured
+                // or the user already holds a verified active subscription.
+                if (SubscriptionConfig.isStoreBillingConfigured ||
+                    subState?.isPro == true) ...[
+                  Material(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(22),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(22),
+                      onTap: () => context.push('/subscription'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: c.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              child: Icon(
+                                Icons.auto_awesome_rounded,
+                                color: c.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    appLang.tr(
+                                      'باقات الطلاب و Pro',
+                                      'Student & Pro Plans',
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: c.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    subState?.isPro == true
+                                        ? (isEn
+                                            ? 'Active: ${subState!.resolvedPlanTitle(isEnglish: true)} • ${subState.category.shortBadge(isEnglish: true)}'
+                                            : 'مشترك حاليًا في: ${subState!.resolvedPlanTitle(isEnglish: false)} • ${subState.category.shortBadge(isEnglish: false)}')
+                                        : appLang.tr(
+                                            'باقات الطلاب بشكل وسعر خاص، وباقات Pro العادية',
+                                            'Special Student pricing & visuals, or regular Pro plans',
+                                          ),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: subState?.isPro == true
+                                          ? c.primary
+                                          : c.textSecondary,
+                                      fontWeight: subState?.isPro == true
+                                          ? FontWeight.w700
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              appLang.isEnglish
+                                  ? Icons.chevron_right_rounded
+                                  : Icons.chevron_left_rounded,
+                              color: c.textSecondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
 
                 // نبرة المساعد
                 Text(

@@ -39,14 +39,15 @@ void main() {
   });
 
   group('Authentication Screens Widget Tests', () {
-    testWidgets('LoginScreen renders fields, Google & Facebook buttons and logo without demo button', (tester) async {
+    testWidgets('LoginScreen renders local email fields and hides unverified Google & Facebook buttons by default', (tester) async {
       await tester.pumpWidget(_buildTestApp(const LoginScreen()));
       await tester.pumpAndSettle();
 
       expect(find.byType(TextFormField), findsNWidgets(2));
       expect(find.text('تسجيل الدخول'), findsWidgets);
-      expect(find.text('جوجل'), findsOneWidget);
-      expect(find.text('فيسبوك'), findsOneWidget);
+      expect(find.text('جوجل'), findsNothing);
+      expect(find.text('فيسبوك'), findsNothing);
+      expect(find.textContaining('حساب محلي على جهازك'), findsOneWidget);
       expect(find.text('نسيت كلمة السر؟'), findsOneWidget);
       expect(find.text('دخول سريع بالحساب التجريبي'), findsNothing);
     });

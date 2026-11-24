@@ -1,0 +1,71 @@
+name: Handelha CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Analyze, Test & Release Safety Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter (stable 3.47.6)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.6"
+          channel: stable
+          cache: true
+
+      - name: Release safety gate — forbid hardcoded QA preview or fake social fallbacks
+        run: |
+          if grep -rn "static const bool enabled = true" lib/features/authentication/data/student_preview_seeder.dart; then
+            echo "ERROR: StudentPreviewAccount must never be hardcoded enabled=true."
+            exit 1
+          fi
+          if grep -rn "user\.google@gmail\.com\|user\.facebook@facebook\.com" lib/; then
+            echo "ERROR: Placeholder social fallback emails are forbidden in production source."
+            exit 1
+          fi
+
+      - name: Install root dependencies
+        run: flutter pub get
+
+      - name: Install ai_assistant package dependencies
+        working-directory: packages/ai_assistant
+        run: flutter pub get
+
+      - name: Static analysis (root app)
+        run: flutter analyze
+
+      - name: Static analysis (packages/ai_assistant)
+        working-directory: packages/ai_assistant
+        run: flutter analyze
+
+      - name: Run unit & widget tests (root app)
+        run: flutter test --reporter expanded
+
+      - name: Run NLU & controller tests (packages/ai_assistant)
+        working-directory: packages/ai_assistant
+        run: flutter test --reporter expanded
+
+      - name: Build Android debug APK (reproducibility check)
+        run: flutter build apk --debug
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: handelha-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7

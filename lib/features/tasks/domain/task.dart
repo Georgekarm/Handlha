@@ -10,7 +10,7 @@ enum TaskSource { manual, chat, voice, ai, import }
 
 enum SyncStatus { synced, pending, failed }
 
-enum TaskRecurrence { none, daily, weekdays, weekly }
+enum TaskRecurrence { none, daily, weekdays, weekly, monthly }
 
 /// Core domain entity for a Task.
 /// This is the canonical representation used throughout the app.

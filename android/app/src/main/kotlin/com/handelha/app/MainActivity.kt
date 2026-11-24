@@ -166,7 +166,7 @@ class MainActivity : FlutterActivity() {
                         val alertMode = call.argument<String>("alertMode") ?: "alarm"
                         val taskId = call.argument<String>("taskId")
                         val isEn = call.argument<Boolean>("isEn") ?: false
-                        if (id.isNotBlank() && triggerAtMs > 0L) {
+                        val mode = if (id.isNotBlank() && triggerAtMs > 0L) {
                             NativeAlarmScheduler.scheduleAlarm(
                                 context = applicationContext,
                                 id = id,
@@ -176,8 +176,16 @@ class MainActivity : FlutterActivity() {
                                 taskId = taskId,
                                 isEn = isEn,
                             )
+                        } else {
+                            "failed"
                         }
-                        result.success(true)
+                        result.success(
+                            mapOf(
+                                "scheduled" to (mode == "exact" || mode == "inexact"),
+                                "mode" to mode,
+                                "canExact" to NativeAlarmScheduler.canScheduleExactAlarms(applicationContext),
+                            ),
+                        )
                     }
 
                     "getDeviceTimeZone" -> {

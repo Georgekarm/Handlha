@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_theme_extension.dart';
+import '../../core/cloud/firebase_cloud_service.dart';
+import '../../features/subscriptions/data/subscription_repository.dart';
 
-/// نافذة مبسطة وحديثة لملخص الخصوصية وشروط الاستخدام في «هندلها».
+/// نافذة مبسطة وصادقة لملخص الخصوصية وشروط الاستخدام في «هندلها»،
+/// تعكس بدقة المسارات المفعّلة فعليًا في النسخة الحالية.
 class HandelhaPrivacyPolicySheet extends StatelessWidget {
   const HandelhaPrivacyPolicySheet({super.key});
 
@@ -22,70 +25,94 @@ class HandelhaPrivacyPolicySheet extends StatelessWidget {
     final theme = Theme.of(context);
     final isEn = Directionality.of(context) == TextDirection.ltr;
     final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
+    final cloudEnabled = FirebaseCloudService.instance.isEnabled;
+    final billingEnabled = SubscriptionConfig.isStoreBillingConfigured;
 
     final items = isEn
-        ? const [
+        ? [
             (
               icon: Icons.lock_outline_rounded,
-              title: 'Your data stays private & under your control',
-              body:
-                  'Your tasks, projects, study records, and notes are stored in protected app storage on your device and synced with your personal Firebase / Cloud Firestore account when cloud sync is active. Your data is never sold to third parties.',
+              title: cloudEnabled
+                  ? 'Local storage + optional cloud snapshot'
+                  : 'Local-first storage on your device only',
+              body: cloudEnabled
+                  ? 'Your tasks, projects, focus sessions, and study records are stored in protected local app storage. When signed into a cloud account, JSON workspace snapshots are synced with your Firebase / Cloud Firestore account on sign-in/sign-out or manual sync. Your data is never sold.'
+                  : 'In this local-first build, all your tasks, projects, focus sessions, grades, and reminders are stored strictly on your device. No automatic cloud sync or external account server is active.',
             ),
             (
-              icon: Icons.mic_none_rounded,
-              title: 'Microphone & Speech Recognition only when you tap',
+              icon: Icons.psychology_outlined,
+              title: 'On-device assistant text processing vs. system speech-to-text',
               body:
-                  'Voice access (RECORD_AUDIO) is used strictly when you press the mic button to speak with the assistant. Android SpeechRecognizer may process speech via the system speech provider to convert it to text. No background audio is ever recorded.',
+                  'Typed assistant messages are analyzed locally on your device without sending your text to an external LLM API. Voice input (RECORD_AUDIO) activates only when you tap the mic and uses Android SpeechRecognizer, which may use a network connection through your system speech provider to transcribe speech into text.',
             ),
             (
               icon: Icons.notifications_none_rounded,
-              title: 'Smart reminders on your terms',
+              title: 'Transparent reminders & alarm permissions',
               body:
-                  'Notifications and exact alarms keep you on track for tasks and exams, and you can adjust quiet hours or turn them off anytime in Settings.',
+                  'Notifications and alarms respect your quiet hours and Android OS permissions. If notification or exact-alarm permissions are denied, Handelha explicitly shows whether a reminder is approximate or not scheduled.',
             ),
-            (
-              icon: Icons.workspace_premium_outlined,
-              title: 'Subscriptions & Google Play Billing',
-              body:
-                  'Subscriptions are processed via Google Play Billing and verified through RevenueCat. Plans renew automatically unless cancelled at least 24 hours before the end of the billing period in Google Play Subscriptions.',
-            ),
+            if (billingEnabled)
+              (
+                icon: Icons.workspace_premium_outlined,
+                title: 'Subscriptions & Google Play Billing',
+                body:
+                    'Subscriptions are processed via Google Play Billing and verified through RevenueCat. Plans renew automatically unless cancelled at least 24 hours before the end of the billing period in Google Play Subscriptions.',
+              )
+            else
+              (
+                icon: Icons.check_circle_outline_rounded,
+                title: 'No active in-app billing in this build',
+                body:
+                    'Store billing is not configured in this build. You will not be charged and no payment methods are collected.',
+              ),
             (
               icon: Icons.tune_rounded,
-              title: 'Full control & permanent account deletion',
+              title: 'Full backup, restore & permanent deletion',
               body:
-                  'You can export a complete JSON backup, clear assistant chat history, or permanently delete your account and all local & cloud data directly from Settings at any time.',
+                  'You can export a complete JSON backup of your workspace, restore it cleanly anytime, clear assistant chat history, or permanently delete your local profile and all stored data from Settings.',
             ),
           ]
-        : const [
+        : [
             (
               icon: Icons.lock_outline_rounded,
-              title: 'بياناتك محفوظة بأمان وخصوصية',
-              body:
-                  'مهامك ومشاريعك وسجل دراستك ومحادثاتك بتتحفظ بأمان داخل مساحة التطبيق على جهازك، وتتم مزامنتها مع حسابك السحابي المشفّر (Firebase / Cloud Firestore) عند تفعيل المزامنة، ولا يتم بيعها لأي طرف خارجي.',
+              title: cloudEnabled
+                  ? 'حفظ محلي + لقطة سحابية اختيارية'
+                  : 'حفظ محلي على جهازك فقط',
+              body: cloudEnabled
+                  ? 'مهامك ومشاريعك وجلساتك ودرجاتك محفوظة داخل مساحة التطبيق المحمية على جهازك، ويتم رفع/جلب لقطة JSON لحسابك في Firebase / Cloud Firestore عند الدخول أو الخروج أو المزامنة اليدوية. لا يتم بيع بياناتك لأي طرف خارجي.'
+                  : 'في هذه النسخة المحلية بالكامل، كل مهامك ومشاريعك وجلسات تركيزك ودرجاتك وتنبيهاتك محفوظة على جهازك فقط، ولا توجد مزامنة سحابية تلقائية أو خادم خارجي نشط.',
             ),
             (
-              icon: Icons.mic_none_rounded,
-              title: 'المايك والتعرّف على الصوت عند ضغطك بس',
+              icon: Icons.psychology_outlined,
+              title: 'معالجة نص المساعد محليًا مقابل التعرّف الصوتي للنظام',
               body:
-                  'بنستخدم إذن الميكروفون لحظة ضغطك على زر التحدث الصوتي فقط؛ وقد يستخدم محرك التعرّف على الكلام في نظام Android اتصال الشبكة لتحويل صوتك لنص، بدون أي تسجيل في الخلفية أو حفظ للتسجيلات.',
+                  'الرسائل المكتوبة للمساعد تُعالج محليًا على جهازك بدون إرسال نصوصك إلى LLM خارجي. أما الإدخال الصوتي (الميكروفون) فيعمل فقط لحظة ضغطك على زر المايك ويعتمد على محرك التعرّف على الكلام في Android (SpeechRecognizer)، والذي قد يستخدم اتصال الشبكة لتحويل صوتك إلى نص.',
             ),
             (
               icon: Icons.notifications_none_rounded,
-              title: 'تنبيهات ومنبهات على راحتك',
+              title: 'تنبيهات ومنبهات بشفافية كاملة للأذونات',
               body:
-                  'تذكيرات المهام وجلسات التركيز والامتحانات تحت تحكمك الكامل، وتقدر تضبط ساعات الهدوء أو توقفها في أي وقت من الإعدادات.',
+                  'التذكيرات والمنبهات تحترم ساعات الهدوء وأذونات نظام Android. ولو تم رفض إذن الإشعارات أو المنبه الدقيق، يوضح لك التطبيق صراحة إن كان التذكير تقريبيًا أو لم يُجدول بدل إظهار نجاح وهمي.',
             ),
-            (
-              icon: Icons.workspace_premium_outlined,
-              title: 'الاشتراكات والدفع عبر Google Play',
-              body:
-                  'تتم معالجة الاشتراكات عبر Google Play Billing والتحقق من صلاحية الباقة عبر خدمة RevenueCat، وتتجدد تلقائيًا ما لم يتم إلغاؤها من إعدادات اشتراكات Google Play قبل ٢٤ ساعة من التجديد.',
-            ),
+            if (billingEnabled)
+              (
+                icon: Icons.workspace_premium_outlined,
+                title: 'الاشتراكات والدفع عبر Google Play',
+                body:
+                    'تتم معالجة الاشتراكات عبر Google Play Billing والتحقق من صلاحية الباقة عبر خدمة RevenueCat، وتتجدد تلقائيًا ما لم يتم إلغاؤها من إعدادات اشتراكات Google Play قبل ٢٤ ساعة من التجديد.',
+              )
+            else
+              (
+                icon: Icons.check_circle_outline_rounded,
+                title: 'لا توجد فوترة مفعّلة في هذه النسخة',
+                body:
+                    'خدمة الدفع غير مهيّأة في هذه النسخة؛ لا يتم تحصيل أي رسوم ولا طلب أي بيانات دفع.',
+              ),
             (
               icon: Icons.tune_rounded,
-              title: 'تحكم كامل وحذف فوري للحساب والبيانات',
+              title: 'نسخ احتياطي واستعادة كاملة وحذف نهائي',
               body:
-                  'تقدر تصدّر نسخة احتياطية كاملة من بياناتك (JSON)، أو تمسح سجل المحادثات، أو تحذف حسابك وجميع بياناته المحلية والسحابية نهائيًا وبشكل فوري من الإعدادات.',
+                  'تقدر تصدّر نسخة احتياطية كاملة (JSON) وتستعيدها بالكامل في أي وقت، أو تمسح سجل المحادثات، أو تحذف ملفك المحلي وكل بياناته نهائيًا من الإعدادات.',
             ),
           ];
 

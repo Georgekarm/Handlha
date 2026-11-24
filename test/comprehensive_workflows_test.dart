@@ -24,6 +24,7 @@ import 'package:handelha/features/assistant/local_task_tool_executor.dart';
 import 'package:handelha/features/assistant/presentation/chat_history_screen.dart';
 import 'package:handelha/features/assistant/presentation/chat_screen.dart';
 import 'package:handelha/features/authentication/data/local_auth_repository.dart';
+import 'package:handelha/features/authentication/data/social_auth_service.dart';
 import 'package:handelha/features/authentication/domain/app_user.dart';
 import 'package:handelha/features/authentication/presentation/login_screen.dart';
 import 'package:handelha/features/authentication/presentation/signup_screen.dart';
@@ -370,8 +371,21 @@ void main() {
       final controller = makeController(userId);
       addTearDown(controller.dispose);
 
-      final resp = await controller.sendTextMessage(
+      final preview = await controller.sendTextMessage(
         'عندي امتحان بكره عربي و بعده انجليزي',
+        conversationId: 'c1',
+        speak: false,
+      );
+      expect(preview.text, startsWith('🔍 مراجعة قبل الحفظ'));
+      expect(
+        (await LocalTaskDatabase.instance.getTasksForUser(userId)
+                as Success<List<Task>>)
+            .data,
+        isEmpty,
+      );
+
+      final resp = await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c1',
         speak: false,
       );
@@ -397,8 +411,21 @@ void main() {
       final controller = makeController(userId);
       addTearDown(controller.dispose);
 
-      final resp = await controller.sendTextMessage(
+      final preview = await controller.sendTextMessage(
         'عندي امتحان بكره عربي الساعة 8 وامتحان انجليزي بليل الساعه 8',
+        conversationId: 'c_me_1',
+        speak: false,
+      );
+      expect(preview.text, startsWith('🔍 مراجعة قبل الحفظ'));
+      expect(
+        (await LocalTaskDatabase.instance.getTasksForUser(userId)
+                as Success<List<Task>>)
+            .data,
+        isEmpty,
+      );
+
+      final resp = await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c_me_1',
         speak: false,
       );
@@ -502,11 +529,21 @@ void main() {
   // 3. Google & Facebook Social Auth & Account Isolation Tests
   // ---------------------------------------------------------------------------
   group('LocalAuthRepository Social & Email Authentication', () {
-    test('signInWithGoogle and signInWithFacebook authenticate and persist user sessions', () async {
-      final repo = LocalAuthRepository();
+    test('rejects unverified social sign-in by default and persists sessions when verified OAuth is enabled with token', () async {
+      final defaultRepo = LocalAuthRepository();
+      final blockedGoogle = await defaultRepo.signInWithGoogle(
+        email: 'omar.google@gmail.com',
+        displayName: 'عمر جوجل',
+      );
+      expect(blockedGoogle, isA<Failure<AppUser>>());
+
+      final repo = LocalAuthRepository(
+        socialAuth: SocialAuthService(oauthEnabledOverride: true),
+      );
       final googleRes = await repo.signInWithGoogle(
         email: 'omar.google@gmail.com',
         displayName: 'عمر جوجل',
+        idToken: 'verified-google-id-token',
       );
       expect(googleRes, isA<Success<AppUser>>());
       final googleUser = (googleRes as Success<AppUser>).data;
@@ -525,6 +562,7 @@ void main() {
       final fbRes = await repo.signInWithFacebook(
         email: 'omar.fb@example.com',
         displayName: 'عمر فيسبوك',
+        idToken: 'verified-fb-access-token',
       );
       expect(fbRes, isA<Success<AppUser>>());
       final fbUser = (fbRes as Success<AppUser>).data;

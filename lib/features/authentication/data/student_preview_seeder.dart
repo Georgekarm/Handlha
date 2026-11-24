@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../app/environment/environment.dart';
 import '../../../app/mode/student_mode_controller.dart';
 import '../../../core/database/local_focus_session_database.dart';
 import '../../../core/database/local_project_database.dart';
@@ -11,15 +13,33 @@ import '../../subscriptions/data/local_subscription_store.dart';
 import '../../subscriptions/domain/subscription_models.dart';
 import '../../tasks/domain/task.dart';
 
-/// Dedicated Student QA/Preview account provisioned in the local database so
-/// reviewers can inspect the full Student subscription tier, Student Mode
-/// visuals, Exam Grades, Study Tree, and unlimited Pro assistant tokens.
+/// Dedicated Student QA/Preview account for isolated debug/QA builds only.
 ///
-/// Toggle [kEnableStudentPreviewAccount] to `false` before final Play Store upload.
+/// Always disabled in release builds and in default builds. Enable only in QA
+/// debug builds via:
+/// `--dart-define=APP_ENV=development --dart-define=ENABLE_QA_PREVIEW=true`.
 class StudentPreviewAccount {
   const StudentPreviewAccount._();
 
-  static const bool enabled = true;
+  static bool? _testOverrideEnabled;
+
+  /// Strictly `false` in release builds and whenever `ENABLE_QA_PREVIEW` is not
+  /// explicitly supplied alongside `APP_ENV=development` in debug mode.
+  static bool get enabled {
+    if (kReleaseMode) return false;
+    if (_testOverrideEnabled != null) return _testOverrideEnabled!;
+    return Environment.enableQaPreviewAccount;
+  }
+
+  @visibleForTesting
+  static void setTestOverrideEnabled(bool? value) {
+    assert(
+      !kReleaseMode,
+      'StudentPreviewAccount override is forbidden in release builds.',
+    );
+    _testOverrideEnabled = value;
+  }
+
   static const String userId = 'handelha_student_qa_v1';
   static const String email = 'student@handelha.app';
   static const String password = 'Student2026!';
@@ -32,17 +52,22 @@ class StudentPreviewAccount {
     return normalizedEmail == email && rawPassword == password;
   }
 
-  /// Ensures the Student subscription, Student Mode flag, and realistic sample
-  /// academic workspace data exist for [userId]. Idempotent across logins.
+  /// Ensures the QA preview Student Mode flag and sample academic workspace
+  /// data exist for [userId]. Never marks itself as a verified store purchase.
   static Future<StoredSubscriptionRecord> ensureProvisioned() async {
+    if (!enabled) {
+      throw StateError(
+        'StudentPreviewAccount provisioning is disabled in this build.',
+      );
+    }
     final sub = await LocalSubscriptionStore.activatePlanForUser(
       userId: userId,
       track: SubscriptionPlanTrack.student,
       planId: 'student_yearly',
-      planTitle: 'باقة الطلاب السنوية',
+      planTitle: 'باقة الطلاب السنوية (معاينة QA)',
       planPrice: '٣٩٩ ج.م',
       isAnnual: true,
-      isLocalActivation: false,
+      isLocalActivation: true,
     );
 
     StudentModeStore.setSync(true);

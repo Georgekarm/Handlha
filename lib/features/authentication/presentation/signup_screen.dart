@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/environment/environment.dart';
 import '../../../app/locale/language_controller.dart';
 import '../../../app/theme/app_theme_extension.dart';
+import '../../../core/cloud/firebase_cloud_service.dart';
 import '../../../core/result/result.dart';
 import '../../../shared/widgets/handelha_ambient_background.dart';
 import '../../../shared/widgets/handelha_privacy_policy_sheet.dart';
@@ -255,49 +257,100 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                           ],
                         ),
                         const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _SignUpSocialButton(
-                                label: appLang.tr('جوجل', 'Google'),
-                                badgeText: 'G',
-                                badgeColor: const Color(0xFF4285F4),
-                                onTap: () =>
-                                    _socialAuth(AuthProviderType.google),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _SignUpSocialButton(
-                                label: appLang.tr('فيسبوك', 'Facebook'),
-                                badgeText: 'f',
-                                badgeFilledColor: const Color(0xFF1877F2),
-                                onTap: () =>
-                                    _socialAuth(AuthProviderType.facebook),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(child: Divider(color: c.divider)),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              child: Text(
-                                appLang.tr('أو بالبريد الإلكتروني', 'Or with email'),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: c.textSecondary,
+                        if (Environment.verifiedSocialOAuthEnabled) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _SignUpSocialButton(
+                                  label: appLang.tr('جوجل', 'Google'),
+                                  badgeText: 'G',
+                                  badgeColor: const Color(0xFF4285F4),
+                                  onTap: () =>
+                                      _socialAuth(AuthProviderType.google),
                                 ),
                               ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _SignUpSocialButton(
+                                  label: appLang.tr('فيسبوك', 'Facebook'),
+                                  badgeText: 'f',
+                                  badgeFilledColor: const Color(0xFF1877F2),
+                                  onTap: () =>
+                                      _socialAuth(AuthProviderType.facebook),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(child: Divider(color: c.divider)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                child: Text(
+                                  appLang.tr(
+                                    'أو بالبريد الإلكتروني',
+                                    'Or with email',
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: c.textSecondary,
+                                  ),
+                                ),
+                              ),
+                              Expanded(child: Divider(color: c.divider)),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                        ] else ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
                             ),
-                            Expanded(child: Divider(color: c.divider)),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
+                            decoration: BoxDecoration(
+                              color: c.primarySoft.withValues(alpha: 0.65),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: c.primary.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  FirebaseCloudService.instance.isEnabled
+                                      ? Icons.cloud_done_outlined
+                                      : Icons.phonelink_lock_rounded,
+                                  size: 18,
+                                  color: c.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    FirebaseCloudService.instance.isEnabled
+                                        ? appLang.tr(
+                                            'حساب بالبريد الإلكتروني مع مزامنة سحابية اختيارية.',
+                                            'Email account with optional cloud snapshot sync.',
+                                          )
+                                        : appLang.tr(
+                                            'ملف محلي على جهازك فقط — بياناتك تحت تحكمك مع تصدير واستعادة كاملة.',
+                                            'Local profile on this device — your data stays with you with full backup & restore.',
+                                          ),
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: c.textPrimary,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
 
                         if (_errorMessage != null) ...[
                           Container(

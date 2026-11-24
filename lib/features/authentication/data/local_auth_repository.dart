@@ -14,6 +14,7 @@ import '../../../core/database/shared_preferences_conversation_store.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/result/result.dart';
 import '../../../core/secure_storage/secure_storage_service.dart';
+import '../../../core/telemetry/local_core_loop_telemetry.dart';
 import '../../assistant/data/user_energy_preferences.dart';
 import '../../assistant/presentation/token_balance_provider.dart';
 import '../../notifications/alarm_reminder_store.dart';
@@ -283,22 +284,29 @@ final class LocalAuthRepository implements AuthRepository {
   Future<Result<AppUser>> signInWithGoogle({
     String? email,
     String? displayName,
+    String? idToken,
   }) =>
       _signInWithProvider(
         AuthProviderType.google,
-        () => _social.signInWithGoogle(email: email, displayName: displayName),
+        () => _social.signInWithGoogle(
+          email: email,
+          displayName: displayName,
+          idToken: idToken,
+        ),
       );
 
   @override
   Future<Result<AppUser>> signInWithFacebook({
     String? email,
     String? displayName,
+    String? idToken,
   }) =>
       _signInWithProvider(
         AuthProviderType.facebook,
         () => _social.signInWithFacebook(
           email: email,
           displayName: displayName,
+          idToken: idToken,
         ),
       );
 
@@ -311,6 +319,9 @@ final class LocalAuthRepository implements AuthRepository {
       case Failure<SocialProfile>(failure: final f):
         return Failure(f);
       case Success<SocialProfile>(data: final profile):
+        if (!profile.isVerifiedOAuth) {
+          return Failure(SocialOAuthNotConfiguredFailure(provider));
+        }
         final userId = '${provider.name}_${profile.id}';
         final isOnboardingDone = await isOnboardingComplete();
         final tone = await _loadTone();
@@ -327,7 +338,7 @@ final class LocalAuthRepository implements AuthRepository {
           activePlanId: subRecord.activePlanId,
         );
         await _startSession(user);
-        AppLogger.info('Signed in with ${provider.name}', tag: _tag);
+        AppLogger.info('Signed in with verified ${provider.name}', tag: _tag);
         return Success(user);
     }
   }
@@ -342,7 +353,7 @@ final class LocalAuthRepository implements AuthRepository {
     }
     return const Failure(
       AuthFailure(
-        'حسابك ومهامك محفوظين على جهازك بس، فمش بنقدر نبعت رابط استعادة على الإيميل. تقدر تدخل بحساب جوجل أو فيسبوك بدل كده.',
+        'حسابك ومهامك محفوظين محليًا على جهازك فقط في هذه النسخة، فمش بنقدر نبعت رابط استعادة على الإيميل. تقدر تغيّر كلمة السر المحلية مباشرة من شاشة استعادة كلمة السر.',
       ),
     );
   }
@@ -472,6 +483,7 @@ final class LocalAuthRepository implements AuthRepository {
       await ExamGradesStore.clearForUser(userId);
       await TokenBalanceNotifier.clearForUser(userId);
       await LocalSubscriptionStore.clearForUser(userId);
+      await LocalCoreLoopTelemetry.instance.clearForUser(userId);
     }
     await StudentModeController.clearSaved();
     await LocalNotificationService.instance.cancelAll();

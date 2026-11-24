@@ -1,7 +1,7 @@
 import 'tool_schema.dart';
 
 const _priorities = ['low', 'medium', 'high'];
-const _recurrences = ['none', 'daily', 'weekly', 'monthly'];
+const _recurrences = ['none', 'daily', 'weekdays', 'weekly', 'monthly'];
 const _statuses = ['pending', 'completed', 'all'];
 
 ParamSpec _s(String n, String d,

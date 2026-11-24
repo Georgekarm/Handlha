@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/local_task_database.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/result/result.dart';
+import '../../../core/telemetry/local_core_loop_telemetry.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../notifications/local_notification_service.dart';
 import '../domain/task.dart';
@@ -107,6 +108,10 @@ class TodayTasksNotifier extends AsyncNotifier<List<Task>> {
       state = previousState;
     } else {
       await LocalNotificationService.instance.cancelTask(taskId);
+      await LocalCoreLoopTelemetry.instance.recordEvent(
+        _userId,
+        'task_completed',
+      );
       await refresh();
       _invalidateSibling();
     }

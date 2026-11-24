@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show Color;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../core/logger/app_logger.dart';
 import '../tasks/domain/task.dart';
 import 'native_alarm_bridge.dart';
 import 'notification_preferences.dart';
@@ -62,6 +64,34 @@ class NotificationPayload {
   }
 }
 
+/// Explicit outcome of scheduling a reminder or alarm — never pretends success
+/// when OS permissions are denied or exact alarms degrade to inexact timing.
+enum AlarmScheduleStatus {
+  exactScheduled,
+  inexactFallback,
+  permissionDenied,
+  disabledByPreferences,
+  pastTime,
+  failed,
+}
+
+@immutable
+class AlarmScheduleOutcome {
+  const AlarmScheduleOutcome({
+    required this.status,
+    this.detail,
+  });
+
+  final AlarmScheduleStatus status;
+  final String? detail;
+
+  bool get isScheduled =>
+      status == AlarmScheduleStatus.exactScheduled ||
+      status == AlarmScheduleStatus.inexactFallback;
+
+  bool get isExact => status == AlarmScheduleStatus.exactScheduled;
+}
+
 /// Real OS notification & exact-alarm permission snapshot.
 class NotificationPermissionStatus {
   const NotificationPermissionStatus({
@@ -81,6 +111,21 @@ class LocalNotificationService {
   LocalNotificationService._();
 
   static final instance = LocalNotificationService._();
+  static const _tag = 'Notifications';
+
+  /// Optional test seam for verifying permission-denied and exact-alarm
+  /// fallback behavior without a live Android device.
+  @visibleForTesting
+  Future<NotificationPermissionStatus> Function()? testPermissionProvider;
+
+  @visibleForTesting
+  Future<AlarmScheduleOutcome> Function({
+    required String id,
+    required String title,
+    required DateTime scheduledAt,
+    required String alertMode,
+    required NotificationPermissionStatus permissions,
+  })? testSchedulerOverride;
 
   static const _channelId = 'handelha_task_reminders';
   static const _channelName = 'تذكيرات هندلها';
@@ -221,6 +266,9 @@ class LocalNotificationService {
 
   /// Queries actual OS notification and exact-alarm authorization.
   Future<NotificationPermissionStatus> checkPermissions() async {
+    if (testPermissionProvider != null) {
+      return testPermissionProvider!();
+    }
     await initialize(requestPermission: false);
     try {
       final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
@@ -277,7 +325,7 @@ class LocalNotificationService {
     );
   }
 
-  Future<void> scheduleReminderItem({
+  Future<AlarmScheduleOutcome> scheduleReminderItem({
     required String id,
     required String title,
     required DateTime scheduledAt,
@@ -287,13 +335,50 @@ class LocalNotificationService {
     bool requestPermission = false,
   }) async {
     try {
-      await initialize(requestPermission: requestPermission);
       final isAlarm = alertMode == 'alarm';
       final preferences = await LocalNotificationPreferences.load(userId);
       if (!isAlarm && !preferences.enabled) {
         await cancelById(id);
-        return;
+        return const AlarmScheduleOutcome(
+          status: AlarmScheduleStatus.disabledByPreferences,
+          detail: 'التنبيهات متوقفة من الإعدادات.',
+        );
       }
+
+      if (testPermissionProvider != null || testSchedulerOverride != null) {
+        final permissions = await checkPermissions();
+        if (scheduledAt.toLocal().isBefore(DateTime.now())) {
+          return const AlarmScheduleOutcome(
+            status: AlarmScheduleStatus.pastTime,
+            detail: 'الموعد المختار في الماضي.',
+          );
+        }
+        if (permissions.hasNativePlatform && !permissions.notificationsGranted) {
+          return const AlarmScheduleOutcome(
+            status: AlarmScheduleStatus.permissionDenied,
+            detail: 'إذن الإشعارات مرفوض على النظام — لم تتم جدولة التنبيه.',
+          );
+        }
+        if (testSchedulerOverride != null) {
+          return await testSchedulerOverride!(
+            id: id,
+            title: title,
+            scheduledAt: scheduledAt,
+            alertMode: alertMode,
+            permissions: permissions,
+          );
+        }
+        return permissions.exactAlarmsGranted
+            ? const AlarmScheduleOutcome(
+                status: AlarmScheduleStatus.exactScheduled,
+              )
+            : const AlarmScheduleOutcome(
+                status: AlarmScheduleStatus.inexactFallback,
+                detail: 'إذن المنبه الدقيق غير ممنوح — التذكير تقريبي.',
+              );
+      }
+
+      await initialize(requestPermission: requestPermission);
 
       final now = tz.TZDateTime.now(tz.local);
       var when = _tzDateTime(scheduledAt.toLocal());
@@ -302,22 +387,44 @@ class LocalNotificationService {
       }
       if (!when.isAfter(now)) {
         await cancelById(id);
-        return;
+        return const AlarmScheduleOutcome(
+          status: AlarmScheduleStatus.pastTime,
+          detail: 'الموعد المختار في الماضي.',
+        );
+      }
+
+      final permissions = await checkPermissions();
+      if (permissions.hasNativePlatform && !permissions.notificationsGranted) {
+        AppLogger.warning(
+          'Notification permission denied; skipping schedule for $id',
+          tag: _tag,
+        );
+        return const AlarmScheduleOutcome(
+          status: AlarmScheduleStatus.permissionDenied,
+          detail: 'إذن الإشعارات مرفوض — لم تتم جدولة التنبيه.',
+        );
       }
 
       if (isAlarm) {
-        final scheduledNatively = await NativeAlarmBridge.instance.scheduleAlarm(
+        final nativeRes = await NativeAlarmBridge.instance.scheduleAlarmDetailed(
           id: id,
           title: title,
           scheduledAtMs: scheduledAt.toLocal().millisecondsSinceEpoch,
           alertMode: alertMode,
           taskId: taskId,
         );
-        if (scheduledNatively) {
+        if (nativeRes.scheduled) {
           // Avoid duplicate competing notification banners when AlarmReceiver
           // owns the external AlarmActivity & lockscreen notification.
           await _plugin.cancel(_notificationId(id));
-          return;
+          return nativeRes.exact
+              ? const AlarmScheduleOutcome(
+                  status: AlarmScheduleStatus.exactScheduled,
+                )
+              : const AlarmScheduleOutcome(
+                  status: AlarmScheduleStatus.inexactFallback,
+                  detail: 'إذن المنبه الدقيق غير ممنوح — التوقيت تقريبي.',
+                );
         }
       } else {
         await NativeAlarmBridge.instance.cancelAlarm(id);
@@ -405,8 +512,21 @@ class LocalNotificationService {
           androidScheduleMode: scheduleMode,
           payload: payload,
         );
-      } catch (_) {
+        return canExact
+            ? const AlarmScheduleOutcome(
+                status: AlarmScheduleStatus.exactScheduled,
+              )
+            : const AlarmScheduleOutcome(
+                status: AlarmScheduleStatus.inexactFallback,
+                detail: 'إذن المنبه الدقيق غير ممنوح — التذكير تقريبي.',
+              );
+      } catch (e) {
         if (scheduleMode != AndroidScheduleMode.exactAllowWhileIdle) rethrow;
+        AppLogger.warning(
+          'Exact alarm rejected at runtime; degrading to inexact for $id',
+          tag: _tag,
+          error: e,
+        );
         // Fallback to inexact scheduling when OEM restricts exact alarms at runtime.
         await _plugin.zonedSchedule(
           notificationId,
@@ -417,13 +537,25 @@ class LocalNotificationService {
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           payload: payload,
         );
+        return const AlarmScheduleOutcome(
+          status: AlarmScheduleStatus.inexactFallback,
+          detail: 'رفض النظام الجدولة الدقيقة — تم التحويل لتذكير تقريبي.',
+        );
       }
-    } catch (_) {
-      // Notification support is best-effort and must not break task/reminder CRUD.
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to schedule reminder $id',
+        tag: _tag,
+        error: e,
+      );
+      return const AlarmScheduleOutcome(
+        status: AlarmScheduleStatus.failed,
+        detail: 'تعذّرت جدولة التنبيه على النظام.',
+      );
     }
   }
 
-  Future<void> scheduleTask(
+  Future<AlarmScheduleOutcome> scheduleTask(
     Task task, {
     String? alertMode,
   }) async {
@@ -433,7 +565,9 @@ class LocalNotificationService {
         task.isCancelled ||
         task.isDeleted) {
       await cancelTask(task.id);
-      return;
+      return const AlarmScheduleOutcome(
+        status: AlarmScheduleStatus.disabledByPreferences,
+      );
     }
 
     var local = taskDate.toLocal();
@@ -444,7 +578,7 @@ class LocalNotificationService {
     final resolvedMode =
         alertMode ?? taskAlertModeResolver?.call(task.id) ?? 'notification';
 
-    await scheduleReminderItem(
+    return scheduleReminderItem(
       id: task.id,
       title: task.title,
       scheduledAt: local,

@@ -90,11 +90,13 @@ class AuthNotifier extends AsyncNotifier<AppUser?> {
   Future<Result<AppUser>> signInWithGoogle({
     String? email,
     String? displayName,
+    String? idToken,
   }) async {
     state = const AsyncLoading<AppUser?>();
     final result = await _repo.signInWithGoogle(
       email: email,
       displayName: displayName,
+      idToken: idToken,
     );
     if (result is Success<AppUser>) {
       state = AsyncData(result.data);
@@ -107,11 +109,13 @@ class AuthNotifier extends AsyncNotifier<AppUser?> {
   Future<Result<AppUser>> signInWithFacebook({
     String? email,
     String? displayName,
+    String? idToken,
   }) async {
     state = const AsyncLoading<AppUser?>();
     final result = await _repo.signInWithFacebook(
       email: email,
       displayName: displayName,
+      idToken: idToken,
     );
     if (result is Success<AppUser>) {
       state = AsyncData(result.data);

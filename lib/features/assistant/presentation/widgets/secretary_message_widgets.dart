@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/app_theme_extension.dart';
 import '../../../../shared/utils/arabic_formatters.dart';
+import '../../../../shared/widgets/handelha_date_time_picker.dart';
 import '../../../../shared/widgets/handelha_feedback.dart';
 import '../../../notifications/alarm_reminder_store.dart';
 import '../../../notifications/native_alarm_bridge.dart';
@@ -35,6 +36,13 @@ class SecretaryRichMessageBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final trimmed = content.trim();
 
+    if (_isMutationPreviewReply(trimmed)) {
+      return _SecretaryMutationPreviewCard(
+        rawText: trimmed,
+        onQuickReply: onQuickReply,
+      );
+    }
+
     if (_isScheduleDraft(trimmed)) {
       return _SecretaryScheduleDraftCard(
         rawText: trimmed,
@@ -54,6 +62,7 @@ class SecretaryRichMessageBody extends StatelessWidget {
             _SecretaryCreatedTasksCard(
               rawText: createdPart,
               onQuickReply: onQuickReply,
+              onStartFocus: onStartFocus,
               showActions: false,
             ),
             const SizedBox(height: 12),
@@ -70,6 +79,7 @@ class SecretaryRichMessageBody extends StatelessWidget {
       return _SecretaryCreatedTasksCard(
         rawText: trimmed,
         onQuickReply: onQuickReply,
+        onStartFocus: onStartFocus,
       );
     }
 
@@ -112,6 +122,14 @@ class SecretaryRichMessageBody extends StatelessWidget {
     );
   }
 
+  bool _isMutationPreviewReply(String text) =>
+      text.startsWith('🔍 مراجعة قبل الحفظ') ||
+      text.startsWith('🔍 مراجعة قبل التعديل') ||
+      text.startsWith('🔍 مراجعة قبل التعليم كمكتملة') ||
+      text.startsWith('⚠️ تأكيد قبل الحذف') ||
+      text.startsWith('🔍 Review before') ||
+      text.startsWith('⚠️ Confirm before deleting');
+
   bool _isScheduleDraft(String text) =>
       text.contains('مسودة ترتيب المهام') ||
       text.contains('جهّزتلك مسودة الخطة') ||
@@ -125,7 +143,9 @@ class SecretaryRichMessageBody extends StatelessWidget {
   bool _isCreatedTasksReply(String text) =>
       text.startsWith('تمام، ضفتلك') ||
       text.startsWith('تمام! ضفتلك') ||
-      text.startsWith('Added ');
+      text.startsWith('تمام، ظبطتلك') ||
+      text.startsWith('Added ') ||
+      text.startsWith('All set — saved');
 
   bool _isBreakdownReply(String text) =>
       (text.contains('خطوات عملية') ||
@@ -588,11 +608,13 @@ class _SecretaryCreatedTasksCard extends StatelessWidget {
   const _SecretaryCreatedTasksCard({
     required this.rawText,
     required this.onQuickReply,
+    this.onStartFocus,
     this.showActions = true,
   });
 
   final String rawText;
   final ValueChanged<String> onQuickReply;
+  final VoidCallback? onStartFocus;
   final bool showActions;
 
   @override
@@ -600,6 +622,7 @@ class _SecretaryCreatedTasksCard extends StatelessWidget {
     final c = context.appColors;
     final isEn = Directionality.of(context) == TextDirection.ltr;
     final tasks = _extractTasks(rawText);
+    final statusNotice = _extractStatusNotice(rawText);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -675,8 +698,76 @@ class _SecretaryCreatedTasksCard extends StatelessWidget {
           if (i < tasks.length - 1) const SizedBox(height: 8),
         ],
 
+        if (statusNotice != null) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: statusNotice.isWarning
+                  ? c.danger.withValues(alpha: 0.1)
+                  : c.info.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: statusNotice.isWarning
+                    ? c.danger.withValues(alpha: 0.35)
+                    : c.info.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  statusNotice.isWarning
+                      ? Icons.warning_amber_rounded
+                      : Icons.info_outline_rounded,
+                  size: 17,
+                  color: statusNotice.isWarning ? c.danger : c.info,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    statusNotice.text,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: c.textPrimary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
         if (showActions) ...[
           const SizedBox(height: 12),
+          if (onStartFocus != null) ...[
+            ElevatedButton.icon(
+              onPressed: onStartFocus,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: c.primary,
+                foregroundColor: c.textOnPrimary,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 11,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(13),
+                ),
+              ),
+              icon: const Icon(Icons.play_arrow_rounded, size: 19),
+              label: Text(
+                isEn ? 'Start Focus Step Now' : 'ابدأ خطوة تركيز الآن',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -763,18 +854,31 @@ class _SecretaryCreatedTasksCard extends StatelessWidget {
     }
 
     final singleEn = RegExp(
-      r'Added\s+"([^"]+)"(?:\s*\(([^)]+)\))?',
+      r'(?:Added|All set — saved)\s+"([^"]+)"(?:\s*(?:\(([^)]+)\)|for\s+([^.]+)))?',
     ).firstMatch(raw);
     if (singleEn != null) {
       return [
         (
           title: (singleEn.group(1) ?? '').trim(),
-          when: (singleEn.group(2) ?? '').trim(),
+          when: (singleEn.group(2) ?? singleEn.group(3) ?? '').trim(),
         ),
       ];
     }
 
     return [(title: raw, when: '')];
+  }
+
+  ({bool isWarning, String text})? _extractStatusNotice(String raw) {
+    for (final line in raw.split('\n')) {
+      final t = line.trim();
+      if (t.startsWith('⚠️')) {
+        return (isWarning: true, text: t);
+      }
+      if (t.startsWith('ℹ️')) {
+        return (isWarning: false, text: t);
+      }
+    }
+    return null;
   }
 }
 
@@ -803,21 +907,43 @@ class _CreatedTaskMiniCardState extends ConsumerState<_CreatedTaskMiniCard> {
 
   Future<void> _setAlertMode(String mode) async {
     setState(() => _selectedMode = mode);
-    await ref.read(alarmReminderProvider.notifier).addOrUpdateAlarm(
+    final saved = await ref.read(alarmReminderProvider.notifier).addOrUpdateAlarm(
           title: widget.title,
           scheduledAt: DateTime.now().add(const Duration(hours: 1)),
           alertMode: mode,
         );
     if (!mounted) return;
+    if (saved.scheduleStatus == 'permissionDenied') {
+      HandelhaFeedback.show(
+        context,
+        tone: HandelhaMessageTone.warning,
+        message: widget.isEn
+            ? 'Saved alert preference, but notification permission is denied on this device.'
+            : 'تم حفظ اختيارك، لكن إذن الإشعارات مرفوض على النظام — فعّله من الإشعارات.',
+        duration: const Duration(seconds: 3),
+      );
+      return;
+    }
+    if (saved.scheduleStatus == 'inexactFallback') {
+      HandelhaFeedback.show(
+        context,
+        tone: HandelhaMessageTone.info,
+        message: widget.isEn
+            ? 'Scheduled as an approximate reminder (exact alarm permission not enabled).'
+            : 'تمت جدولة التذكير بتوقيت تقريبي لأن إذن المنبه الدقيق غير مفعّل.',
+        duration: const Duration(seconds: 3),
+      );
+      return;
+    }
     HandelhaFeedback.showSuccess(
       context,
       mode == 'alarm'
           ? (widget.isEn
-              ? 'Ringing Alarm enabled for "${widget.title}" (Permission granted)'
-              : 'تم تفعيل «منبه يرن» لـ «${widget.title}» وتأكيد إذن التنبيهات!')
+              ? 'Ringing Alarm scheduled for "${widget.title}".'
+              : 'تم ضبط «منبه يرن» لـ «${widget.title}».')
           : (widget.isEn
-              ? 'Notification message enabled for "${widget.title}"'
-              : 'تم ضبط «رسالة إشعار» لـ «${widget.title}» في ميعادها!'),
+              ? 'Notification message scheduled for "${widget.title}".'
+              : 'تم ضبط «رسالة إشعار» لـ «${widget.title}».'),
       duration: const Duration(seconds: 2),
     );
   }
@@ -1744,6 +1870,633 @@ class _SecretaryAlarmReminderCard extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// 7. CONFIRM-BEFORE-WRITE MUTATION PREVIEW CARD + QUICK-EDIT SHEET (PHASE 2)
+// =============================================================================
+
+class _ParsedMutationPreviewItem {
+  const _ParsedMutationPreviewItem({
+    required this.title,
+    required this.details,
+  });
+
+  final String title;
+  final List<String> details;
+}
+
+class _SecretaryMutationPreviewCard extends StatelessWidget {
+  const _SecretaryMutationPreviewCard({
+    required this.rawText,
+    required this.onQuickReply,
+  });
+
+  final String rawText;
+  final ValueChanged<String> onQuickReply;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.appColors;
+    final isEn = Directionality.of(context) == TextDirection.ltr ||
+        rawText.startsWith('🔍 Review') ||
+        rawText.startsWith('⚠️ Confirm');
+    final isDestructive = rawText.startsWith('⚠️');
+    final isComplete =
+        rawText.contains('التعليم كمكتملة') || rawText.contains('completing');
+    final isUpdate =
+        rawText.contains('قبل التعديل') || rawText.contains('before updating');
+
+    final lines = rawText
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    final headerText = lines.isNotEmpty ? lines.first : '';
+    final items = _parseItems(lines);
+
+    final accentColor = isDestructive ? c.danger : c.primary;
+    final softBg = isDestructive
+        ? c.danger.withValues(alpha: 0.1)
+        : c.primarySoft;
+
+    final badgeTitle = isDestructive
+        ? (isEn ? 'Confirm Before Deleting' : 'تأكيد قبل الحذف')
+        : isUpdate
+            ? (isEn ? 'Review Before Updating' : 'مراجعة قبل التعديل')
+            : isComplete
+                ? (isEn ? 'Review Before Completing' : 'مراجعة قبل التعليم كمكتملة')
+                : (isEn ? 'Review Before Saving' : 'مراجعة قبل الحفظ');
+
+    final subtitle = isDestructive
+        ? (isEn
+            ? 'Nothing has been deleted yet — review carefully'
+            : 'لم يتم الحذف بعد — راجع قبل التأكيد')
+        : (isEn
+            ? 'Draft only — nothing saved until you confirm'
+            : 'مسودة فقط — لم يتم الحفظ حتى تعتمدها');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Banner
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+          decoration: BoxDecoration(
+            color: softBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: accentColor.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isDestructive
+                      ? Icons.delete_forever_rounded
+                      : Icons.fact_check_outlined,
+                  size: 19,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      badgeTitle,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: c.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // Staged items
+        if (items.isEmpty)
+          Text(
+            headerText,
+            style: TextStyle(
+              fontSize: 13.5,
+              color: c.textPrimary,
+              height: 1.45,
+            ),
+          )
+        else
+          for (var i = 0; i < items.length; i++) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: c.surfaceSoft,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDestructive
+                      ? c.danger.withValues(alpha: 0.3)
+                      : c.border,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    items[i].title,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  if (items[i].details.isNotEmpty) ...[
+                    const SizedBox(height: 7),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final d in items[i].details)
+                          _MiniMetaBadge(
+                            icon: _detailIcon(d),
+                            label: d,
+                            color: c.textPrimary,
+                            bgColor: c.surface,
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (i < items.length - 1) const SizedBox(height: 8),
+          ],
+
+        const SizedBox(height: 12),
+
+        // Action bar: Confirm / Edit / Cancel
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ElevatedButton.icon(
+              onPressed: () => onQuickReply(
+                isDestructive
+                    ? (isEn ? 'confirm delete' : 'تأكيد الحذف')
+                    : (isEn ? 'confirm' : 'اعتمد'),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDestructive ? c.danger : c.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: Icon(
+                isDestructive
+                    ? Icons.delete_outline_rounded
+                    : Icons.check_circle_outline_rounded,
+                size: 17,
+              ),
+              label: Text(
+                isDestructive
+                    ? (isEn ? 'Confirm Delete' : 'تأكيد الحذف')
+                    : (isEn ? 'Confirm & Save' : 'اعتماد وحفظ'),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            if (!isDestructive && !isComplete && items.isNotEmpty)
+              OutlinedButton.icon(
+                onPressed: () => _openQuickEditSheet(
+                  context,
+                  item: items.first,
+                  isEn: isEn,
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.primary,
+                  side: BorderSide(color: c.primary.withValues(alpha: 0.45)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: Text(
+                  isEn ? 'Edit' : 'تعديل',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: () => onQuickReply(isEn ? 'cancel' : 'إلغاء'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.textSecondary,
+                side: BorderSide(color: c.border),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.close_rounded, size: 16),
+              label: Text(
+                isEn ? 'Cancel' : 'إلغاء',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  IconData _detailIcon(String detail) {
+    if (detail.contains('التكرار') || detail.contains('Repeats')) {
+      return Icons.repeat_rounded;
+    }
+    if (detail.contains('تنبيه') || detail.contains('Alert')) {
+      return Icons.alarm_rounded;
+    }
+    if (detail.contains('الأولوية') || detail.contains('Priority')) {
+      return Icons.flag_outlined;
+    }
+    return Icons.schedule_rounded;
+  }
+
+  List<_ParsedMutationPreviewItem> _parseItems(List<String> lines) {
+    final out = <_ParsedMutationPreviewItem>[];
+    for (final line in lines.skip(1)) {
+      final m = RegExp(
+        r'^(?:•|[١٢٣٤٥٦\d]+\.)\s*(?:«([^»]+)»|"([^"]+)")(?:\s*—\s*(.+))?$',
+      ).firstMatch(line);
+      if (m != null) {
+        final title = (m.group(1) ?? m.group(2) ?? '').trim();
+        final detailRaw = (m.group(3) ?? '').trim();
+        final details = detailRaw.isEmpty
+            ? const <String>[]
+            : detailRaw
+                .split('•')
+                .map((p) => p.trim())
+                .where((p) => p.isNotEmpty)
+                .toList();
+        if (title.isNotEmpty) {
+          out.add(_ParsedMutationPreviewItem(title: title, details: details));
+        }
+      }
+    }
+    return out;
+  }
+
+  Future<void> _openQuickEditSheet(
+    BuildContext context, {
+    required _ParsedMutationPreviewItem item,
+    required bool isEn,
+  }) async {
+    var initialRecurrence = 'none';
+    var initialAlert = 'alarm';
+    for (final d in item.details) {
+      if (d.contains('يوميًا') || d.contains('Daily')) {
+        initialRecurrence = 'daily';
+      } else if (d.contains('أيام العمل') || d.contains('Weekdays')) {
+        initialRecurrence = 'weekdays';
+      } else if (d.contains('أسبوعيًا') || d.contains('Weekly')) {
+        initialRecurrence = 'weekly';
+      } else if (d.contains('شهريًا') || d.contains('Monthly')) {
+        initialRecurrence = 'monthly';
+      }
+      if (d.contains('إشعار') || d.contains('notification')) {
+        initialAlert = 'notification';
+      }
+    }
+
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MutationQuickEditSheet(
+        initialTitle: item.title,
+        initialRecurrence: initialRecurrence,
+        initialAlertMode: initialAlert,
+        isEn: isEn,
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      onQuickReply(result);
+    }
+  }
+}
+
+class _MutationQuickEditSheet extends StatefulWidget {
+  const _MutationQuickEditSheet({
+    required this.initialTitle,
+    required this.initialRecurrence,
+    required this.initialAlertMode,
+    required this.isEn,
+  });
+
+  final String initialTitle;
+  final String initialRecurrence;
+  final String initialAlertMode;
+  final bool isEn;
+
+  @override
+  State<_MutationQuickEditSheet> createState() =>
+      _MutationQuickEditSheetState();
+}
+
+class _MutationQuickEditSheetState extends State<_MutationQuickEditSheet> {
+  late final TextEditingController _titleController;
+  DateTime? _pickedDate;
+  bool _clearDate = false;
+  TimeOfDay? _pickedTime;
+  late String _recurrence;
+  late String _alertMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.initialTitle);
+    _recurrence = widget.initialRecurrence;
+    _alertMode = widget.initialAlertMode;
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
+
+  String _ymd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String _hm(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  void _submit({required bool applyImmediately}) {
+    final title = _titleController.text.trim();
+    final parts = <String>[
+      widget.isEn ? 'EDIT_DRAFT' : 'تعديل المسودة',
+      if (title.isNotEmpty)
+        widget.isEn ? 'title:$title' : 'العنوان:$title',
+      if (_clearDate)
+        widget.isEn ? 'date:none' : 'التاريخ:بدون'
+      else if (_pickedDate != null)
+        widget.isEn
+            ? 'date:${_ymd(_pickedDate!)}'
+            : 'التاريخ:${_ymd(_pickedDate!)}',
+      if (!_clearDate && _pickedTime != null)
+        widget.isEn
+            ? 'time:${_hm(_pickedTime!)}'
+            : 'الوقت:${_hm(_pickedTime!)}',
+      widget.isEn ? 'recurrence:$_recurrence' : 'التكرار:$_recurrence',
+      widget.isEn ? 'alert:$_alertMode' : 'التنبيه:$_alertMode',
+      'apply:$applyImmediately',
+    ];
+    Navigator.of(context).pop(parts.join(' | '));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.appColors;
+    final isEn = widget.isEn;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    final recurrenceChoices = <(String, String)>[
+      ('none', isEn ? 'Once' : 'مرة واحدة'),
+      ('daily', isEn ? 'Daily' : 'يوميًا'),
+      ('weekdays', isEn ? 'Weekdays' : 'أيام العمل'),
+      ('weekly', isEn ? 'Weekly' : 'أسبوعيًا'),
+      ('monthly', isEn ? 'Monthly' : 'شهريًا'),
+    ];
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+            border: Border.all(color: c.border),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: c.border,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  isEn ? 'Edit Draft Before Saving' : 'تعديل المسودة قبل الحفظ',
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w800,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _titleController,
+                  decoration: InputDecoration(
+                    labelText: isEn ? 'Task Title' : 'عنوان المهمة',
+                    filled: true,
+                    fillColor: c.surfaceSoft,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked =
+                              await HandelhaDateTimePicker.showDateSheet(
+                            context,
+                            initialDate: _pickedDate ?? DateTime.now(),
+                          );
+                          if (picked != null && mounted) {
+                            setState(() {
+                              _pickedDate = picked;
+                              _clearDate = false;
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today_rounded, size: 16),
+                        label: Text(
+                          _clearDate
+                              ? (isEn ? 'No Date' : 'بدون ميعاد')
+                              : _pickedDate != null
+                                  ? _ymd(_pickedDate!)
+                                  : (isEn ? 'Change Date' : 'تغيير التاريخ'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _clearDate
+                            ? null
+                            : () async {
+                                final picked =
+                                    await HandelhaDateTimePicker.showTimeSheet(
+                                  context,
+                                  initialTime: _pickedTime ??
+                                      const TimeOfDay(hour: 18, minute: 0),
+                                );
+                                if (picked != null && mounted) {
+                                  setState(() => _pickedTime = picked);
+                                }
+                              },
+                        icon: const Icon(Icons.access_time_rounded, size: 16),
+                        label: Text(
+                          _pickedTime != null
+                              ? _hm(_pickedTime!)
+                              : (isEn ? 'Change Time' : 'تغيير الوقت'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: TextButton(
+                    onPressed: () => setState(() {
+                      _clearDate = !_clearDate;
+                      if (_clearDate) {
+                        _pickedDate = null;
+                        _pickedTime = null;
+                      }
+                    }),
+                    child: Text(
+                      _clearDate
+                          ? (isEn ? 'Keep original date' : 'إبقاء الميعاد الأصلي')
+                          : (isEn ? 'Remove date' : 'جعلها بدون ميعاد'),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isEn ? 'Recurrence' : 'التكرار',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: c.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final entry in recurrenceChoices)
+                      ChoiceChip(
+                        label: Text(entry.$2),
+                        selected: _recurrence == entry.$1,
+                        onSelected: (_) =>
+                            setState(() => _recurrence = entry.$1),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  isEn ? 'Alert Style' : 'نوع التنبيه',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: c.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: Text(isEn ? '⏰ Ringing Alarm' : '⏰ منبه يرن'),
+                      selected: _alertMode == 'alarm',
+                      onSelected: (_) => setState(() => _alertMode = 'alarm'),
+                    ),
+                    ChoiceChip(
+                      label: Text(
+                        isEn ? '🔔 Quiet Notification' : '🔔 إشعار هادئ',
+                      ),
+                      selected: _alertMode == 'notification',
+                      onSelected: (_) =>
+                          setState(() => _alertMode = 'notification'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _submit(applyImmediately: false),
+                        child: Text(
+                          isEn ? 'Update Preview' : 'تحديث المعاينة',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => _submit(applyImmediately: true),
+                        child: Text(
+                          isEn ? 'Save & Confirm' : 'حفظ واعتماد',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

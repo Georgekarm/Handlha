@@ -18,6 +18,24 @@ class NativeAlarmCapabilities {
 }
 
 @immutable
+class NativeAlarmScheduleResult {
+  const NativeAlarmScheduleResult({
+    required this.scheduled,
+    required this.exact,
+    required this.mode,
+  });
+
+  const NativeAlarmScheduleResult.unavailable()
+      : scheduled = false,
+        exact = false,
+        mode = 'unavailable';
+
+  final bool scheduled;
+  final bool exact;
+  final String mode; // 'exact' | 'inexact' | 'past_time' | 'cancelled' | 'failed' | 'unavailable'
+}
+
+@immutable
 class NativeAlarmAction {
   const NativeAlarmAction({
     required this.action,
@@ -68,6 +86,57 @@ class NativeAlarmBridge {
     });
   }
 
+  Future<NativeAlarmScheduleResult> scheduleAlarmDetailed({
+    required String id,
+    required String title,
+    required int scheduledAtMs,
+    required String alertMode,
+    String? taskId,
+    bool isEn = false,
+  }) async {
+    if (!_isAndroidNative) {
+      return const NativeAlarmScheduleResult.unavailable();
+    }
+    try {
+      final res = await _channel.invokeMethod<dynamic>('scheduleAlarm', {
+        'id': id,
+        'title': title,
+        'scheduledAtMs': scheduledAtMs,
+        'alertMode': alertMode,
+        'taskId': ?taskId,
+        'isEn': isEn,
+      });
+      if (res is Map) {
+        final mode = (res['mode'] ?? 'failed').toString();
+        final scheduled =
+            res['scheduled'] == true || mode == 'exact' || mode == 'inexact';
+        return NativeAlarmScheduleResult(
+          scheduled: scheduled,
+          exact: mode == 'exact',
+          mode: mode,
+        );
+      }
+      if (res is bool) {
+        return NativeAlarmScheduleResult(
+          scheduled: res,
+          exact: res,
+          mode: res ? 'exact' : 'failed',
+        );
+      }
+      return const NativeAlarmScheduleResult(
+        scheduled: false,
+        exact: false,
+        mode: 'failed',
+      );
+    } catch (_) {
+      return const NativeAlarmScheduleResult(
+        scheduled: false,
+        exact: false,
+        mode: 'failed',
+      );
+    }
+  }
+
   Future<bool> scheduleAlarm({
     required String id,
     required String title,
@@ -76,20 +145,15 @@ class NativeAlarmBridge {
     String? taskId,
     bool isEn = false,
   }) async {
-    if (!_isAndroidNative) return false;
-    try {
-      final res = await _channel.invokeMethod<bool>('scheduleAlarm', {
-        'id': id,
-        'title': title,
-        'scheduledAtMs': scheduledAtMs,
-        'alertMode': alertMode,
-        'taskId': ?taskId,
-        'isEn': isEn,
-      });
-      return res ?? false;
-    } catch (_) {
-      return false;
-    }
+    final res = await scheduleAlarmDetailed(
+      id: id,
+      title: title,
+      scheduledAtMs: scheduledAtMs,
+      alertMode: alertMode,
+      taskId: taskId,
+      isEn: isEn,
+    );
+    return res.scheduled;
   }
 
   Future<String?> getDeviceTimeZone() async {

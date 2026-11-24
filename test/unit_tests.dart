@@ -398,8 +398,19 @@ void main() {
       expect(userBTasks.single.title, 'مهمة المستخدم ب المحمية');
     });
 
-    test('pre-provisioned Student preview account signs in with active Student plan and academic seed data', () async {
+    test('Student preview account is disabled by default and seeds local QA data only when explicitly enabled in debug QA', () async {
       final repo = LocalAuthRepository();
+      // Default/production behavior: hardcoded QA credentials must be rejected.
+      final blocked = await repo.signInWithEmail(
+        email: StudentPreviewAccount.email,
+        password: StudentPreviewAccount.password,
+      );
+      expect(blocked, isA<Failure<AppUser>>());
+
+      // Explicit debug QA override: provisions sample data honestly marked as local activation.
+      StudentPreviewAccount.setTestOverrideEnabled(true);
+      addTearDown(() => StudentPreviewAccount.setTestOverrideEnabled(null));
+
       final res = await repo.signInWithEmail(
         email: StudentPreviewAccount.email,
         password: StudentPreviewAccount.password,
@@ -413,7 +424,7 @@ void main() {
       final sub = await LocalSubscriptionStore.loadForUser(student.id);
       expect(sub.isSubscribed, isTrue);
       expect(sub.tier, SubscriptionTier.student);
-      expect(sub.isLocalActivation, isFalse);
+      expect(sub.isLocalActivation, isTrue);
 
       final tasks = (await LocalTaskDatabase.instance.getTasksForUser(student.id)
               as Success<List<Task>>)

@@ -22,6 +22,25 @@ class _PendingClarification {
   final List<Map<String, dynamic>> candidates;
 }
 
+class _PendingMutationDraft {
+  const _PendingMutationDraft({
+    required this.actionKind,
+    required this.toolCalls,
+    required this.originalPrompt,
+    this.alertMode,
+    this.revision = 1,
+  });
+
+  final String actionKind;
+  final List<ToolCall> toolCalls;
+  final String originalPrompt;
+  final String? alertMode;
+  final int revision;
+
+  bool get isDestructive =>
+      actionKind == 'delete_task' || actionKind == 'delete_reminder';
+}
+
 class _TaskRef {
   const _TaskRef({
     required this.id,
@@ -52,6 +71,9 @@ class LocalEgyptianLlmService implements LLMService {
     DeterministicSchedulePlanner? planner,
     this.languageCodeProvider,
     this.onAlertModeSelected,
+    this.onTelemetryEvent,
+    this.onDraftConfirmLatency,
+    this.requireMutationConfirmation = true,
   })  : _nlu = EgyptianNluAnalyzer(intentModel: intentModel),
         _planner = planner ?? const DeterministicSchedulePlanner() {
     _planning = PlanningCoordinator(
@@ -61,15 +83,37 @@ class LocalEgyptianLlmService implements LLMService {
     );
   }
 
+  static const Set<String> _writeToolNames = {
+    'create_task',
+    'update_task',
+    'delete_task',
+    'complete_task',
+    'create_reminder',
+    'update_reminder',
+    'delete_reminder',
+  };
+
   final EgyptianNluAnalyzer _nlu;
   final DeterministicSchedulePlanner _planner;
   final String Function()? languageCodeProvider;
   final void Function(String alertMode)? onAlertModeSelected;
+  final void Function(String eventName)? onTelemetryEvent;
+  final void Function(int latencyMs)? onDraftConfirmLatency;
+
+  /// Enforces explicit user preview & confirmation before ANY write/destructive
+  /// tool execution (`create_task`, `update_task`, `delete_task`, `complete_task`,
+  /// `create_reminder`, `update_reminder`, `delete_reminder`). Enabled by default.
+  final bool requireMutationConfirmation;
   late final PlanningCoordinator _planning;
 
   final Map<String, _PendingClarification> _pendingByCid = {};
+  final Map<String, _PendingMutationDraft> _pendingDraftByCid = {};
+  final Map<String, DateTime> _draftStagedAtByCid = {};
   final Map<String, List<_TaskRef>> _recentRefsByCid = {};
   int _callSeq = 0;
+
+  bool hasPendingMutationDraft(String conversationId) =>
+      _pendingDraftByCid.containsKey(conversationId);
 
   bool get _isEnglish =>
       (languageCodeProvider?.call() ?? 'ar').toLowerCase().startsWith('en');
@@ -169,11 +213,50 @@ class LocalEgyptianLlmService implements LLMService {
       return planningReply;
     }
 
-    // 3. Pending breakdown confirmation follow-up ("تمام ضيفهم")
+    // 2b. Active mutation preview draft (Confirm / Edit / Cancel before ANY write)
+    final pendingDraft = _pendingDraftByCid[cid];
+    if (pendingDraft != null) {
+      final draftReply = _handlePendingMutationDraft(
+        cid: cid,
+        draft: pendingDraft,
+        raw: raw,
+        norm: norm,
+        now: now,
+      );
+      if (draftReply != null) {
+        return draftReply;
+      }
+    }
+
+    // 3. Pending breakdown confirmation follow-up ("تمام ضيفهم") — already previewed!
     final confirmBreakdown = _maybeConfirmBreakdownFollowUp(norm, request.messages, now);
     if (confirmBreakdown != null && confirmBreakdown.isNotEmpty) {
       return LlmReply(toolCalls: confirmBreakdown);
     }
+
+    // Route normal turn and guard every write/destructive tool behind preview confirmation.
+    final reply = await _routeTurn(
+      cid: cid,
+      raw: raw,
+      norm: norm,
+      now: now,
+      request: request,
+    );
+    return _stageWriteCallsIfNeeded(
+      cid: cid,
+      reply: reply,
+      now: now,
+      rawPrompt: raw,
+    );
+  }
+
+  Future<LlmReply> _routeTurn({
+    required String cid,
+    required String raw,
+    required String norm,
+    required DateTime now,
+    required LlmRequest request,
+  }) async {
 
     // 4. Pending clarification merge from previous turn (e.g. "ضيف العربي" -> "مذاكرة عربي بكرة")
     final pending = _pendingByCid[cid];
@@ -1136,13 +1219,16 @@ class LocalEgyptianLlmService implements LLMService {
       if (allTasks.length == 1) {
         _pendingByCid.remove(cid);
         final one = allTasks.first;
-        return LlmReply(
-          toolCalls: [
-            _call(pending.action, {
-              'task_id': one['task_id'] ?? one['id'],
-              ...pending.knownFields,
-            }),
-          ],
+        final call = _call(pending.action, {
+          'task_id': one['task_id'] ?? one['id'],
+          if (one['title'] != null) '_preview_title': one['title'],
+          ...pending.knownFields,
+        });
+        return _stageWriteCallsIfNeeded(
+          cid: cid,
+          reply: LlmReply(toolCalls: [call]),
+          now: now,
+          rawPrompt: lastUserRaw,
         );
       }
       _pendingByCid[cid] = _PendingClarification(
@@ -1278,9 +1364,445 @@ class LocalEgyptianLlmService implements LLMService {
           if (spec.date != null) 'date': _ymd(spec.date!),
           if (spec.date != null && spec.time != null) 'time': spec.time!,
           'priority': spec.priority,
+          if (spec.recurrence != 'none') 'recurrence': spec.recurrence,
           if (spec.category != null) 'category': spec.category!,
         }),
     ];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Confirm-Before-Write Preview Gate (Preview -> Edit -> Confirm -> Execute)
+  // ---------------------------------------------------------------------------
+
+  LlmReply _stageWriteCallsIfNeeded({
+    required String cid,
+    required LlmReply reply,
+    required DateTime now,
+    required String rawPrompt,
+  }) {
+    if (!requireMutationConfirmation || reply.toolCalls.isEmpty) {
+      return reply;
+    }
+    final hasWrite = reply.toolCalls.any(
+      (c) => _writeToolNames.contains(c.name),
+    );
+    if (!hasWrite) return reply;
+
+    final cleanedCalls = [
+      for (final call in reply.toolCalls)
+        ToolCall(
+          id: call.id,
+          name: call.name,
+          arguments: Map<String, dynamic>.from(call.arguments)
+            ..remove('_preview_title'),
+        ),
+    ];
+    final previewTitles = <String, String>{
+      for (final call in reply.toolCalls)
+        if (call.arguments['_preview_title'] != null)
+          call.id: call.arguments['_preview_title'].toString(),
+    };
+
+    final draft = _PendingMutationDraft(
+      actionKind: cleanedCalls.first.name,
+      toolCalls: cleanedCalls,
+      originalPrompt: rawPrompt,
+    );
+    _pendingDraftByCid[cid] = draft;
+    _draftStagedAtByCid[cid] = DateTime.now();
+    onTelemetryEvent?.call('preview_shown');
+    return LlmReply(
+      text: _formatMutationPreview(
+        draft,
+        now,
+        previewTitles: previewTitles,
+        cid: cid,
+      ),
+    );
+  }
+
+  LlmReply? _handlePendingMutationDraft({
+    required String cid,
+    required _PendingMutationDraft draft,
+    required String raw,
+    required String norm,
+    required DateTime now,
+  }) {
+    // 1. Explicit cancellation -> ZERO DB writes.
+    if (_isDraftCancel(norm)) {
+      _pendingDraftByCid.remove(cid);
+      _draftStagedAtByCid.remove(cid);
+      onTelemetryEvent?.call('draft_cancelled');
+      return LlmReply(
+        text: _tr(
+          'تمام، لغيت المسودة من غير أي تغيير في جدولك.',
+          'Cancelled — left your tasks completely unchanged.',
+        ),
+      );
+    }
+
+    // 2. Explicit confirmation -> execute exact staged tool calls once.
+    if (_isDraftConfirm(norm)) {
+      _pendingDraftByCid.remove(cid);
+      final stagedAt = _draftStagedAtByCid.remove(cid);
+      if (stagedAt != null) {
+        final ms = DateTime.now().difference(stagedAt).inMilliseconds;
+        if (ms >= 0) onDraftConfirmLatency?.call(ms);
+      }
+      onTelemetryEvent?.call('draft_confirmed');
+      return LlmReply(toolCalls: draft.toolCalls);
+    }
+
+    // 3. Structured quick-edit command emitted by the UI Quick-Edit Sheet.
+    if (raw.startsWith('تعديل المسودة |') || raw.startsWith('EDIT_DRAFT |')) {
+      final updated = _applyStructuredQuickEdit(draft, raw, now);
+      onTelemetryEvent?.call('draft_edited');
+      if (updated.applyImmediately) {
+        _pendingDraftByCid.remove(cid);
+        final stagedAt = _draftStagedAtByCid.remove(cid);
+        if (stagedAt != null) {
+          final ms = DateTime.now().difference(stagedAt).inMilliseconds;
+          if (ms >= 0) onDraftConfirmLatency?.call(ms);
+        }
+        onTelemetryEvent?.call('draft_confirmed');
+        return LlmReply(toolCalls: updated.draft.toolCalls);
+      }
+      _pendingDraftByCid[cid] = updated.draft;
+      return LlmReply(
+        text: _formatMutationPreview(updated.draft, now, cid: cid),
+      );
+    }
+
+    // 4. Conversational in-place edit ("خليها الساعة 9", "خليها الخميس", "غيّر العنوان لـ ...", "خليها شهريًا").
+    final edited = _tryApplyConversationalDraftEdit(draft, raw, norm, now);
+    if (edited != null) {
+      _pendingDraftByCid[cid] = edited;
+      onTelemetryEvent?.call('draft_edited');
+      return LlmReply(
+        text: _formatMutationPreview(edited, now, cid: cid),
+      );
+    }
+
+    // 5. Unrelated new command/query -> discard stale draft and process normally.
+    _pendingDraftByCid.remove(cid);
+    return null;
+  }
+
+  bool _isDraftConfirm(String norm) {
+    final cleaned = norm.trim();
+    if (cleaned.isEmpty) return false;
+    return RegExp(
+      r'^(?:تمام|ايوه|أيوة|اه|آه|موافق|اعتمد|اعتمدها|اعتمدهم|احفظ|احفظها|احفظهم|سجل|سجلها|ضيفها|ضيفهم|نفذ|نفذها|تاكيد|تأكيد|تأكيد\s+الحذف|تاكيد\s+الحذف|امسح\s+فعلا|yes|yeah|yep|ok|okay|sure|confirm|approve|save|apply|confirm\s+delete)(?:\s+(?:احفظ|اعتمد|ضيفها|ضيفهم|يا\s+سيدي|لو\s+سمحت|please))?$',
+      caseSensitive: false,
+    ).hasMatch(cleaned);
+  }
+
+  bool _isDraftCancel(String norm) {
+    final cleaned = norm.trim();
+    if (cleaned.isEmpty) return false;
+    return RegExp(
+      r'^(?:لا|لأ|لا\s+خلاص|الغي|إلغاء|الغاء|الغيها|الغيه|خلاص|سيبك|مش\s+عايز|بلاش|تراجع|no|nope|cancel|discard|abort|nevermind|never\s+mind|forget\s+it)$',
+      caseSensitive: false,
+    ).hasMatch(cleaned);
+  }
+
+  ({
+    _PendingMutationDraft draft,
+    bool applyImmediately,
+  }) _applyStructuredQuickEdit(
+    _PendingMutationDraft draft,
+    String raw,
+    DateTime now,
+  ) {
+    final parts = raw.split('|').skip(1);
+    String? newTitle;
+    String? newDate;
+    String? newTime;
+    String? newRecurrence;
+    String? newAlertMode;
+    var applyNow = false;
+
+    for (final part in parts) {
+      final idx = part.indexOf(':');
+      if (idx <= 0) continue;
+      final key = part.substring(0, idx).trim().toLowerCase();
+      final val = part.substring(idx + 1).trim();
+      if (val.isEmpty) continue;
+      switch (key) {
+        case 'title' || 'العنوان':
+          newTitle = val;
+        case 'date' || 'التاريخ':
+          if (val == 'none' || val == 'بدون') {
+            newDate = '';
+          } else {
+            newDate = val;
+          }
+        case 'time' || 'الوقت':
+          if (val == 'none' || val == 'بدون') {
+            newTime = '';
+          } else {
+            newTime = val;
+          }
+        case 'recurrence' || 'التكرار':
+          newRecurrence = val;
+        case 'alert' || 'التنبيه':
+          newAlertMode = val;
+          onAlertModeSelected?.call(val == 'notification' ? 'notification' : 'alarm');
+        case 'apply':
+          applyNow = val == 'true';
+      }
+    }
+
+    final updatedCalls = <ToolCall>[];
+    for (var i = 0; i < draft.toolCalls.length; i++) {
+      final c = draft.toolCalls[i];
+      if (i > 0) {
+        updatedCalls.add(c);
+        continue;
+      }
+      final args = Map<String, dynamic>.from(c.arguments);
+      if (newTitle != null && newTitle.isNotEmpty) {
+        args['title'] = newTitle;
+      }
+      if (newDate != null) {
+        if (newDate.isEmpty) {
+          args.remove('date');
+          args.remove('time');
+        } else {
+          args['date'] = newDate;
+        }
+      }
+      if (newTime != null) {
+        if (newTime.isEmpty) {
+          args.remove('time');
+        } else {
+          args['time'] = newTime;
+          args.putIfAbsent('date', () => _ymd(now));
+        }
+      }
+      if (newRecurrence != null &&
+          const {'none', 'daily', 'weekdays', 'weekly', 'monthly'}
+              .contains(newRecurrence)) {
+        args['recurrence'] = newRecurrence;
+      }
+      updatedCalls.add(ToolCall(id: c.id, name: c.name, arguments: args));
+    }
+
+    return (
+      draft: _PendingMutationDraft(
+        actionKind: draft.actionKind,
+        toolCalls: updatedCalls,
+        originalPrompt: draft.originalPrompt,
+        alertMode: newAlertMode ?? draft.alertMode,
+        revision: draft.revision + 1,
+      ),
+      applyImmediately: applyNow,
+    );
+  }
+
+  _PendingMutationDraft? _tryApplyConversationalDraftEdit(
+    _PendingMutationDraft draft,
+    String raw,
+    String norm,
+    DateTime now,
+  ) {
+    if (draft.isDestructive) return null;
+
+    final editDate = _nlu.parseDate(norm, now);
+    final editTime = _nlu.parseTime(norm);
+    final editRecurrence = _nlu.parseRecurrence(norm);
+    final editPrio = _nlu.parseExplicitPriority(norm);
+    final wantsAlarm = _nlu.containsAny(norm, ['منبه', 'يرن', 'alarm']);
+    final wantsNotif =
+        _nlu.containsAny(norm, ['رساله', 'اشعار', 'نوتفيكيشن', 'notification']);
+    final titleMatch = RegExp(
+      r'(?:غير|غيّر|عدل|عدّل|سميها|سمّيها|خلي\s+العنوان|خلي\s+الاسم|rename\s+to|change\s+title\s+to)\s*(?:العنوان|الاسم)?\s*(?:لـ|ل|إلى|الى|to)?\s*(.+)$',
+      caseSensitive: false,
+    ).firstMatch(raw.trim());
+    final newTitle = titleMatch?.group(1)?.trim();
+
+    final isEditLike = editDate != null ||
+        editTime != null ||
+        editRecurrence != 'none' ||
+        editPrio != null ||
+        wantsAlarm ||
+        wantsNotif ||
+        (newTitle != null && newTitle.isNotEmpty);
+    if (!isEditLike) return null;
+
+    // Avoid hijacking a brand-new full command ("ضيفلي...", "وريني...", "امسح...").
+    if (RegExp(
+      r'^(?:ضيف|سجل|حط|وريني|ايه\s+اللي|امسح|احذف|شيل|رتبلي|لخص|اهلا|add\s+|create\s+|delete\s+|show\s+)',
+      caseSensitive: false,
+    ).hasMatch(norm)) {
+      return null;
+    }
+
+    String? nextAlert = draft.alertMode;
+    if (wantsNotif && !wantsAlarm) {
+      nextAlert = 'notification';
+      onAlertModeSelected?.call('notification');
+    } else if (wantsAlarm) {
+      nextAlert = 'alarm';
+      onAlertModeSelected?.call('alarm');
+    }
+
+    final updatedCalls = <ToolCall>[];
+    for (var i = 0; i < draft.toolCalls.length; i++) {
+      final c = draft.toolCalls[i];
+      if (i > 0) {
+        updatedCalls.add(c);
+        continue;
+      }
+      final args = Map<String, dynamic>.from(c.arguments);
+      if (newTitle != null && newTitle.isNotEmpty) {
+        args['title'] = newTitle;
+      }
+      if (editDate != null) {
+        args['date'] = _ymd(editDate);
+        args.remove('in_minutes');
+      }
+      if (editTime != null) {
+        args['time'] = editTime;
+        args.putIfAbsent('date', () => _ymd(now));
+        args.remove('in_minutes');
+      }
+      if (editRecurrence != 'none') {
+        args['recurrence'] = editRecurrence;
+      }
+      if (editPrio != null) {
+        args['priority'] = editPrio;
+      }
+      updatedCalls.add(ToolCall(id: c.id, name: c.name, arguments: args));
+    }
+
+    return _PendingMutationDraft(
+      actionKind: draft.actionKind,
+      toolCalls: updatedCalls,
+      originalPrompt: draft.originalPrompt,
+      alertMode: nextAlert,
+      revision: draft.revision + 1,
+    );
+  }
+
+  String _formatMutationPreview(
+    _PendingMutationDraft draft,
+    DateTime now, {
+    Map<String, String> previewTitles = const {},
+    String cid = 'default',
+  }) {
+    final revSuffix = draft.revision > 1
+        ? _tr(' • تعديل ${draft.revision}', ' • rev ${draft.revision}')
+        : '';
+
+    String resolveTargetLabel(ToolCall call) {
+      final a = call.arguments;
+      final direct = (previewTitles[call.id] ?? a['title'] ?? a['query'] ?? '')
+          .toString()
+          .trim();
+      if (direct.isNotEmpty) return direct;
+      final taskId = a['task_id']?.toString();
+      if (taskId != null && taskId.isNotEmpty) {
+        final match = (_recentRefsByCid[cid] ?? const <_TaskRef>[])
+            .where((r) => r.id == taskId)
+            .firstOrNull;
+        if (match != null) return match.title;
+      }
+      return _tr('المهمة المحددة', 'selected task');
+    }
+
+    String recurrenceLabel(String? r) => switch (r) {
+          'daily' => _tr('يوميًا', 'Daily'),
+          'weekdays' => _tr('أيام العمل', 'Weekdays'),
+          'weekly' => _tr('أسبوعيًا', 'Weekly'),
+          'monthly' => _tr('شهريًا', 'Monthly'),
+          _ => '',
+        };
+
+    if (draft.isDestructive) {
+      final lines = [
+        for (final call in draft.toolCalls)
+          '• ${_quote(resolveTargetLabel(call))}',
+      ].join('\n');
+      return _tr(
+        '⚠️ تأكيد قبل الحذف (لم يتم الحذف بعد$revSuffix):\n'
+        '$lines\n'
+        'اضغط «تأكيد الحذف» للمتابعة أو «إلغاء» للتراجع.',
+        '⚠️ Confirm before deleting (not deleted yet$revSuffix):\n'
+        '$lines\n'
+        'Tap "Confirm Delete" to proceed or "Cancel" to keep your tasks.',
+      );
+    }
+
+    if (draft.actionKind == 'update_task' ||
+        draft.actionKind == 'update_reminder') {
+      final call = draft.toolCalls.first;
+      final a = call.arguments;
+      final label = resolveTargetLabel(call);
+      final when = _formatWhen(a['date']?.toString(), a['time']?.toString(), now);
+      final rec = recurrenceLabel(a['recurrence']?.toString());
+      final details = [
+        if (when.isNotEmpty) _tr('الميعاد الجديد: $when', 'New time: $when'),
+        if (a['priority'] != null)
+          _tr('الأولوية: ${a['priority']}', 'Priority: ${a['priority']}'),
+        if (rec.isNotEmpty) _tr('التكرار: $rec', 'Repeats: $rec'),
+      ].join(' • ');
+      return _tr(
+        '🔍 مراجعة قبل التعديل (مسودة — لم يتم التعديل بعد$revSuffix):\n'
+        '• ${_quote(label)}${details.isEmpty ? '' : ' — $details'}\n'
+        'اضغط «اعتماد وحفظ» للتنفيذ، أو عدّل أي تفصيلة، أو «إلغاء».',
+        '🔍 Review before updating (draft — not applied yet$revSuffix):\n'
+        '• ${_quote(label)}${details.isEmpty ? '' : ' — $details'}\n'
+        'Tap "Confirm & Save", edit any detail, or "Cancel".',
+      );
+    }
+
+    if (draft.actionKind == 'complete_task') {
+      final label = resolveTargetLabel(draft.toolCalls.first);
+      return _tr(
+        '🔍 مراجعة قبل التعليم كمكتملة (لم يتم التعديل بعد$revSuffix):\n'
+        '• ${_quote(label)}\n'
+        'اضغط «اعتماد وحفظ» للتأكيد أو «إلغاء».',
+        '🔍 Review before completing (not changed yet$revSuffix):\n'
+        '• ${_quote(label)}\n'
+        'Tap "Confirm & Save" or "Cancel".',
+      );
+    }
+
+    // create_task / create_reminder (single or multi-clause)
+    final lines = <String>[];
+    for (var i = 0; i < draft.toolCalls.length; i++) {
+      final call = draft.toolCalls[i];
+      final a = call.arguments;
+      final title = resolveTargetLabel(call);
+      String when = _formatWhen(a['date']?.toString(), a['time']?.toString(), now);
+      if (when.isEmpty && a['in_minutes'] != null) {
+        final mins = (a['in_minutes'] as num).toInt();
+        when = _tr('بعد $mins دقيقة', 'in $mins min');
+      }
+      final rec = recurrenceLabel(a['recurrence']?.toString());
+      final parts = <String>[
+        when.isEmpty
+            ? _tr('بدون ميعاد محدد', 'No specific date')
+            : _tr('الميعاد: $when', 'When: $when'),
+        if (rec.isNotEmpty) _tr('التكرار: $rec', 'Repeats: $rec'),
+        if (call.name == 'create_reminder' || draft.alertMode != null)
+          (draft.alertMode == 'notification'
+              ? _tr('تنبيه: إشعار هادئ', 'Alert: Quiet notification')
+              : _tr('تنبيه: منبه يرن', 'Alert: Ringing alarm')),
+      ];
+      final prefix = draft.toolCalls.length > 1 ? '${_indexLabel(i + 1)} ' : '• ';
+      lines.add('$prefix${_quote(title)} — ${parts.join(' • ')}');
+    }
+
+    return _tr(
+      '🔍 مراجعة قبل الحفظ (مسودة — لم يتم الحفظ بعد$revSuffix):\n'
+      '${lines.join('\n')}\n'
+      'راجع العنوان والميعاد: اضغط «اعتماد وحفظ»، أو «تعديل»، أو «إلغاء».',
+      '🔍 Review before saving (draft — not saved yet$revSuffix):\n'
+      '${lines.join('\n')}\n'
+      'Check title & timing: tap "Confirm & Save", "Edit", or "Cancel".',
+    );
   }
 
   List<Map<String, dynamic>> _mergeTaskLists(
@@ -1370,32 +1892,39 @@ class LocalEgyptianLlmService implements LLMService {
       final d = entry.result.data;
       final title = (d['title'] ?? _tr('المهمة', 'the task')).toString();
       final when = _formatWhen(d['date'] as String?, d['time'] as String?, now);
+      final scheduleNote = _scheduleStatusNote(d['schedule_status']?.toString());
       if (entry.name == 'create_reminder') {
         final isAlarm = (d['alert_mode'] ?? 'alarm').toString() == 'alarm';
         final whenText = when.isEmpty ? '' : _tr(' في ميعاد $when', ' for $when');
         return _tr(
           isAlarm
-              ? 'تمام، ظبطتلك «$title»$whenText كمنبه يرن بصوت واضح وضفته في جدولك.'
-              : 'تمام، ظبطتلك «$title»$whenText كرسالة إشعار في ميعادها وضفتها في جدولك.',
+              ? 'تمام، ظبطتلك «$title»$whenText كمنبه وضفته في جدولك.$scheduleNote'
+              : 'تمام، ظبطتلك «$title»$whenText كرسالة إشعار وضفتها في جدولك.$scheduleNote',
           isAlarm
-              ? 'All set — scheduled "$title"$whenText as a ringing alarm and added it to your schedule.'
-              : 'All set — scheduled "$title"$whenText as a quiet notification and added it to your schedule.',
+              ? 'All set — saved "$title"$whenText as an alarm in your schedule.$scheduleNote'
+              : 'All set — saved "$title"$whenText as a quiet notification in your schedule.$scheduleNote',
         );
       }
       if (_isEnglish) {
         final whenText = when.isEmpty ? '' : ' ($when)';
-        return 'Added "$title"$whenText to your tasks. Want me to break it into steps or plan your day?';
+        return 'Added "$title"$whenText to your tasks.$scheduleNote Want to start a focus step or plan your day?';
       }
       final whenText = when.isEmpty ? '' : ' في ميعاد $when';
-      return 'تمام، ضفتلك «$title»$whenText. تحب نقسّمها لخطوات أو نرتّب جدولك؟';
+      return 'تمام، ضفتلك «$title»$whenText.$scheduleNote تحب نبدأ خطوة تركيز دلوقتي أو نقسّمها لخطوات؟';
     }
     final lines = <String>[];
+    String? degradedStatus;
     for (var i = 0; i < succeeded.length; i++) {
       final d = succeeded[i].result.data;
       final title = (d['title'] ?? _tr('مهمة', 'Task')).toString();
       final when = _formatWhen(d['date'] as String?, d['time'] as String?, now);
+      final st = d['schedule_status']?.toString();
+      if (st == 'permissionDenied' || st == 'inexactFallback') {
+        degradedStatus ??= st;
+      }
       lines.add('${_indexLabel(i + 1)} ${_quote(title)}${when.isEmpty ? '' : ' — $when'}');
     }
+    final scheduleNote = _scheduleStatusNote(degradedStatus);
     final failNote = failedCount > 0
         ? _tr(
             '\n(ملحوظة: $failedCount عنصر متسجلش لعدم اكتمال بياناته.)',
@@ -1403,9 +1932,25 @@ class LocalEgyptianLlmService implements LLMService {
           )
         : '';
     return _tr(
-      'تمام! ضفتلك ${succeeded.length} مهام في جدولك:\n${lines.join('\n')}$failNote',
-      'Added ${succeeded.length} tasks to your schedule:\n${lines.join('\n')}$failNote',
+      'تمام! ضفتلك ${succeeded.length} مهام في جدولك:\n${lines.join('\n')}$scheduleNote$failNote',
+      'Added ${succeeded.length} tasks to your schedule:\n${lines.join('\n')}$scheduleNote$failNote',
     );
+  }
+
+  String _scheduleStatusNote(String? status) {
+    if (status == 'permissionDenied') {
+      return _tr(
+        '\n⚠️ تنبيه: لم تتم جدولة المنبه لأن إذن الإشعارات مرفوض على النظام — فعّله من الإشعارات.',
+        '\n⚠️ Warning: Reminder was NOT scheduled because notification permission is denied on this device.',
+      );
+    }
+    if (status == 'inexactFallback') {
+      return _tr(
+        '\nℹ️ ملحوظة: التذكير مجدول بتوقيت تقريبي لأن إذن المنبه الدقيق غير مفعّل.',
+        '\nℹ️ Note: Scheduled as an approximate reminder because exact alarm permission is not enabled.',
+      );
+    }
+    return '';
   }
 
   String _buildBreakdownReply(

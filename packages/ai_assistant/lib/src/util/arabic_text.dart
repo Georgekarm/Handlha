@@ -60,7 +60,7 @@ class ArabicText {
       resolveSelfCorrection(String raw) {
     final cleaned = raw.trim();
     final pivot = RegExp(
-      r'(?:^|\s)(?:—|-|،|,)?\s*(?:لأ\s+قصدي|لا\s+قصدي|لا\s+لا(?:\s+قصدي|\s+خليها)?|أقصد|اقصد|قصدي|no\s+i\s+meant|no\s+sorry|i\s+meant)\s+',
+      r'(?:^|\s)(?:—|-|،|,)?\s*(?:لأ\s+قصدي|لا\s+قصدي|لا\s+لا(?:\s+قصدي|\s+خليها)?|لا\s+(?:اسف|آسف)|لأ\s+(?:اسف|آسف)|لا\s+(?:خليها|خلّيها|خليه|خلّيه)|لأ\s+(?:خليها|خلّيها|خليه|خلّيه)|مش\s+قصدي|أقصد|اقصد|قصدي|actually\s+no|wait\s+no|no\s+i\s+meant|no\s+sorry|i\s+meant)\s+',
       caseSensitive: false,
     );
     final matches = pivot.allMatches(cleaned).toList();
@@ -114,7 +114,11 @@ class ArabicText {
         caseSensitive: false,
       ),
       RegExp(
-        r'(?:\s+(?:في|على|علي|يوم|لـ|ل|on|by|for|this|next))?\s*(?:بكرة|بكره|بكرا|بعد\s+بكرة|بعد\s+بكره|بعده|النهاردة|النهارده|اليوم|امبارح|أمس|الاسبوع\s+الجاي|الأسبوع\s+الجاي|الشهر\s+الجاي|السبت|الأحد|الاحد|الإثنين|الاثنين|الاتنين|الثلاثاء|التلات|الأربعاء|الأربع|الاربع|الخميس|الجمعة|الجمعه|today|tomorrow|tmr|yesterday|next\s+week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:الجاي|الجاية))?\s*$',
+        r'(?:\s+(?:في|على|علي))?\s*(?:بعد\s+(?:العشا|المغرب|الضهر|الظهر|العصر|الفجر)|الصبح|صباحا|صباحاً|الضهر|الظهر|العصر|المغرب|العشا|بالليل|بليل|مساء|مساءً|نص\s+الليل|morning|afternoon|evening|tonight)\s*$',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'(?:\s+(?:في|على|علي|يوم|لـ|ل|on|by|for|this|next))?\s*(?:بكرة|بكره|بكرا|بعد\s+بكرة|بعد\s+بكره|بعده|النهاردة|النهارده|اليوم|امبارح|أمس|الاسبوع\s+الجاي|الأسبوع\s+الجاي|الشهر\s+الجاي|أول\s+الشهر(?:\s+الجاي)?|اول\s+الشهر(?:\s+الجاي)?|نص\s+الشهر|آخر\s+الشهر|اخر\s+الشهر|الويك\s*اند|الويكند|السبت|الأحد|الاحد|الإثنين|الاثنين|الاتنين|الثلاثاء|التلات|الأربعاء|الأربع|الاربع|الخميس|الجمعة|الجمعه|today|tomorrow|tmr|yesterday|next\s+week|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:الجاي|الجاية))?\s*$',
         caseSensitive: false,
       ),
       RegExp(

@@ -36,6 +36,76 @@ class LocalProjectDatabase {
     }
   }
 
+  Future<Result<List<({Project project, List<Map<String, dynamic>> phases})>>>
+      exportRecordsForUser(String userId) async {
+    try {
+      final records = await _readRecords();
+      final out = <({Project project, List<Map<String, dynamic>> phases})>[];
+      for (final record in records) {
+        final rawProj =
+            (record['project'] as Map?)?.cast<String, dynamic>() ?? record;
+        final project = _fromJson(rawProj);
+        if (project.userId != userId) continue;
+        final rawPhases = record['phases'];
+        final phases = rawPhases is List
+            ? rawPhases.map((e) => (e as Map).cast<String, dynamic>()).toList()
+            : const <Map<String, dynamic>>[];
+        out.add((project: project, phases: phases));
+      }
+      return Success(out);
+    } catch (_) {
+      return const Failure(LocalDatabaseFailure());
+    }
+  }
+
+  Future<Result<void>> upsertRecords(
+    List<({Project project, List<Map<String, dynamic>> phases})> entries,
+  ) =>
+      _serialized(() async {
+        try {
+          final records = await _readRecords();
+          for (final entry in entries) {
+            final index = records.indexWhere(
+              (r) => ((r['project'] as Map?) ?? r)['id'] == entry.project.id,
+            );
+            final record = _toRecord(entry.project, entry.phases);
+            if (index < 0) {
+              records.add(record);
+            } else {
+              records[index] = record;
+            }
+          }
+          await SecureStorageService.instance
+              .writeOrThrow(_key, jsonEncode(records));
+          return const Success(null);
+        } catch (_) {
+          return const Failure(LocalDatabaseFailure());
+        }
+      });
+
+  Future<Result<void>> replaceAllForUser(
+    String userId,
+    List<({Project project, List<Map<String, dynamic>> phases})> entries,
+  ) =>
+      _serialized(() async {
+        try {
+          final records = await _readRecords();
+          records.removeWhere((record) {
+            final project =
+                (record['project'] as Map?)?.cast<String, dynamic>() ?? record;
+            return project['userId'] == userId;
+          });
+          for (final entry in entries) {
+            records.add(_toRecord(entry.project, entry.phases));
+          }
+          await SecureStorageService.instance
+              .writeOrThrow(_key, jsonEncode(records));
+          return const Success(null);
+        } catch (_) {
+          return const Failure(LocalDatabaseFailure());
+        }
+      });
+
   Future<List<Project>> _readAll() async {
     final records = await _readRecords();
     return records.map((record) {

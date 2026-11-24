@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../features/projects/domain/focus_session.dart';
 import '../result/result.dart';
 import '../secure_storage/secure_storage_service.dart';
+import '../telemetry/local_core_loop_telemetry.dart';
 
 class LocalFocusSessionDatabase {
   LocalFocusSessionDatabase._();
@@ -34,6 +35,12 @@ class LocalFocusSessionDatabase {
       final all = await _readAll();
       all.add(session);
       await _writeAll(all);
+      if (completed) {
+        await LocalCoreLoopTelemetry.instance.recordEvent(
+          userId,
+          'focus_completed',
+        );
+      }
       return Success(session);
     } catch (_) {
       return const Failure(LocalDatabaseFailure('تعذّر حفظ جلسة التركيز.'));
@@ -59,6 +66,46 @@ class LocalFocusSessionDatabase {
       return const Failure(LocalDatabaseFailure());
     }
   });
+
+  /// Idempotent upsert by session ID — safe for repeated backup restores.
+  Future<Result<void>> upsertSessions(List<FocusSession> sessions) =>
+      _serialized(() async {
+        try {
+          final all = await _readAll();
+          final byId = <String, int>{
+            for (var i = 0; i < all.length; i++) all[i].id: i,
+          };
+          for (final session in sessions) {
+            final idx = byId[session.id];
+            if (idx == null) {
+              byId[session.id] = all.length;
+              all.add(session);
+            } else {
+              all[idx] = session;
+            }
+          }
+          await _writeAll(all);
+          return const Success(null);
+        } catch (_) {
+          return const Failure(LocalDatabaseFailure());
+        }
+      });
+
+  Future<Result<void>> replaceAllForUser(
+    String userId,
+    List<FocusSession> sessions,
+  ) =>
+      _serialized(() async {
+        try {
+          final remaining =
+              (await _readAll()).where((s) => s.userId != userId).toList();
+          remaining.addAll(sessions);
+          await _writeAll(remaining);
+          return const Success(null);
+        } catch (_) {
+          return const Failure(LocalDatabaseFailure());
+        }
+      });
 
   Future<List<FocusSession>> _readAll() async {
     final raw = await SecureStorageService.instance.readOrThrow(_key);

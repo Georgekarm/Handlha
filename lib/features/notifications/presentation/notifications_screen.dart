@@ -283,6 +283,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                           onToggleEnabled: () => ref
                               .read(alarmReminderProvider.notifier)
                               .toggleItemEnabled(alarmItem.id),
+                          onFixPermission: () => ref
+                              .read(alarmReminderProvider.notifier)
+                              .requestPermission(includeExactAlarm: true),
                           onPreview: () => _previewAlert(
                             id: alarmItem.id,
                             title: alarmItem.title,
@@ -541,6 +544,7 @@ class _ScheduledAlarmCard extends StatelessWidget {
     required this.isEn,
     required this.onToggleMode,
     required this.onToggleEnabled,
+    required this.onFixPermission,
     required this.onPreview,
     required this.onDelete,
   });
@@ -549,8 +553,89 @@ class _ScheduledAlarmCard extends StatelessWidget {
   final bool isEn;
   final VoidCallback onToggleMode;
   final VoidCallback onToggleEnabled;
+  final VoidCallback onFixPermission;
   final VoidCallback onPreview;
   final VoidCallback onDelete;
+
+  Widget? _buildScheduleStatusBanner(AppThemeExtension c) {
+    if (!item.isEnabled) return null;
+    final status = item.scheduleStatus;
+    if (status == 'unknown' || status == 'disabledByPreferences') return null;
+
+    final (IconData icon, Color fg, Color bg, String label, bool needsFix) =
+        switch (status) {
+      'exactScheduled' => (
+          Icons.verified_outlined,
+          c.primary,
+          c.primarySoft,
+          isEn ? 'Scheduled (Exact)' : 'مجدول بدقة',
+          false,
+        ),
+      'inexactFallback' => (
+          Icons.warning_amber_rounded,
+          const Color(0xFFB45309),
+          const Color(0xFFB45309).withValues(alpha: 0.12),
+          isEn
+              ? 'Approximate alarm — tap to enable exact alarm permission'
+              : 'منبه تقريبي — اضغط لتفعيل إذن المنبه الدقيق',
+          true,
+        ),
+      'permissionDenied' => (
+          Icons.notifications_off_outlined,
+          c.danger,
+          c.danger.withValues(alpha: 0.12),
+          isEn
+              ? 'Not scheduled — notification permission denied (tap to fix)'
+              : 'لم تتم الجدولة — إذن الإشعارات مرفوض (اضغط للتفعيل)',
+          true,
+        ),
+      'failed' => (
+          Icons.error_outline_rounded,
+          c.danger,
+          c.danger.withValues(alpha: 0.12),
+          isEn ? 'Scheduling failed on OS' : 'تعذّرت الجدولة على النظام',
+          true,
+        ),
+      _ => (
+          Icons.info_outline_rounded,
+          c.textSecondary,
+          c.surfaceSoft,
+          isEn ? 'Pending schedule' : 'بانتظار الجدولة',
+          false,
+        ),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: InkWell(
+        onTap: needsFix ? onFixPermission : null,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 15, color: fg),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -558,6 +643,7 @@ class _ScheduledAlarmCard extends StatelessWidget {
     final local = item.scheduledAt.toLocal();
     final timeStr = ArabicFormatters.timeOfDayAr(local);
     final dateStr = ArabicFormatters.dateShort(local);
+    final statusBanner = _buildScheduleStatusBanner(c);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -630,6 +716,7 @@ class _ScheduledAlarmCard extends StatelessWidget {
               ),
             ],
           ),
+          ?statusBanner,
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,

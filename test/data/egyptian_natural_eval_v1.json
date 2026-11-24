@@ -1,0 +1,1010 @@
+{
+  "dataset_version": "1.0-authored-egyptian-eval",
+  "honest_provenance": "Authored offline evaluation corpus covering colloquial Egyptian Arabic, Franco-Arabic, mixed Arabizi/English, prayer/period times, recurrence, multi-clause tasks, self-corrections, underspecified prompts, and hard-negative safety traps. Not a substitute for live field user utterances (Phases 3-4).",
+  "fixed_now_iso": "2026-11-22T10:00:00+02:00",
+  "cases": [
+    {
+      "id": "c001",
+      "category": "create_single",
+      "text": "ضيفلي مذاكرة فيزياء بكرة الساعة 6 بالليل",
+      "expected_intent": "create_task",
+      "expected_title_contains": "فيزياء",
+      "expected_date": "2026-11-23",
+      "expected_time": "18:00"
+    },
+    {
+      "id": "c002",
+      "category": "create_single",
+      "text": "عندي اجتماع شغل بكرا الساعة 9 ونص الصبح",
+      "expected_intent": "create_task",
+      "expected_title_contains": "اجتماع",
+      "expected_date": "2026-11-23",
+      "expected_time": "09:30"
+    },
+    {
+      "id": "c003",
+      "category": "create_single",
+      "text": "ورايا تسليم assignment بكرة بعد العشا",
+      "expected_intent": "create_task",
+      "expected_title_contains": "assignment",
+      "expected_date": "2026-11-23",
+      "expected_time": "20:30"
+    },
+    {
+      "id": "c004",
+      "category": "create_single",
+      "text": "سجل شراء طلبات البيت النهارده بعد المغرب",
+      "expected_intent": "create_task",
+      "expected_title_contains": "طلبات البيت",
+      "expected_date": "2026-11-22",
+      "expected_time": "18:30"
+    },
+    {
+      "id": "c005",
+      "category": "create_single",
+      "text": "لازم أروح للبنك بكرة بعد الضهر",
+      "expected_intent": "create_task",
+      "expected_title_contains": "للبنك",
+      "expected_date": "2026-11-23",
+      "expected_time": "14:00"
+    },
+    {
+      "id": "c006",
+      "category": "create_single",
+      "text": "عندي تمرين جيم النهارده بعد العصر",
+      "expected_intent": "create_task",
+      "expected_title_contains": "جيم",
+      "expected_date": "2026-11-22",
+      "expected_time": "16:00"
+    },
+    {
+      "id": "c007",
+      "category": "create_single",
+      "text": "ضيفلي دفع الإيجار أول الشهر الجاي كل شهر",
+      "expected_intent": "create_task",
+      "expected_title_contains": "الإيجار",
+      "expected_date": "2026-12-01",
+      "expected_recurrence": "monthly"
+    },
+    {
+      "id": "c008",
+      "category": "create_single",
+      "text": "سجل فاتورة الكهرباء شهريا أول الشهر",
+      "expected_intent": "create_task",
+      "expected_title_contains": "الكهرباء",
+      "expected_date": "2026-12-01",
+      "expected_recurrence": "monthly"
+    },
+    {
+      "id": "c009",
+      "category": "create_single",
+      "text": "ضيف مراجعة Flutter كل يوم الساعة 8 بالليل",
+      "expected_intent": "create_task",
+      "expected_title_contains": "Flutter",
+      "expected_time": "20:00",
+      "expected_recurrence": "daily"
+    },
+    {
+      "id": "c010",
+      "category": "create_single",
+      "text": "سجل اجتماع المتابعة كل أسبوع يوم الخميس الساعة 11 الصبح",
+      "expected_intent": "create_task",
+      "expected_title_contains": "المتابعة",
+      "expected_date": "2026-11-26",
+      "expected_time": "11:00",
+      "expected_recurrence": "weekly"
+    },
+    {
+      "id": "c011",
+      "category": "create_single",
+      "text": "ضيفلي قراءة 10 صفحات أيام الشغل الساعة 7 الصبح",
+      "expected_intent": "create_task",
+      "expected_title_contains": "قراءة",
+      "expected_time": "07:00",
+      "expected_recurrence": "weekdays"
+    },
+    {
+      "id": "c012",
+      "category": "create_single",
+      "text": "عندي كشف سنان بعد بكرة الساعة 5 وربع مساء",
+      "expected_intent": "create_task",
+      "expected_title_contains": "كشف سنان",
+      "expected_date": "2026-11-24",
+      "expected_time": "17:15"
+    },
+    {
+      "id": "c013",
+      "category": "create_single",
+      "text": "ورايا تسليم تقرير التخرج آخر الشهر",
+      "expected_intent": "create_task",
+      "expected_title_contains": "تقرير التخرج",
+      "expected_date": "2026-11-30"
+    },
+    {
+      "id": "c014",
+      "category": "create_single",
+      "text": "سجّل دفع قسط العربية نص الشهر",
+      "expected_intent": "create_task",
+      "expected_title_contains": "قسط العربية",
+      "expected_date": "2026-12-15"
+    },
+    {
+      "id": "c015",
+      "category": "create_single",
+      "text": "ضيفلي زيارة جدتي في الويك اند",
+      "expected_intent": "create_task",
+      "expected_title_contains": "زيارة جدتي",
+      "expected_date": "2026-11-27"
+    },
+    {
+      "id": "c016",
+      "category": "create_single",
+      "text": "عندي امتحان برمجة bokra الساعة 10 الصبح",
+      "expected_intent": "create_task",
+      "expected_title_contains": "برمجة",
+      "expected_date": "2026-11-23",
+      "expected_time": "10:00"
+    },
+    {
+      "id": "c017",
+      "category": "create_single",
+      "text": "ورايا مراجعة Deep Learning elnharda بالليل",
+      "expected_intent": "create_task",
+      "expected_title_contains": "Deep Learning",
+      "expected_date": "2026-11-22",
+      "expected_time": "20:00"
+    },
+    {
+      "id": "c018",
+      "category": "create_single",
+      "text": "ضيف تسليم مشروع التخرج يوم 28",
+      "expected_intent": "create_task",
+      "expected_title_contains": "مشروع التخرج",
+      "expected_date": "2026-11-28"
+    },
+    {
+      "id": "c019",
+      "category": "create_single",
+      "text": "سجل حل شيت الجبر بكررررة الصبح",
+      "expected_intent": "create_task",
+      "expected_title_contains": "الجبر",
+      "expected_date": "2026-11-23",
+      "expected_time": "09:00"
+    },
+    {
+      "id": "c020",
+      "category": "create_single",
+      "text": "عندي محاضرة شبكات يوم الأربعاء الساعة 12:30",
+      "expected_intent": "create_task",
+      "expected_title_contains": "شبكات",
+      "expected_date": "2026-11-25",
+      "expected_time": "12:30"
+    },
+    {
+      "id": "c021",
+      "category": "create_single",
+      "text": "ضيفلي مكالمة عميل مهم يوم التلات الساعة 9 الا ربع بالليل",
+      "expected_intent": "create_task",
+      "expected_title_contains": "عميل",
+      "expected_date": "2026-11-24",
+      "expected_time": "20:45"
+    },
+    {
+      "id": "c022",
+      "category": "create_single",
+      "text": "سجّل تجديد اشتراك النت يوم 5 الشهر الجاي",
+      "expected_intent": "create_task",
+      "expected_title_contains": "اشتراك النت",
+      "expected_date": "2026-12-05"
+    },
+    {
+      "id": "c023",
+      "category": "create_single",
+      "text": "ضيف مذاكرة كيمياء بعد 3 أيام",
+      "expected_intent": "create_task",
+      "expected_title_contains": "كيمياء",
+      "expected_date": "2026-11-25"
+    },
+    {
+      "id": "c024",
+      "category": "create_single",
+      "text": "ورايا صيانة العربية يوم السبت الصبح",
+      "expected_intent": "create_task",
+      "expected_title_contains": "صيانة العربية",
+      "expected_date": "2026-11-28",
+      "expected_time": "09:00"
+    },
+    {
+      "id": "c025",
+      "category": "create_single",
+      "text": "add code review task tomorrow at 4 pm",
+      "expected_intent": "create_task",
+      "expected_title_contains": "code review",
+      "expected_date": "2026-11-23",
+      "expected_time": "16:00"
+    },
+    {
+      "id": "c026",
+      "category": "create_single",
+      "text": "ضيفلي قراءة قرآن بعد الفجر كل يوم",
+      "expected_intent": "create_task",
+      "expected_title_contains": "قرآن",
+      "expected_time": "05:30",
+      "expected_recurrence": "daily"
+    },
+    {
+      "id": "c027",
+      "category": "create_single",
+      "text": "سجّل دفع مصاريف الجامعة الأسبوع الجاي",
+      "expected_intent": "create_task",
+      "expected_title_contains": "مصاريف الجامعة",
+      "expected_date": "2026-11-29"
+    },
+    {
+      "id": "c028",
+      "category": "create_single",
+      "text": "عندي برزنتيشن AI يوم الاتنين الساعة 2 الضهر",
+      "expected_intent": "create_task",
+      "expected_title_contains": "AI",
+      "expected_date": "2026-11-23",
+      "expected_time": "14:00"
+    },
+    {
+      "id": "c029",
+      "category": "create_single",
+      "text": "ضيفلي تنظيم أوراق الضرايب كل شهر يوم 1",
+      "expected_intent": "create_task",
+      "expected_title_contains": "الضرايب",
+      "expected_date": "2026-12-01",
+      "expected_recurrence": "monthly"
+    },
+    {
+      "id": "c030",
+      "category": "create_single",
+      "text": "حطلي مذاكرة SQL من غير ميعاد محدد",
+      "expected_intent": "create_task",
+      "expected_title_contains": "SQL"
+    },
+    {
+      "id": "c031",
+      "category": "create_multi",
+      "text": "عندي امتحان بكره عربي و بعده انجليزي",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "عربي",
+      "expected_date": "2026-11-23"
+    },
+    {
+      "id": "c032",
+      "category": "create_multi",
+      "text": "ضيفلي مراجعة فيزياء بكرة و حل شيت رياضة بعد بكرة",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "فيزياء",
+      "expected_date": "2026-11-23"
+    },
+    {
+      "id": "c033",
+      "category": "create_multi",
+      "text": "ورايا دفع فاتورة الميه بكرة وكمان شراء أدوية من الصيدلية النهارده",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "فاتورة",
+      "expected_date": "2026-11-23"
+    },
+    {
+      "id": "c034",
+      "category": "create_multi",
+      "text": "عندي كويز تاريخ الاتنين و امتحان جغرافيا التلات",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "تاريخ",
+      "expected_date": "2026-11-23"
+    },
+    {
+      "id": "c035",
+      "category": "create_multi",
+      "text": "سجل اجتماع الباك إند بكرة الصبح وبعدين مراجعة التصميم بالليل",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "الباك",
+      "expected_date": "2026-11-23"
+    },
+    {
+      "id": "c036",
+      "category": "create_multi",
+      "text": "ضيف واجب النحو النهارده و تلخيص القصة بكرة",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "النحو",
+      "expected_date": "2026-11-22"
+    },
+    {
+      "id": "c037",
+      "category": "create_multi",
+      "text": "ورايا تحضير السيرة الذاتية الخميس وكمان التقديم على التدريب الجمعة",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "السيرة الذاتية",
+      "expected_date": "2026-11-26"
+    },
+    {
+      "id": "c038",
+      "category": "create_multi",
+      "text": "عندي مكالمة دكتور المشروع النهارده الساعة 4 العصر و رفع الكود بالليل",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "دكتور المشروع",
+      "expected_date": "2026-11-22"
+    },
+    {
+      "id": "c039",
+      "category": "create_multi",
+      "text": "ضيفلي دفع الإيجار أول الشهر الجاي و تجديد باقة الموبايل آخر الشهر",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "الإيجار",
+      "expected_date": "2026-12-01"
+    },
+    {
+      "id": "c040",
+      "category": "create_multi",
+      "text": "سجّل مذاكرة أحياء بكرة الساعة 6 و مراجعة كيمياء بعد بكرة الساعة 7",
+      "expected_intent": "create_task",
+      "expected_task_count": 2,
+      "expected_title_contains": "أحياء",
+      "expected_date": "2026-11-23"
+    },
+    {
+      "id": "c041",
+      "category": "reminder",
+      "text": "فكرني بعد 10 دقايق بمكالمة أحمد",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 10
+    },
+    {
+      "id": "c042",
+      "category": "reminder",
+      "text": "فكرني بعد نص ساعة أطفي البوتاجاز",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 30
+    },
+    {
+      "id": "c043",
+      "category": "reminder",
+      "text": "ذكرني بعد ربع ساعة أخد الدوا",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 15
+    },
+    {
+      "id": "c044",
+      "category": "reminder",
+      "text": "اضبط منبه بكرة الساعة 7 الصبح للشغل",
+      "expected_intent": "reminder",
+      "expected_date": "2026-11-23",
+      "expected_time": "07:00"
+    },
+    {
+      "id": "c045",
+      "category": "reminder",
+      "text": "متنساش تفكرني بمكالمة ماما النهارده بعد العشا",
+      "expected_intent": "reminder",
+      "expected_date": "2026-11-22",
+      "expected_time": "20:30"
+    },
+    {
+      "id": "c046",
+      "category": "reminder",
+      "text": "نبهني الساعة 8 ونص بالليل بميعاد الماتش",
+      "expected_intent": "reminder",
+      "expected_time": "20:30"
+    },
+    {
+      "id": "c047",
+      "category": "reminder",
+      "text": "فكرني بعد ساعتين أبعت الإيميل للعميل",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 120
+    },
+    {
+      "id": "c048",
+      "category": "reminder",
+      "text": "صحيني بكرة الساعة 6 ونص الصبح",
+      "expected_intent": "reminder",
+      "expected_date": "2026-11-23",
+      "expected_time": "06:30"
+    },
+    {
+      "id": "c049",
+      "category": "reminder",
+      "text": "فكرني بعد 5 دقايق أفتح الميتنج",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 5
+    },
+    {
+      "id": "c050",
+      "category": "reminder",
+      "text": "ذكّرني يوم الخميس الساعة 3 العصر بدفع الفاتورة",
+      "expected_intent": "reminder",
+      "expected_date": "2026-11-26",
+      "expected_time": "15:00"
+    },
+    {
+      "id": "c051",
+      "category": "reminder",
+      "text": "كمان 20 دقيقة فكرني أشرب مية",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 20
+    },
+    {
+      "id": "c052",
+      "category": "reminder",
+      "text": "فكرني بعد ساعة أراجع السلايدات",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 60
+    },
+    {
+      "id": "c053",
+      "category": "reminder",
+      "text": "متنساش تذكرني بأوراق السفر بكرة بعد المغرب",
+      "expected_intent": "reminder",
+      "expected_date": "2026-11-23",
+      "expected_time": "18:30"
+    },
+    {
+      "id": "c054",
+      "category": "reminder",
+      "text": "remind me in 15 minutes to call Kareem",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 15
+    },
+    {
+      "id": "c055",
+      "category": "reminder",
+      "text": "نبهني بعد دقيقتين أطلع الأكل من الفرن",
+      "expected_intent": "reminder",
+      "expected_in_minutes": 2
+    },
+    {
+      "id": "c056",
+      "category": "reminder",
+      "text": "فكرني كل يوم الساعة 9 بالليل بدوا الضغط",
+      "expected_intent": "reminder",
+      "expected_time": "21:00"
+    },
+    {
+      "id": "c057",
+      "category": "update",
+      "text": "أجل مذاكرة الفيزياء لبكرة الساعة 7 بالليل",
+      "expected_intent": "update_task",
+      "expected_date": "2026-11-23",
+      "expected_time": "19:00"
+    },
+    {
+      "id": "c058",
+      "category": "update",
+      "text": "انقل معاد الدكتور ليوم الخميس",
+      "expected_intent": "update_task",
+      "expected_date": "2026-11-26"
+    },
+    {
+      "id": "c059",
+      "category": "update",
+      "text": "خلي تسليم الشيت بعد بكرة",
+      "expected_intent": "update_task",
+      "expected_date": "2026-11-24"
+    },
+    {
+      "id": "c060",
+      "category": "update",
+      "text": "عدل ميعاد اجتماع الفريق للساعة 3 العصر",
+      "expected_intent": "update_task",
+      "expected_time": "15:00"
+    },
+    {
+      "id": "c061",
+      "category": "update",
+      "text": "أجلها ليوم الجمعة",
+      "expected_intent": "update_task",
+      "expected_date": "2026-11-27"
+    },
+    {
+      "id": "c062",
+      "category": "update",
+      "text": "غيّر وقت مذاكرة العربي لبعد العشا",
+      "expected_intent": "update_task",
+      "expected_time": "20:30"
+    },
+    {
+      "id": "c063",
+      "category": "update",
+      "text": "رحّل دفع الفاتورة لأول الشهر الجاي",
+      "expected_intent": "update_task",
+      "expected_date": "2026-12-01"
+    },
+    {
+      "id": "c064",
+      "category": "update",
+      "text": "reschedule the client call to Thursday at 5 pm",
+      "expected_intent": "update_task",
+      "expected_date": "2026-11-26",
+      "expected_time": "17:00"
+    },
+    {
+      "id": "c065",
+      "category": "update",
+      "text": "أجل مراجعة الكيمياء للويك اند",
+      "expected_intent": "update_task",
+      "expected_date": "2026-11-27"
+    },
+    {
+      "id": "c066",
+      "category": "update",
+      "text": "انقل تمرين الجيم لبكرة الصبح",
+      "expected_intent": "update_task",
+      "expected_date": "2026-11-23",
+      "expected_time": "09:00"
+    },
+    {
+      "id": "c067",
+      "category": "delete",
+      "text": "امسح مهمة الكيمياء",
+      "expected_intent": "delete_task"
+    },
+    {
+      "id": "c068",
+      "category": "delete",
+      "text": "احذف معاد البنك",
+      "expected_intent": "delete_task"
+    },
+    {
+      "id": "c069",
+      "category": "delete",
+      "text": "شيل تاسك الرياضة من الجدول",
+      "expected_intent": "delete_task"
+    },
+    {
+      "id": "c070",
+      "category": "delete",
+      "text": "الغي مهمة شراء الطلبات",
+      "expected_intent": "delete_task"
+    },
+    {
+      "id": "c071",
+      "category": "delete",
+      "text": "delete the physics task",
+      "expected_intent": "delete_task"
+    },
+    {
+      "id": "c072",
+      "category": "complete",
+      "text": "خلصت واجب الإنجليزي",
+      "expected_intent": "complete_task"
+    },
+    {
+      "id": "c073",
+      "category": "complete",
+      "text": "علّم على مراجعة الفيزيا إنها خلصت",
+      "expected_intent": "complete_task"
+    },
+    {
+      "id": "c074",
+      "category": "complete",
+      "text": "أنهيت تسليم الشيت",
+      "expected_intent": "complete_task"
+    },
+    {
+      "id": "c075",
+      "category": "complete",
+      "text": "تم دفع الإيجار",
+      "expected_intent": "complete_task"
+    },
+    {
+      "id": "c076",
+      "category": "complete",
+      "text": "mark biology review as completed",
+      "expected_intent": "complete_task"
+    },
+    {
+      "id": "c077",
+      "category": "read_only",
+      "text": "وريني مهامي النهارده",
+      "expected_intent": "list_tasks"
+    },
+    {
+      "id": "c078",
+      "category": "read_only",
+      "text": "إيه اللي ورايا بكرة؟",
+      "expected_intent": "list_tasks"
+    },
+    {
+      "id": "c079",
+      "category": "read_only",
+      "text": "اعرضلي مهام الأسبوع الجاي",
+      "expected_intent": "list_tasks"
+    },
+    {
+      "id": "c080",
+      "category": "read_only",
+      "text": "عندي إيه يوم الخميس؟",
+      "expected_intent": "list_tasks"
+    },
+    {
+      "id": "c081",
+      "category": "read_only",
+      "text": "إيه المهام اللي خلصت؟",
+      "expected_intent": "list_tasks"
+    },
+    {
+      "id": "c082",
+      "category": "read_only",
+      "text": "show me my pending tasks",
+      "expected_intent": "list_tasks"
+    },
+    {
+      "id": "c083",
+      "category": "read_only",
+      "text": "لخّصلي يومي",
+      "expected_intent": "summary"
+    },
+    {
+      "id": "c084",
+      "category": "read_only",
+      "text": "إيه ملخص النهارده؟",
+      "expected_intent": "summary"
+    },
+    {
+      "id": "c085",
+      "category": "read_only",
+      "text": "أنجزت قد إيه النهارده؟",
+      "expected_intent": "summary"
+    },
+    {
+      "id": "c086",
+      "category": "read_only",
+      "text": "daily summary please",
+      "expected_intent": "summary"
+    },
+    {
+      "id": "c087",
+      "category": "read_only",
+      "text": "رتّبلي يومي النهارده",
+      "expected_intent": "schedule"
+    },
+    {
+      "id": "c088",
+      "category": "read_only",
+      "text": "خطط معايا أولوياتي",
+      "expected_intent": "schedule"
+    },
+    {
+      "id": "c089",
+      "category": "read_only",
+      "text": "نظّملي جدول بكرة",
+      "expected_intent": "schedule"
+    },
+    {
+      "id": "c090",
+      "category": "read_only",
+      "text": "plan my day from 6 to 9 pm",
+      "expected_intent": "schedule"
+    },
+    {
+      "id": "c091",
+      "category": "hard_negative",
+      "text": "ما تمسحش ميعاد الدكتور لو سمحت",
+      "must_not_execute": true
+    },
+    {
+      "id": "c092",
+      "category": "hard_negative",
+      "text": "متمسحش أي مهمة من الجدول",
+      "must_not_execute": true
+    },
+    {
+      "id": "c093",
+      "category": "hard_negative",
+      "text": "متضيفش مهمة الكيمياء دلوقتي",
+      "must_not_execute": true
+    },
+    {
+      "id": "c094",
+      "category": "hard_negative",
+      "text": "بلاش تحذف معاد البنك",
+      "must_not_execute": true
+    },
+    {
+      "id": "c095",
+      "category": "hard_negative",
+      "text": "لا تمسح مذاكرة العربي",
+      "must_not_execute": true
+    },
+    {
+      "id": "c096",
+      "category": "hard_negative",
+      "text": "مش عايز أضيف حاجة دلوقتي",
+      "must_not_execute": true
+    },
+    {
+      "id": "c097",
+      "category": "hard_negative",
+      "text": "بلاش تلغي التذكير ده",
+      "must_not_execute": true
+    },
+    {
+      "id": "c098",
+      "category": "hard_negative",
+      "text": "don't delete any tasks tomorrow",
+      "must_not_execute": true
+    },
+    {
+      "id": "c099",
+      "category": "hard_negative",
+      "text": "do not add that meeting to my schedule",
+      "must_not_execute": true
+    },
+    {
+      "id": "c100",
+      "category": "hard_negative",
+      "text": "never remove my physics exam",
+      "must_not_execute": true
+    },
+    {
+      "id": "c101",
+      "category": "hard_negative",
+      "text": "المدرس قال أكتب \"امسح الورقة\" في الدفتر",
+      "must_not_execute": true
+    },
+    {
+      "id": "c102",
+      "category": "hard_negative",
+      "text": "صاحبي قالي «ضيف الاجتماع» بس مقولتش تضيفه",
+      "must_not_execute": true
+    },
+    {
+      "id": "c103",
+      "category": "hard_negative",
+      "text": "الدكتور قال \"احذف السطر التالت\" في المحاضرة",
+      "must_not_execute": true
+    },
+    {
+      "id": "c104",
+      "category": "hard_negative",
+      "text": "لو كنت مسحت المهمة دي كان حصل إيه؟",
+      "must_not_execute": true
+    },
+    {
+      "id": "c105",
+      "category": "hard_negative",
+      "text": "ممكن تضيف تاسك لو حبيت؟",
+      "must_not_execute": true
+    },
+    {
+      "id": "c106",
+      "category": "hard_negative",
+      "text": "هو ينفع تمسح مهام الأسبوع لوحدك؟",
+      "must_not_execute": true
+    },
+    {
+      "id": "c107",
+      "category": "hard_negative",
+      "text": "can you delete tasks without internet?",
+      "must_not_execute": true
+    },
+    {
+      "id": "c108",
+      "category": "hard_negative",
+      "text": "لسه هخلّص كورس البايثون الأسبوع الجاي",
+      "must_not_execute": true
+    },
+    {
+      "id": "c109",
+      "category": "hard_negative",
+      "text": "لسه هبدأ أذاكر الفيزيا بعدين",
+      "must_not_execute": true
+    },
+    {
+      "id": "c110",
+      "category": "hard_negative",
+      "text": "I'll finish the presentation next week",
+      "must_not_execute": true
+    },
+    {
+      "id": "c111",
+      "category": "hard_negative",
+      "text": "إيه عاصمة اليابان؟",
+      "expected_intent": "out_of_scope",
+      "must_not_execute": true
+    },
+    {
+      "id": "c112",
+      "category": "hard_negative",
+      "text": "اكتبلي قصيدة طويلة عن القمر والنجوم",
+      "expected_intent": "out_of_scope",
+      "must_not_execute": true
+    },
+    {
+      "id": "c113",
+      "category": "self_correction",
+      "text": "ضيفلي مراجعة الفيزيا بكرة لا قصدي الخميس الساعة 8 بالليل",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "الفيزيا",
+      "expected_date": "2026-11-26",
+      "expected_time": "20:00"
+    },
+    {
+      "id": "c114",
+      "category": "self_correction",
+      "text": "عندي معاد الدكتور الاتنين لا اسف التلات الساعة 6 مساء",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "الدكتور",
+      "expected_date": "2026-11-24",
+      "expected_time": "18:00"
+    },
+    {
+      "id": "c115",
+      "category": "self_correction",
+      "text": "سجّل تسليم الشيت النهارده لأ قصدي بعد بكرة الصبح",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "الشيت",
+      "expected_date": "2026-11-24",
+      "expected_time": "09:00"
+    },
+    {
+      "id": "c116",
+      "category": "self_correction",
+      "text": "فكرني بمكالمة أحمد الساعة 5 لا قصدي الساعة 7 بالليل",
+      "expected_intent": "reminder",
+      "expected_self_corrected": true,
+      "expected_time": "19:00"
+    },
+    {
+      "id": "c117",
+      "category": "self_correction",
+      "text": "ضيف واجب الإنجليزي بكرة لا قصدي الجمعة",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "الإنجليزي",
+      "expected_date": "2026-11-27"
+    },
+    {
+      "id": "c118",
+      "category": "self_correction",
+      "text": "ورايا دفع فاتورة النت التلات لأ قصدي أول الشهر الجاي",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "فاتورة النت",
+      "expected_date": "2026-12-01"
+    },
+    {
+      "id": "c119",
+      "category": "self_correction",
+      "text": "سجّل مراجعة الكيمياء الساعة 4 لا خليها بعد العشا",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "الكيمياء",
+      "expected_time": "20:30"
+    },
+    {
+      "id": "c120",
+      "category": "self_correction",
+      "text": "ضيف تمرين الجيم الصبح لا قصدي بكرة بالليل",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "الجيم",
+      "expected_date": "2026-11-23",
+      "expected_time": "20:00"
+    },
+    {
+      "id": "c121",
+      "category": "self_correction",
+      "text": "add physics review tomorrow actually no Thursday at 7 pm",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "physics",
+      "expected_date": "2026-11-26",
+      "expected_time": "19:00"
+    },
+    {
+      "id": "c122",
+      "category": "self_correction",
+      "text": "ضيفلي اجتماع الفريق الأربع لا اسف الخميس الساعة 11 الصبح",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "اجتماع الفريق",
+      "expected_date": "2026-11-26",
+      "expected_time": "11:00"
+    },
+    {
+      "id": "c123",
+      "category": "self_correction",
+      "text": "عندي مذاكرة برمجة بكرة لأ قصدي الويك اند",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "برمجة",
+      "expected_date": "2026-11-27"
+    },
+    {
+      "id": "c124",
+      "category": "self_correction",
+      "text": "سجل شراء الدوا النهارده لا قصدي بكرة بعد المغرب",
+      "expected_intent": "create_task",
+      "expected_self_corrected": true,
+      "expected_title_contains": "الدوا",
+      "expected_date": "2026-11-23",
+      "expected_time": "18:30"
+    },
+    {
+      "id": "c125",
+      "category": "clarification",
+      "text": "ضيف العربي",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    },
+    {
+      "id": "c126",
+      "category": "clarification",
+      "text": "عاوز أذاكر فرنساوي",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    },
+    {
+      "id": "c127",
+      "category": "clarification",
+      "text": "ضيفلي مذاكرة Deep Learning",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    },
+    {
+      "id": "c128",
+      "category": "clarification",
+      "text": "ضيفلي مهمة بكرة الساعة 6",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    },
+    {
+      "id": "c129",
+      "category": "clarification",
+      "text": "اضبطلي منبه بعد 10 دقايق",
+      "expected_clarification": true
+    },
+    {
+      "id": "c130",
+      "category": "clarification",
+      "text": "عايز أعمل تاسك",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    },
+    {
+      "id": "c131",
+      "category": "clarification",
+      "text": "ضيف حاجة جديدة",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    },
+    {
+      "id": "c132",
+      "category": "clarification",
+      "text": "محتاج أراجع الفيزياء",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    },
+    {
+      "id": "c133",
+      "category": "clarification",
+      "text": "ضيفلي شيت الرياضة",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    },
+    {
+      "id": "c134",
+      "category": "clarification",
+      "text": "ضيف الإنجليزي",
+      "expected_intent": "create_task",
+      "expected_clarification": true
+    }
+  ]
+}

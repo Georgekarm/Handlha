@@ -337,8 +337,15 @@ void main() {
       expect(r1.text, contains('العربي'));
       expect(await allTasks(), isEmpty);
 
-      final r2 = await controller.sendTextMessage(
+      final p2 = await controller.sendTextMessage(
         'مذاكرة عربي بكرة الساعة 6',
+        conversationId: 'c-arabi',
+      );
+      expect(p2.text, startsWith('🔍 مراجعة قبل الحفظ'));
+      expect(await allTasks(), isEmpty);
+
+      final r2 = await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c-arabi',
       );
       final saved = await allTasks();
@@ -358,8 +365,15 @@ void main() {
       expect(f1.needsUserInput, isTrue);
       expect(await allTasks(), isEmpty);
 
-      await controller.sendTextMessage(
+      final f2 = await controller.sendTextMessage(
         'بكرة الساعة 7 بالليل',
+        conversationId: 'c-fr',
+      );
+      expect(f2.text, startsWith('🔍 مراجعة قبل الحفظ'));
+      expect(await allTasks(), isEmpty);
+
+      await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c-fr',
       );
       var tasks = await allTasks();
@@ -375,8 +389,15 @@ void main() {
       expect(dl1.text, contains('Deep Learning'));
       expect(await allTasks(), hasLength(1));
 
-      await controller.sendTextMessage(
+      final dl2 = await controller.sendTextMessage(
         'من غير ميعاد محدد',
+        conversationId: 'c-dl',
+      );
+      expect(dl2.text, startsWith('🔍 مراجعة قبل الحفظ'));
+      expect(await allTasks(), hasLength(1));
+
+      await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c-dl',
       );
       tasks = await allTasks();
@@ -386,8 +407,15 @@ void main() {
     });
 
     test('splits multi-clause exams and clarifies ambiguous pronoun "أجلها يوم الخميس"', () async {
-      await controller.sendTextMessage(
+      final exPreview = await controller.sendTextMessage(
         'عندي امتحان بكره عربي و بعده انجليزي',
+        conversationId: 'c-exams',
+      );
+      expect(exPreview.text, startsWith('🔍 مراجعة قبل الحفظ'));
+      expect(await allTasks(), isEmpty);
+
+      await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c-exams',
       );
       final created = await allTasks();
@@ -404,8 +432,15 @@ void main() {
       expect(amb.needsUserInput, isTrue);
       expect((await allTasks())[1].dueAt?.day, 15);
 
-      await controller.sendTextMessage(
+      final updPreview = await controller.sendTextMessage(
         'التانية',
+        conversationId: 'c-exams',
+      );
+      expect(updPreview.text, startsWith('🔍 مراجعة قبل التعديل'));
+      expect((await allTasks())[1].dueAt?.day, 15);
+
+      await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c-exams',
       );
       final updated = await allTasks();
@@ -443,8 +478,16 @@ void main() {
       expect(r.text, contains('منبه يرن'));
       expect(await allTasks(), isEmpty);
 
-      final r2 = await controller.sendTextMessage(
+      final pRem = await controller.sendTextMessage(
         'منبه يرن',
+        conversationId: 'c-rem',
+      );
+      expect(pRem.text, startsWith('🔍 مراجعة قبل الحفظ'));
+      expect(pRem.text, contains('مكالمة أحمد'));
+      expect(await allTasks(), isEmpty);
+
+      final r2 = await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c-rem',
       );
       expect(r2.text, contains('مكالمة أحمد'));
@@ -562,9 +605,16 @@ void main() {
       expect(blocked.text.toLowerCase(), contains('left your tasks unchanged'));
       expect(await allTasks(), isEmpty);
 
-      // Clear previous pending state by creating an English task directly.
-      final created = await biCtrl.sendTextMessage(
+      // Clear previous pending state by creating an English task (preview -> confirm).
+      final enPreview = await biCtrl.sendTextMessage(
         'add a task to review calculus tomorrow at 7 pm',
+        conversationId: 'c-en-add',
+      );
+      expect(enPreview.text, startsWith('🔍 Review before saving'));
+      expect(await allTasks(), isEmpty);
+
+      final created = await biCtrl.sendTextMessage(
+        'confirm',
         conversationId: 'c-en-add',
       );
       expect(created.text, contains('Added'));
@@ -575,9 +625,16 @@ void main() {
       expect(tasks.first.dueAt?.day, 14);
       expect(tasks.first.dueAt?.hour, 19);
 
-      // Second undated task -> add via English Q&A or direct.
-      await biCtrl.sendTextMessage(
+      // Second task -> preview (0 new writes) -> confirm.
+      final enPreview2 = await biCtrl.sendTextMessage(
         'create a new task study algorithms tomorrow morning',
+        conversationId: 'c-en-add2',
+      );
+      expect(enPreview2.text, startsWith('🔍 Review before saving'));
+      expect(await allTasks(), hasLength(1));
+
+      await biCtrl.sendTextMessage(
+        'confirm',
         conversationId: 'c-en-add2',
       );
       tasks = await allTasks();
@@ -627,9 +684,17 @@ void main() {
       expect(r2.text, contains('5 دقايق'));
       expect(await allTasks(), isEmpty);
 
-      // 3. Supplying the missing title creates the real task/reminder with the locked 5-minute time
-      final r3 = await controller.sendTextMessage(
+      // 3. Supplying the missing title previews first (0 writes), then confirm persists with locked 5-minute time
+      final p3 = await controller.sendTextMessage(
         'مراجعة الكيمياء',
+        conversationId: 'c-rel-1',
+      );
+      expect(p3.text, startsWith('🔍 مراجعة قبل الحفظ'));
+      expect(p3.text, contains('مراجعة الكيمياء'));
+      expect(await allTasks(), isEmpty);
+
+      final r3 = await controller.sendTextMessage(
+        'اعتمد',
         conversationId: 'c-rel-1',
       );
       final saved = await allTasks();

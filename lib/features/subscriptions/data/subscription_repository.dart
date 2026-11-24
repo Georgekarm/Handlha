@@ -47,4 +47,14 @@ class SubscriptionConfig {
     'REVENUECAT_STUDENT_YEARLY_PRODUCT_ID',
     defaultValue: 'handelha_student_yearly',
   );
+
+  /// True only when RevenueCat billing credentials are supplied at build time.
+  static bool get isStoreBillingConfigured => androidApiKey.trim().isNotEmpty;
+
+  /// Student discount requires real academic email verification and remains
+  /// explicitly disabled until post-retention Phase 5 verification is wired.
+  static const studentAcademicVerificationEnabled = bool.fromEnvironment(
+    'ENABLE_STUDENT_VERIFICATION',
+    defaultValue: false,
+  );
 }

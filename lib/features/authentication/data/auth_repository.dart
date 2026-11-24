@@ -21,16 +21,18 @@ abstract interface class AuthRepository {
     String? displayName,
   });
 
-  /// Initiate Google Sign-In flow.
+  /// Initiate verified Google OAuth Sign-In flow.
   Future<Result<AppUser>> signInWithGoogle({
     String? email,
     String? displayName,
+    String? idToken,
   });
 
-  /// Initiate Facebook Login flow.
+  /// Initiate verified Facebook OAuth Login flow.
   Future<Result<AppUser>> signInWithFacebook({
     String? email,
     String? displayName,
+    String? idToken,
   });
 
   /// Send password reset email.

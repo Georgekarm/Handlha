@@ -4,10 +4,13 @@ import 'package:ai_assistant/ai_assistant.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/locale/language_controller.dart';
 import '../../../app/theme/app_theme_extension.dart';
+import '../../../core/telemetry/local_core_loop_telemetry.dart';
 import '../../../shared/utils/arabic_formatters.dart';
+import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../projects/domain/project.dart';
@@ -15,6 +18,7 @@ import '../../projects/presentation/project_providers.dart';
 import '../../tasks/domain/task.dart';
 import '../../tasks/presentation/task_providers.dart';
 import '../../onboarding/presentation/energy_preferences_sheet.dart';
+import '../../subscriptions/data/subscription_repository.dart';
 import '../data/user_energy_preferences.dart';
 import 'assistant_providers.dart';
 import 'token_balance_provider.dart';
@@ -24,12 +28,17 @@ import 'widgets/secretary_message_widgets.dart';
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
+  /// SharedPreferences flag tracking whether the user acknowledged the honest
+  /// Android SpeechRecognizer (network-capable STT) vs local text NLU notice.
+  static const String voiceSttDisclosureKey = 'handelha_voice_stt_disclosed_v1';
+
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
+  final FocusNode _composerFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   int _lastMessageCount = 0;
   bool _lastIsSending = false;
@@ -37,6 +46,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void dispose() {
     _messageController.dispose();
+    _composerFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -50,7 +60,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) _showTokenRefillSheet(context);
       return;
     }
-    if (preset == null) _messageController.clear();
+    if (preset == null) {
+      _messageController.clear();
+      unawaited(
+        LocalCoreLoopTelemetry.instance.recordEvent(
+          ref.read(authNotifierProvider).value?.id,
+          'text_input',
+        ),
+      );
+    }
     await ref.read(chatSessionProvider).send(text);
     _scrollToBottom();
   }
@@ -62,6 +80,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await session.toggleVoice();
       return;
     }
+    final acknowledged = await _ensureVoiceSttDisclosure();
+    if (!acknowledged || !mounted) return;
     final tokenState = ref.read(tokenBalanceProvider);
     if (!tokenState.canSendVoice) {
       if (mounted) _showTokenRefillSheet(context);
@@ -70,7 +90,171 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await session.toggleVoice();
     if (session.assistantState == AssistantState.listening) {
       await ref.read(tokenBalanceProvider.notifier).consumeVoiceToken();
+      unawaited(
+        LocalCoreLoopTelemetry.instance.recordEvent(
+          ref.read(authNotifierProvider).value?.id,
+          'voice_input',
+        ),
+      );
     }
+  }
+
+  Future<bool> _ensureVoiceSttDisclosure() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(ChatScreen.voiceSttDisclosureKey) == true) {
+        return true;
+      }
+      if (!mounted) return false;
+      final appLang = ref.read(appLanguageProvider);
+      final accepted = await HandelhaDialog.showCustom<bool>(
+        context,
+        builder: (dCtx) {
+          final dc = dCtx.appColors;
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 24,
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: dc.surface,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: dc.border),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: dc.primarySoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.mic_none_rounded,
+                          color: dc.primary,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          appLang.tr(
+                            'تنبيه شفاف عن الإدخال الصوتي',
+                            'Transparent Voice Input Notice',
+                          ),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: dc.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    appLang.tr(
+                      '• الكتابة النصية في المساعد تُحلَّل محليًا ١٠٠٪ على جهازك بدون إرسالها لأي نموذج خارجي.\n'
+                      '• الإدخال الصوتي يستخدم خدمة التعرّف على الكلام المدمجة في نظام Android (SpeechRecognizer)، والتي قد تعتمد على الإنترنت وفقًا لإعدادات جهازك.',
+                      '• Typed messages are analyzed 100% locally on your device without calling any external LLM.\n'
+                      '• Voice input uses Android system SpeechRecognizer, which may use the network depending on your device settings.',
+                    ),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: dc.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(dCtx).pop(false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: Text(
+                      appLang.tr(
+                        'استخدم الكتابة بدلًا من ذلك',
+                        'Use Text Instead',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(dCtx).pop(true),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    icon: const Icon(Icons.mic_rounded, size: 18),
+                    label: Text(
+                      appLang.tr(
+                        'فهمت، استخدم الميكروفون',
+                        'Understood, Use Microphone',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      if (accepted == true) {
+        await prefs.setBool(ChatScreen.voiceSttDisclosureKey, true);
+        return true;
+      }
+      if (mounted) {
+        _composerFocusNode.requestFocus();
+      }
+      return false;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  void _launchFocusSession({
+    String? taskId,
+    required String title,
+  }) {
+    unawaited(
+      LocalCoreLoopTelemetry.instance.recordEvent(
+        ref.read(authNotifierProvider).value?.id,
+        'focus_started',
+      ),
+    );
+    context.push(
+      '/focus-session',
+      extra: {
+        if (taskId != null && taskId.isNotEmpty) 'id': taskId,
+        'title': title,
+      },
+    );
+  }
+
+  String _extractCreatedTitleOrFallback(String content, bool isEn) {
+    final mAr = RegExp(r'«([^»]+)»').firstMatch(content);
+    if (mAr != null && (mAr.group(1)?.trim().isNotEmpty ?? false)) {
+      return mAr.group(1)!.trim();
+    }
+    final mEn = RegExp(r'"([^"]+)"').firstMatch(content);
+    if (mEn != null && (mEn.group(1)?.trim().isNotEmpty ?? false)) {
+      return mEn.group(1)!.trim();
+    }
+    return isEn ? 'Focus Step' : 'خطوة تركيز';
   }
 
   void _showTokenRefillSheet(BuildContext context) {
@@ -364,12 +548,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       projectName: topOpenTask.projectId != null
                           ? projectMap[topOpenTask.projectId!]
                           : null,
-                      onStartFocus: () => context.push(
-                        '/focus-session',
-                        extra: {
-                          'id': topOpenTask.id,
-                          'title': topOpenTask.title,
-                        },
+                      onStartFocus: () => _launchFocusSession(
+                        taskId: topOpenTask.id,
+                        title: topOpenTask.title,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -385,15 +566,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ? projectMap[topOpenTask!.projectId!]
                           : null,
                       onQuickReply: (reply) => _send(reply),
-                      onStartFocus: topOpenTask == null
-                          ? null
-                          : () => context.push(
-                                '/focus-session',
-                                extra: {
-                                  'id': topOpenTask.id,
-                                  'title': topOpenTask.title,
-                                },
-                              ),
+                      onStartFocus: () {
+                        if (topOpenTask != null) {
+                          _launchFocusSession(
+                            taskId: topOpenTask.id,
+                            title: topOpenTask.title,
+                          );
+                        } else {
+                          _launchFocusSession(
+                            title: _extractCreatedTitleOrFallback(
+                              session.messages[i].content,
+                              appLang.isEnglish,
+                            ),
+                          );
+                        }
+                      },
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -596,6 +783,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         Expanded(
                           child: TextField(
                             controller: _messageController,
+                            focusNode: _composerFocusNode,
                             enabled: !session.isSending,
                             minLines: 1,
                             maxLines: 3,
@@ -822,7 +1010,14 @@ class _MessageItem extends StatelessWidget {
               ),
               if (isLastAssistant &&
                   suggestedTask != null &&
-                  onStartFocus != null) ...[
+                  onStartFocus != null &&
+                  !message.content.trimLeft().startsWith('🔍') &&
+                  !message.content.trimLeft().startsWith('⚠️') &&
+                  !message.content.trimLeft().startsWith('تمام، ضفتلك') &&
+                  !message.content.trimLeft().startsWith('تمام! ضفتلك') &&
+                  !message.content.trimLeft().startsWith('تمام، ظبطتلك') &&
+                  !message.content.trimLeft().startsWith('Added ') &&
+                  !message.content.trimLeft().startsWith('All set — saved')) ...[
                 const SizedBox(height: 14),
                 _EmbeddedFocusSnippet(
                   task: suggestedTask!,
@@ -983,31 +1178,52 @@ class _TokenRefillBottomSheet extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pop();
-                context.push('/subscription');
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: c.primary,
-                foregroundColor: c.textOnPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+            if (SubscriptionConfig.isStoreBillingConfigured)
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  context.push('/subscription');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: c.primary,
+                  foregroundColor: c.textOnPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                icon: const Icon(Icons.workspace_premium_outlined, size: 22),
+                label: Text(
+                  appLang.tr(
+                    'اشترك في هندلها Pro لتوكنز غير محدودة',
+                    'Upgrade to Handelha Pro for Unlimited Tokens',
+                  ),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: c.primarySoft,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: c.primary.withValues(alpha: 0.25)),
+                ),
+                child: Text(
+                  appLang.tr(
+                    'هذه نسخة تجربة مجانية محلية — الدفع عبر Google Play غير مفعّل حاليًا، ورصيدك اليومي يتجدد تلقائيًا كل يوم.',
+                    'Free local pilot build — Google Play Billing is not enabled yet and your daily tokens renew automatically every day.',
+                  ),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: c.textPrimary,
+                    height: 1.45,
+                  ),
                 ),
               ),
-              icon: const Icon(Icons.workspace_premium_outlined, size: 22),
-              label: Text(
-                appLang.tr(
-                  'اشترك في هندلها Pro لتوكنز غير محدودة',
-                  'Upgrade to Handelha Pro for Unlimited Tokens',
-                ),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
           ],
         ),
       ),

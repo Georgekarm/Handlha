@@ -88,11 +88,11 @@ object NativeAlarmScheduler {
         taskId: String?,
         isEn: Boolean = false,
         saveRecord: Boolean = true,
-    ) {
+    ): String {
         val appContext = context.applicationContext
         if (alertMode != "alarm") {
             cancelAlarm(appContext, id)
-            return
+            return "cancelled"
         }
 
         val cal = java.util.Calendar.getInstance().apply {
@@ -116,10 +116,10 @@ object NativeAlarmScheduler {
 
         val now = System.currentTimeMillis()
         if (triggerAtMs <= now + 500L) {
-            return
+            return "past_time"
         }
 
-        val am = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val am = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return "failed"
         val reqCode = stableRequestCode(id)
 
         val receiverIntent = Intent(appContext, AlarmReceiver::class.java).apply {
@@ -141,16 +141,19 @@ object NativeAlarmScheduler {
         }
         val showPendingIntent = PendingIntent.getActivity(appContext, reqCode + 1, showAppIntent, flags)
 
-        try {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && canScheduleExactAlarms(appContext)) {
                 am.setAlarmClock(
                     AlarmManager.AlarmClockInfo(triggerAtMs, showPendingIntent),
                     pendingIntent,
                 )
+                "exact"
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
+                "inexact"
             } else {
                 am.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
+                "inexact"
             }
         } catch (_: SecurityException) {
             try {
@@ -159,8 +162,12 @@ object NativeAlarmScheduler {
                 } else {
                     am.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
                 }
+                "inexact"
             } catch (_: Exception) {
+                "failed"
             }
+        } catch (_: Exception) {
+            "failed"
         }
     }
 

@@ -763,6 +763,7 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
       TaskRecurrence.daily => isEn ? 'Daily' : 'يوميًا',
       TaskRecurrence.weekdays => isEn ? 'Weekdays' : 'أيام العمل',
       TaskRecurrence.weekly => isEn ? 'Weekly' : 'أسبوعيًا',
+      TaskRecurrence.monthly => isEn ? 'Monthly' : 'شهريًا',
     };
   }
 

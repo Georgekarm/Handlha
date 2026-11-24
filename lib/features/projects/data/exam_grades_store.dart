@@ -97,6 +97,33 @@ class ExamGradesStore {
     return entry;
   }
 
+  static Future<void> upsertAll(
+    String userId,
+    List<ExamGradeEntry> incoming,
+  ) async {
+    final current = await load(userId);
+    final byId = <String, ExamGradeEntry>{
+      for (final e in current) e.id: e,
+    };
+    for (final e in incoming) {
+      byId[e.id] = e;
+    }
+    final merged = byId.values.toList()
+      ..sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+    await replaceAll(userId, merged);
+  }
+
+  static Future<void> replaceAll(
+    String userId,
+    List<ExamGradeEntry> entries,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _key(userId),
+      jsonEncode([for (final e in entries) e.toJson()]),
+    );
+  }
+
   static Future<void> clearForUser(String userId) async {
     try {
       final prefs = await SharedPreferences.getInstance();

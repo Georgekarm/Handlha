@@ -10,6 +10,7 @@ class ExtractedTaskSpec {
     required this.isReminder,
     required this.explicitNoDate,
     required this.isVagueTitle,
+    this.recurrence = 'none',
     this.inMinutes,
     this.isMissingTitle = false,
   });
@@ -22,6 +23,7 @@ class ExtractedTaskSpec {
   final bool isReminder;
   final bool explicitNoDate;
   final bool isVagueTitle;
+  final String recurrence;
   final int? inMinutes;
   final bool isMissingTitle;
 }
@@ -108,6 +110,10 @@ class EgyptianNluAnalyzer {
       intent = EgyptianIntent.schedule;
     } else if (!hasPendingClarification &&
         !hasActiveDraft &&
+        _isExplicitListTasksIntent(norm)) {
+      intent = EgyptianIntent.listTasks;
+    } else if (!hasPendingClarification &&
+        !hasActiveDraft &&
         _isSummaryIntent(norm, prediction.intent)) {
       intent = EgyptianIntent.summary;
     } else if (!hasPendingClarification &&
@@ -170,16 +176,20 @@ class EgyptianNluAnalyzer {
       rationale = isEn
           ? 'Blocked direct write to protect your schedule (negation/question/quote/future statement).'
           : 'تم إيقاف التنفيذ لحماية جدولك (نفي/سؤال/اقتباس/صيغة مستقبلية).';
-    } else if (intent == EgyptianIntent.createTask && specs.isNotEmpty) {
+    } else if ((intent == EgyptianIntent.createTask ||
+            intent == EgyptianIntent.reminder) &&
+        specs.isNotEmpty) {
       final first = specs.first;
       if (specs.length == 1 && first.isMissingTitle) {
         needsClar = true;
-        pendingAct = 'create_task';
+        pendingAct =
+            intent == EgyptianIntent.reminder ? 'create_reminder' : 'create_task';
         clarQ = _clarificationForMissingTitle(first, now: now, isEnglish: isEn);
         rationale = isEn
             ? 'Time was understood, but the task title is missing; asking one concise clarifying question.'
             : 'تم فهم الميعاد لكن اسم المهمة غير محدد؛ يلزم سؤال استيضاحي واحد.';
-      } else if (specs.length == 1 &&
+      } else if (intent == EgyptianIntent.createTask &&
+          specs.length == 1 &&
           first.date == null &&
           first.time == null &&
           first.inMinutes == null &&
@@ -211,6 +221,7 @@ class EgyptianNluAnalyzer {
               if (s.date != null) 'date': WallClock.ymd(s.date!),
               if (s.time != null) 'time': s.time,
               'priority': s.priority,
+              if (s.recurrence != 'none') 'recurrence': s.recurrence,
               if (s.category != null) 'category': s.category,
             },
         ],
@@ -265,10 +276,15 @@ class EgyptianNluAnalyzer {
         RegExp(r'(?:^|\s)(?:قال|قالي|قالتلي|المعلم قال|الدكتور قال|المدرس قال)(?=\s|$)')
             .hasMatch(norm);
 
-    // Explicitly protect negation commands (Egyptian + English).
-    final negatedAction = RegExp(
-          r'(?:^|\s)(?:ما\s+\S*ش|ما\S+ش|مت\S+ش|بلاش\s+(?:ت|ن|تحذف|تمسح|تضيف|تشيل|تلغي)|لا\s+(?:تحذف|تمسح|تضيف|تشيل)|مش\s+عايز\s+(?:اضيف|امسح|احذف|الغي))(?=\s|$)',
-        ).hasMatch(rawNorm) ||
+    // Explicitly protect negation commands (Egyptian + English), without
+    // blocking helpful phrases like "متنساش تفكرني" ("don't forget to remind me").
+    final isDontForgetReminder = RegExp(
+      r'(?:^|\s)(?:ما\s*تنساش|متنساش|لا\s+تنس[ىي]?)(?=\s|$)',
+    ).hasMatch(rawNorm);
+    final negatedAction = (!isDontForgetReminder &&
+            RegExp(
+              r'(?:^|\s)(?:ما\s+\S*ش|ما(?:ت|ن)?(?:مسح|حذف|ضيف|شيل|لغي|عدل|عمل|سجل)\S*ش|مت(?:مسح|حذف|ضيف|شيل|لغي|عدل|سجل)\S*ش|بلاش\s+(?:ت|ن|تحذف|تمسح|تضيف|تشيل|تلغي|تعدل|تسجل)|لا\s+(?:تحذف|تمسح|تضيف|تشيل|تلغي|تعدل|تسجل)|مش\s+(?:عايز|عاوز|محتاج)\s+(?:اضيف|امسح|احذف|الغي|اعدل|اسجل))(?=\s|$)',
+            ).hasMatch(rawNorm)) ||
         RegExp(
           r"\b(?:do\s+not|don'?t|never|stop)\s+(?:delete|remove|add|create|cancel|complete|move|reschedule|clear|touch)\b",
           caseSensitive: false,
@@ -471,6 +487,7 @@ class EgyptianNluAnalyzer {
         }
       }
 
+      final segRecurrence = parseRecurrence(segNorm);
       final combinedNorm = normalize('$segNorm $cleanTitle');
       final isVague = _isVagueSubjectOnly(normalize(cleanTitle)) &&
           !(segments.length > 1 && (segDate != null || segTime != null));
@@ -485,6 +502,7 @@ class EgyptianNluAnalyzer {
           isReminder: _isPureReminderVerb(segNorm),
           explicitNoDate: explicitNoDate,
           isVagueTitle: isVague,
+          recurrence: segRecurrence,
           inMinutes: segInMins,
           isMissingTitle: false,
         ),
@@ -556,6 +574,9 @@ class EgyptianNluAnalyzer {
 
       final leftNorm = normalize(left);
       final rightNorm = normalize(right);
+      final refNow = DateTime(2026, 1, 1);
+      final leftDate = parseDate(leftNorm, refNow);
+      final rightDate = parseDate(rightNorm, refNow);
       final leftTime = parseTime(leftNorm);
       final rightTime = parseTime(rightNorm);
       final rightHead = detectHeadNoun(rightNorm);
@@ -563,7 +584,8 @@ class EgyptianNluAnalyzer {
       final rightHasSubject = _containsKnownSubject(rightNorm);
 
       final shouldSplit = (leftTime != null && rightTime != null) ||
-          (rightHead != null && (leftTime != null || detectHeadNoun(leftNorm) != null || leftHasSubject)) ||
+          (leftDate != null && rightDate != null) ||
+          (rightHead != null && (leftTime != null || leftDate != null || detectHeadNoun(leftNorm) != null || leftHasSubject)) ||
           (leftHasSubject && rightHasSubject && (leftTime != null || rightTime != null));
 
       if (shouldSplit) {
@@ -601,7 +623,7 @@ class EgyptianNluAnalyzer {
     // Strip leading polite / command / desire wrappers (Egyptian + English, preserving case).
     final leadWrapper = RegExp(
       r'^(?:لو\s+سمحت|ممكن|يا\s+ريت|عاوزك|عايزك|can\s+you|could\s+you|please)?\s*'
-      r'(?:(?:ت?(?:ضيفلي|ضيف|تضيفلي|تضيف|سجللي|سجلي|سجل|تسجل|حطلي|حط|تحطلي|تحط|تعمللي|اعملي|اعمل|اكتبلي|اكتب|تكتبلي|فكرني|تفكرني|ذكرني|تذكرني|نبهني|تنبهني|زودلي|زود)\s*(?:لي\s+)?(?:ب|بـ|ان|إن|عن)?\s*(?:تاسك|مهمه|مهمة|تذكير|تنبيه|منبه|معاد|ميعاد|موعد)?\s*(?:ل|لـ)?\s*)|'
+      r'(?:(?:ت?(?:ضيفلي|ضيف|تضيفلي|تضيف|سجللي|سجلي|سجل|تسجل|حطلي|حط|تحطلي|تحط|تعمللي|اعملي|اعمل|اكتبلي|اكتب|تكتبلي|فكرني|تفكرني|ذكرني|تذكرني|نبهني|تنبهني|زودلي|زود|اضبطلي|اضبط|أضبطلي|أضبط|ظبطلي|ظبط|ظبّطلي|ظبّط)\s*(?:لي\s+)?(?:ب|بـ|ان|إن|عن)?\s*(?:تاسك|مهمه|مهمة|تذكير|تنبيه|منبه|معاد|ميعاد|موعد)?\s*(?:ل|لـ)?\s*)|'
       r'(?:(?:انا\s+)?(?:عندي|ورايا|لازم|محتاج|مفروض|علي|عليا|معايا|عاوز|عايز|حابب|نفسي|هعمل|هروح|هسلم|هقدم|هحضر)\s+(?:اني\s+|ان\s+|اضيف\s+|اسجل\s+)?)|'
       r'(?:(?:add|create)\s+(?:a\s+)?(?:new\s+)?task(?:\s+to)?\s+|new\s+task(?:\s*:|\s+to)?\s+|remind\s+me(?:\s+(?:in\s+\d+\s*\w+|at\s+\d+(?::\d{2})?\s*(?:am|pm)?))?\s+to\s+|schedule\s+(?:a\s+)?|i\s+need\s+to\s+|i\s+have\s+(?:to\s+|(?:an?\s+)?(?=(?:exam|quiz|meeting|call|appointment|presentation|task)\b))))',
       caseSensitive: false,
@@ -662,18 +684,35 @@ class EgyptianNluAnalyzer {
       ' ',
     );
 
+    // Strip recurrence expressions cleanly before finalizing title.
+    text = text.replaceAll(
+      RegExp(
+        r'(?:^|\s)(?:أول\s+كل\s+شهر|اول\s+كل\s+شهر|كل\s+شهر|شهري[اً]?|كل\s+(?:أسبوع|اسبوع)|أسبوعي[اً]?|اسبوعي[اً]?|'
+        r'كل\s+يوم\s+شغل|أيام\s+الشغل|ايام\s+الشغل|أيام\s+العمل|ايام\s+العمل|كل\s+يوم|يومي[اً]?|'
+        r'every\s+(?:month|week|weekday|day)|monthly|weekly|weekdays|daily)(?=\s|$)',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+
     // Strip relative and weekday dates cleanly without breaking surrounding English.
     text = text.replaceAll(
       RegExp(
-        r'(?:^|\s)(?:يوم\s+)?(?:بعد\s+بكر[هة]|بكر[هة]|النهارد[هة]|انهارد[هة]|اليوم|غد[اً]?|الاسبوع\s+الجاي|الأسبوع\s+الجاي|'
+        r'(?:^|\s)(?:يوم\s+)?(?:بعد\s+بكر[هةا]|بكر[هةا]|النهارد[هة]|انهارد[هة]|اليوم|غد[اً]?|الاسبوع\s+الجاي|الأسبوع\s+الجاي|'
+        r'أول\s+الشهر\s+الجاي|اول\s+الشهر\s+الجاي|أول\s+الشهر|اول\s+الشهر|نص\s+الشهر|آخر\s+الشهر|اخر\s+الشهر|'
+        r'الويك\s*اند|الويكند|نهاي[هة]\s+ال[أا]سبوع|'
         r'السبت|الاحد|الأحد|الحد|الاتنين|الإثنين|الاثنين|التلات|الثلاثاء|الاربع|الأربع|الأربعاء|الخميس|الجمعه|الجمعة)'
         r'(?:\s+الجاي[هة]?)?(?=\s|$)',
       ),
       ' ',
     );
     text = text.replaceAll(
+      RegExp(r'(?:^|\s)يوم\s+[0-9٠-٩]{1,2}(?:\s+الشهر\s+الجاي)?(?=\s|$)'),
+      ' ',
+    );
+    text = text.replaceAll(
       RegExp(
-        r'\b(?:on|by|for|this|next)?\s*(?:day\s+after\s+tomorrow|tomorrow|tmr|today|tonight|next\s+week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b',
+        r'\b(?:on|by|for|this|next)?\s*(?:b3d\s+bokra|bokra|el\s*naharda|elnharda|day\s+after\s+tomorrow|tomorrow|tmr|today|tonight|next\s+week|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b',
         caseSensitive: false,
       ),
       ' ',
@@ -699,7 +738,10 @@ class EgyptianNluAnalyzer {
       ' ',
     );
     text = text.replaceAll(
-      RegExp(r'(?:^|\s)(?:الصبح|الضهر|الظهر|العصر|المغرب|بليل|بالليل|مساء|صباحا|من\s+غير\s+ميعاد|بدون\s+ميعاد)(?=\s|$)'),
+      RegExp(
+        r'(?:^|\s)(?:بعد\s+العشا|العشا|بعد\s+المغرب|بعد\s+الضهر|بعد\s+الظهر|بعد\s+العصر|بعد\s+الفجر|الفجر|نص\s+الليل|'
+        r'الصبح|الضهر|الظهر|العصر|المغرب|بليل|بالليل|مساء|صباحا|من\s+غير\s+ميعاد|بدون\s+ميعاد)(?=\s|$)',
+      ),
       ' ',
     );
     text = text.replaceAll(
@@ -772,25 +814,101 @@ class EgyptianNluAnalyzer {
   // Date / time / priority / query extraction helpers
   // ---------------------------------------------------------------------------
 
+  String parseRecurrence(String normText) {
+    if (containsAny(normText, [
+      'كل شهر', 'شهريا', 'شهري', 'اول كل شهر', 'monthly', 'every month',
+    ])) {
+      return 'monthly';
+    }
+    if (containsAny(normText, [
+      'ايام الشغل', 'ايام العمل', 'كل يوم شغل', 'weekdays', 'every weekday',
+    ])) {
+      return 'weekdays';
+    }
+    if (containsAny(normText, [
+          'كل اسبوع', 'اسبوعيا', 'اسبوعي', 'weekly', 'every week',
+        ]) ||
+        RegExp(r'(?:^|\s)كل\s+(?:سبت|احد|حد|اتنين|اثنين|تلات|تلاتاء|اربع|اربعاء|خميس|جمعه)(?=\s|$)')
+            .hasMatch(normText)) {
+      return 'weekly';
+    }
+    if (containsAny(normText, ['كل يوم', 'يوميا', 'يومي', 'daily', 'every day'])) {
+      return 'daily';
+    }
+    return 'none';
+  }
+
   DateTime? parseDate(String normText, DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
     final isoMatch = RegExp(r'\b(\d{4}-\d{2}-\d{2})\b').firstMatch(normText);
     if (isoMatch != null) return DateTime.tryParse(isoMatch.group(1)!);
 
-    if (normText.contains('بعد بكره') || normText.contains('day after tomorrow')) {
+    if (normText.contains('بعد بكره') ||
+        normText.contains('بعد بكرا') ||
+        normText.contains('لبعد بكره') ||
+        normText.contains('لبعد بكرا') ||
+        normText.contains('b3d bokra') ||
+        normText.contains('day after tomorrow')) {
       return today.add(const Duration(days: 2));
     }
-    if (RegExp(r'(?:^|\s)(?:بكره|غدا|tomorrow|tmr|tonight)(?=\s|$)').hasMatch(normText)) {
+    if (RegExp(r'(?:^|\s)(?:ل?بكره|ل?بكرا|غدا|bokra|tomorrow|tmr|tonight)(?=\s|$)')
+        .hasMatch(normText)) {
       if (RegExp(r'(?:^|\s)tonight(?=\s|$)').hasMatch(normText)) {
         return today;
       }
       return today.add(const Duration(days: 1));
     }
-    if (RegExp(r'(?:^|\s)(?:النهارده|انهارده|اليوم|today)(?=\s|$)').hasMatch(normText)) {
+    if (RegExp(r'(?:^|\s)(?:ل?النهارده|ل?انهارده|ل?اليوم|للنهارده|لليوم|elnharda|el naharda|today)(?=\s|$)')
+        .hasMatch(normText)) {
       return today;
     }
-    if (normText.contains('الاسبوع الجاي') || normText.contains('next week')) {
+    if (normText.contains('الاسبوع الجاي') ||
+        normText.contains('للاسبوع الجاي') ||
+        normText.contains('next week')) {
       return today.add(const Duration(days: 7));
+    }
+    if (normText.contains('اول الشهر الجاي') ||
+        normText.contains('لاول الشهر الجاي') ||
+        normText.contains('اول كل شهر') ||
+        normText.contains('اول الشهر') ||
+        normText.contains('لاول الشهر')) {
+      final nextMonth = today.day == 1 && !normText.contains('الجاي')
+          ? DateTime(today.year, today.month, 1)
+          : DateTime(today.year, today.month + 1, 1);
+      return nextMonth;
+    }
+    if (normText.contains('نص الشهر') || normText.contains('لنص الشهر')) {
+      return today.day <= 15
+          ? DateTime(today.year, today.month, 15)
+          : DateTime(today.year, today.month + 1, 15);
+    }
+    if (normText.contains('اخر الشهر') || normText.contains('لاخر الشهر')) {
+      return DateTime(today.year, today.month + 1, 0);
+    }
+    if (normText.contains('الويك اند') ||
+        normText.contains('للويك اند') ||
+        normText.contains('الويكند') ||
+        normText.contains('للويكند') ||
+        normText.contains('نهايه الاسبوع') ||
+        normText.contains('لنهايه الاسبوع') ||
+        RegExp(r'\bweekend\b').hasMatch(normText)) {
+      final diff = (DateTime.friday - today.weekday + 7) % 7;
+      return today.add(Duration(days: diff == 0 ? 7 : diff));
+    }
+    final dayOfMonth = RegExp(r'(?:^|\s)يوم\s+(\d{1,2})(?:\s+الشهر\s+الجاي)?(?=\s|$)')
+        .firstMatch(normText);
+    if (dayOfMonth != null) {
+      final d = int.tryParse(dayOfMonth.group(1) ?? '');
+      if (d != null && d >= 1 && d <= 31) {
+        final forceNextMonth = normText.contains('الشهر الجاي');
+        var targetYear = today.year;
+        var targetMonth = forceNextMonth ? today.month + 1 : today.month;
+        if (!forceNextMonth && d < today.day) {
+          targetMonth += 1;
+        }
+        final maxDay = DateTime(targetYear, targetMonth + 1, 0).day;
+        return DateTime(targetYear, targetMonth, d > maxDay ? maxDay : d);
+      }
     }
     final afterDays = RegExp(r'(?:بعد|after|in)\s+(\d+)\s*(?:يوم|ايام|days?)').firstMatch(normText);
     if (afterDays != null) {
@@ -823,7 +941,11 @@ class EgyptianNluAnalyzer {
       'sunday': DateTime.sunday,
     };
     for (final entry in weekdayMap.entries) {
-      if (RegExp('(?:^|\\s)${entry.key}(?=\\s|\$)').hasMatch(normText)) {
+      final key = entry.key;
+      final pattern = key.startsWith('ال')
+          ? '(?:^|\\s)(?:$key|لل${key.substring(2)})(?=\\s|\$)'
+          : '(?:^|\\s)$key(?=\\s|\$)';
+      if (RegExp(pattern).hasMatch(normText)) {
         var diff = (entry.value - today.weekday + 7) % 7;
         if (diff == 0 && (normText.contains('الجاي') || normText.contains('next '))) {
           diff = 7;
@@ -845,7 +967,7 @@ class EgyptianNluAnalyzer {
       }
     }
     final spoken = RegExp(
-      r'(?:الساعه|ساعه)?\s*(\d{1,2})\s*(ونص|وربع|الا ربع)?\s*(ص|م|الصبح|صباحا|الضهر|الظهر|العصر|المغرب|بليل|بالليل|مساء)',
+      r'(?:الساعه|ساعه)?\s*(\d{1,2})\s*(ونص|وربع|الا ربع)?\s*(ص|م|الصبح|صباحا|الضهر|الظهر|العصر|المغرب|بليل|بالليل|مساء)(?=\s|$)',
     ).firstMatch(normText);
     if (spoken != null) {
       var h = int.parse(spoken.group(1)!);
@@ -912,11 +1034,45 @@ class EgyptianNluAnalyzer {
         return '${h.toString().padLeft(2, '0')}:${mins.toString().padLeft(2, '0')}';
       }
     }
+    // Natural Egyptian prayer/period time defaults when no explicit digit hour is given.
+    if (normText.contains('بعد العشا') ||
+        RegExp(r'(?:^|\s)العشا(?=\s|$)').hasMatch(normText)) {
+      return '20:30';
+    }
+    if (normText.contains('بعد المغرب') ||
+        RegExp(r'(?:^|\s)المغرب(?=\s|$)').hasMatch(normText)) {
+      return '18:30';
+    }
+    if (normText.contains('بعد الضهر') || normText.contains('بعد الظهر')) {
+      return '14:00';
+    }
+    if (normText.contains('بعد العصر') ||
+        RegExp(r'(?:^|\s)العصر(?=\s|$)').hasMatch(normText)) {
+      return '16:00';
+    }
+    if (normText.contains('بعد الفجر') ||
+        RegExp(r'(?:^|\s)الفجر(?=\s|$)').hasMatch(normText)) {
+      return '05:30';
+    }
+    if (normText.contains('نص الليل') ||
+        RegExp(r'\bmidnight\b').hasMatch(normText)) {
+      return '00:00';
+    }
+    if (RegExp(r'(?:^|\s)(?:الصبح|صباحا|morning)(?=\s|$)').hasMatch(normText)) {
+      return '09:00';
+    }
+    if (RegExp(r'(?:^|\s)(?:بالليل|بليل|مساء|tonight|evening)(?=\s|$)')
+        .hasMatch(normText)) {
+      return '20:00';
+    }
     return null;
   }
 
   int _adjustHour(int h, String? suffix, String fullNorm) {
     final s = suffix ?? '';
+    if ((s == 'الضهر' || s == 'الظهر') && h >= 1 && h <= 5) {
+      return h + 12;
+    }
     final isEvening = s == 'م' ||
         s == 'pm' ||
         s == 'العصر' ||
@@ -1082,11 +1238,11 @@ class EgyptianNluAnalyzer {
   String _extractQueryForIntent(String raw, EgyptianIntent intent) {
     final prefix = switch (intent) {
       EgyptianIntent.completeTask =>
-        r'^(?:انا\s+)?(?:خلصت|انجزت|انهيت|تم\s+(?:انهاء|تسليم)|شطبت\s+علي|عملت\s+done\s+(?:ل|لـ)?|علم\s+علي|علمها\s+خلصت|قفل|اقفل|mark|i\s+finished|finished|check\s+off|done\s+with)\s*(?:مهمه|مهمة|تاسك|the|task)?\s*',
+        r'^(?:انا\s+)?(?:خلصت|انجزت|انهيت|تم\s+(?:انهاء|تسليم)?|شطبت\s+علي|عملت\s+done\s+(?:ل|لـ)?|علم\s+علي|علمها\s+خلصت|قفل|اقفل|mark|i\s+finished|finished|check\s+off|done\s+with)\s*(?:مهمه|مهمة|تاسك|the|task)?\s*',
       EgyptianIntent.deleteTask =>
         r'^(?:امسحلي|امسح|احذفلي|احذف|شيللي|شيل|الغي|إلغاء|delete|remove|cancel|drop)\s*(?:مهمه|مهمة|تاسك|ميعاد|موعد|the|task)?\s*',
       EgyptianIntent.updateTask =>
-        r'^(?:اجللي|اجل|أجل|انقللي|انقل|غيرلي|غير|عدللي|عدّل|عدل|بدل|بدّل|خليلي|خلي|ارفع\s+اولويه|زود\s+اولويه|move|reschedule|change|push|postpone|shift)\s*(?:مهمه|مهمة|تاسك|ميعاد|موعد|the|task)?\s*',
+        r'^(?:اجللي|اجل|أجل|رحللي|رحل|رحّل|انقللي|انقل|غيرلي|غير|عدللي|عدّل|عدل|بدل|بدّل|خليلي|خلي|ارفع\s+اولويه|زود\s+اولويه|move|reschedule|change|push|postpone|shift)\s*(?:مهمه|مهمة|تاسك|ميعاد|موعد|the|task)?\s*',
       _ => r'^(?:دور\s+علي|ابحث\s+عن|فين|find|search\s+(?:for)?)\s*',
     };
     var q = raw
@@ -1122,8 +1278,9 @@ class EgyptianNluAnalyzer {
   bool _isExplicitOutOfScope(String norm) => containsAny(norm, [
         'نكتة', 'نكته', 'قصيده', 'شعر رومانسي', 'الطقس', 'سعر الدولار',
         'ماتش الاهلي', 'فيلم', 'اغنية', 'اغنيه', 'يوتيوب', 'اترجملي', 'ترجملي',
-        'اعمل لي صوره', 'ايميل رسمي',
+        'اعمل لي صوره', 'ايميل رسمي', 'عاصمه', 'من اخترع', 'مين اخترع',
         'weather forecast', 'tell me a joke', 'write me a python', 'translate this',
+        'capital of', 'who invented', 'population of',
       ]);
 
   bool _isGreetingOnly(String norm, EgyptianIntent pred) {
@@ -1160,20 +1317,24 @@ class EgyptianNluAnalyzer {
       ]) ||
       pred == EgyptianIntent.summary;
 
+  bool _isExplicitListTasksIntent(String norm) =>
+      containsAny(norm, [
+        'ايه اللي ورايا', 'ورايا ايه', 'عندي ايه', 'وريني', 'اعرضلي',
+        'المتبقيه', 'المفتوحه', 'المتاخره', 'المتأخرة', 'دور على', 'دور علي',
+        'show me my tasks', 'show tasks', 'list tasks', 'list all',
+        'what tasks do i have', 'pending tasks', 'overdue',
+      ]) &&
+      !containsAny(norm, ['لخص', 'ملخص', 'اجمالي', 'انجزت كام', 'summary']);
+
   bool _isListTasksIntent(String norm, EgyptianIntent pred) {
-    if (containsAny(norm, [
-      'ايه اللي ورايا', 'ورايا ايه', 'عندي ايه', 'وريني', 'اعرضلي',
-      'المتبقيه', 'المفتوحه', 'المتاخره', 'المتأخرة', 'دور على', 'دور علي',
-      'show me my tasks', 'show tasks', 'list tasks', 'list all', 'what tasks do i have',
-      'pending tasks', 'overdue',
-    ])) {
+    if (_isExplicitListTasksIntent(norm)) {
       return true;
     }
     return pred == EgyptianIntent.listTasks;
   }
 
   bool _isCompleteIntent(String norm, EgyptianIntent pred) =>
-      (RegExp(r'^(?:انا\s+)?(?:خلصت|انجزت|انهيت|تم\s+(?:انهاء|تسليم)|شطبت|عملت\s+done|علمها\s+خلص|قفل\s+تاسك)(?=\s|$)')
+      (RegExp(r'^(?:انا\s+)?(?:خلصت|انجزت|انهيت|تم\s+\S+|شطبت|عملت\s+done|علمها\s+خلص|قفل\s+تاسك)(?=\s|$)')
               .hasMatch(norm) &&
           !norm.contains('كام')) ||
       RegExp(r'^(?:mark\b.*\bdone|i\s+finished|check\s+off|done\s+with)\b').hasMatch(norm) ||
@@ -1186,7 +1347,7 @@ class EgyptianNluAnalyzer {
       pred == EgyptianIntent.deleteTask;
 
   bool _isUpdateIntent(String norm, EgyptianIntent pred) =>
-      (RegExp(r'^(?:اجل|أجل|انقل|غير|عدل|بدل|خليها|خلي|ارفع\s+اولويه|زود\s+اولويه)(?=\s|$)')
+      (RegExp(r'^(?:اجل|أجل|رحل|رحللي|انقل|غير|عدل|بدل|خليها|خلي|ارفع\s+اولويه|زود\s+اولويه)(?=\s|$)')
               .hasMatch(norm) &&
           !norm.contains('نفسك')) ||
       RegExp(r'^(?:move|reschedule|postpone|push|shift|change\s+.*\bpriority)\b').hasMatch(norm) ||
@@ -1256,8 +1417,16 @@ class EgyptianNluAnalyzer {
   bool containsAny(String normText, List<String> needles) =>
       needles.any((n) => normText.contains(normalize(n)));
 
-  String normalize(String raw) => ArabicText.normalizeForMatching(raw)
-      .replaceAll('ة', 'ه')
-      .replaceAll('ؤ', 'و')
-      .replaceAll('ئ', 'ي');
+  String normalize(String raw) {
+    // Preserve HH:MM colons between digits so time extraction keeps exact minutes.
+    final protected = ArabicText.normalizeDigits(raw).replaceAllMapped(
+      RegExp(r'(\d):(\d)'),
+      (m) => '${m.group(1)}xcolonx${m.group(2)}',
+    );
+    return ArabicText.normalizeForMatching(protected)
+        .replaceAll('xcolonx', ':')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ؤ', 'و')
+        .replaceAll('ئ', 'ي');
+  }
 }

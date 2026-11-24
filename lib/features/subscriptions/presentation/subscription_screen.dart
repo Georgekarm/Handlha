@@ -9,6 +9,7 @@ import '../../../shared/widgets/handelha_ambient_background.dart';
 import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../../shared/widgets/handelha_privacy_policy_sheet.dart';
+import '../data/subscription_repository.dart';
 import '../domain/subscription_models.dart';
 import 'subscription_providers.dart';
 
@@ -130,7 +131,72 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                   const SizedBox(height: 16),
                 ] else ...[
                   _FreeClassificationBanner(isEn: isEn),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
+                  if (state.status == SubscriptionStatus.expired) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: c.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: c.warning.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.history_rounded,
+                              size: 18, color: c.warning),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              isEn
+                                  ? 'Your previous subscription expired and your account returned to Free. Renew or restore purchases below.'
+                                  : 'انتهت صلاحية اشتراكك السابق وعاد الحساب للباقة المجانية. يمكنك التجديد أو استعادة المشتريات بالأسفل.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: c.textPrimary,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ] else if (!SubscriptionConfig.isStoreBillingConfigured &&
+                      state.offers.isEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: c.surfaceSoft,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: c.border),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline_rounded,
+                              size: 18, color: c.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              isEn
+                                  ? 'Google Play Billing is not configured in this build — prices shown are reference previews and no charges can occur.'
+                                  : 'الدفع عبر Google Play غير مفعّل في هذا البناء — الأسعار المعروضة استرشادية فقط ولن يتم تفعيل اشتراك أو خصم أي مبلغ.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: c.textSecondary,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  const SizedBox(height: 4),
                 ],
 
                 // Switcher strictly between ONLY Student & Regular Pro plans

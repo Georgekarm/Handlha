@@ -17,6 +17,7 @@ class AlarmReminderItem {
     this.alertMode = 'alarm', // 'alarm' | 'notification'
     this.isEnabled = true,
     this.taskId,
+    this.scheduleStatus = 'unknown',
   });
 
   final String id;
@@ -25,6 +26,10 @@ class AlarmReminderItem {
   final String alertMode; // 'alarm' | 'notification'
   final bool isEnabled;
   final String? taskId;
+
+  /// Persisted last OS schedule outcome (`exactScheduled` | `inexactFallback` |
+  /// `permissionDenied` | `disabledByPreferences` | `pastTime` | `failed` | `unknown`).
+  final String scheduleStatus;
 
   bool get isFullAlarm => alertMode == 'alarm';
 
@@ -35,6 +40,7 @@ class AlarmReminderItem {
     String? alertMode,
     bool? isEnabled,
     String? taskId,
+    String? scheduleStatus,
   }) {
     return AlarmReminderItem(
       id: id ?? this.id,
@@ -43,6 +49,7 @@ class AlarmReminderItem {
       alertMode: alertMode ?? this.alertMode,
       isEnabled: isEnabled ?? this.isEnabled,
       taskId: taskId ?? this.taskId,
+      scheduleStatus: scheduleStatus ?? this.scheduleStatus,
     );
   }
 
@@ -53,6 +60,7 @@ class AlarmReminderItem {
         'alertMode': alertMode,
         'isEnabled': isEnabled,
         'taskId': taskId,
+        'scheduleStatus': scheduleStatus,
       };
 
   factory AlarmReminderItem.fromJson(Map<String, dynamic> json) {
@@ -65,6 +73,7 @@ class AlarmReminderItem {
       alertMode: (json['alertMode'] ?? 'alarm').toString(),
       isEnabled: json['isEnabled'] != false,
       taskId: json['taskId']?.toString(),
+      scheduleStatus: (json['scheduleStatus'] ?? 'unknown').toString(),
     );
   }
 }
@@ -303,6 +312,15 @@ class AlarmReminderNotifier extends StateNotifier<AlarmReminderState> {
   }) async {
     final resolvedId =
         id ?? taskId ?? 'alarm_${DateTime.now().millisecondsSinceEpoch}';
+    final outcome = await LocalNotificationService.instance.scheduleReminderItem(
+      id: resolvedId,
+      title: title,
+      scheduledAt: scheduledAt,
+      alertMode: alertMode,
+      taskId: taskId,
+      userId: _userId,
+      requestPermission: requestPermission,
+    );
     final item = AlarmReminderItem(
       id: resolvedId,
       title: title,
@@ -310,6 +328,7 @@ class AlarmReminderNotifier extends StateNotifier<AlarmReminderState> {
       alertMode: alertMode,
       isEnabled: true,
       taskId: taskId,
+      scheduleStatus: outcome.status.name,
     );
     final nextModes = Map<String, String>.from(state.taskAlertModes);
     if (taskId != null) {
@@ -325,16 +344,6 @@ class AlarmReminderNotifier extends StateNotifier<AlarmReminderState> {
     );
     state = next;
     await AlarmReminderStore.save(_userId, next);
-
-    await LocalNotificationService.instance.scheduleReminderItem(
-      id: item.id,
-      title: item.title,
-      scheduledAt: item.scheduledAt,
-      alertMode: item.alertMode,
-      taskId: item.taskId,
-      userId: _userId,
-      requestPermission: requestPermission,
-    );
     return item;
   }
 
@@ -353,12 +362,10 @@ class AlarmReminderNotifier extends StateNotifier<AlarmReminderState> {
     if (changed?.taskId != null) {
       nextModes[changed!.taskId!] = changed.alertMode;
     }
-    final next = state.copyWith(items: updated, taskAlertModes: nextModes);
-    state = next;
-    await AlarmReminderStore.save(_userId, next);
-
+    var nextItems = updated;
     if (changed != null && changed.isEnabled) {
-      await LocalNotificationService.instance.scheduleReminderItem(
+      final outcome =
+          await LocalNotificationService.instance.scheduleReminderItem(
         id: changed.id,
         title: changed.title,
         scheduledAt: changed.scheduledAt,
@@ -366,7 +373,17 @@ class AlarmReminderNotifier extends StateNotifier<AlarmReminderState> {
         taskId: changed.taskId,
         userId: _userId,
       );
+      nextItems = [
+        for (final item in updated)
+          if (item.id == changed.id)
+            item.copyWith(scheduleStatus: outcome.status.name)
+          else
+            item,
+      ];
     }
+    final next = state.copyWith(items: nextItems, taskAlertModes: nextModes);
+    state = next;
+    await AlarmReminderStore.save(_userId, next);
   }
 
   Future<void> toggleItemEnabled(String id) async {
@@ -378,13 +395,11 @@ class AlarmReminderNotifier extends StateNotifier<AlarmReminderState> {
         else
           item,
     ];
-    final next = state.copyWith(items: updated);
-    state = next;
-    await AlarmReminderStore.save(_userId, next);
-
+    var nextItems = updated;
     if (changed != null) {
       if (changed.isEnabled) {
-        await LocalNotificationService.instance.scheduleReminderItem(
+        final outcome =
+            await LocalNotificationService.instance.scheduleReminderItem(
           id: changed.id,
           title: changed.title,
           scheduledAt: changed.scheduledAt,
@@ -392,10 +407,20 @@ class AlarmReminderNotifier extends StateNotifier<AlarmReminderState> {
           taskId: changed.taskId,
           userId: _userId,
         );
+        nextItems = [
+          for (final item in updated)
+            if (item.id == changed.id)
+              item.copyWith(scheduleStatus: outcome.status.name)
+            else
+              item,
+        ];
       } else {
         await LocalNotificationService.instance.cancelById(changed.id);
       }
     }
+    final next = state.copyWith(items: nextItems);
+    state = next;
+    await AlarmReminderStore.save(_userId, next);
   }
 
   Future<AlarmReminderItem> snoozeAlarm(

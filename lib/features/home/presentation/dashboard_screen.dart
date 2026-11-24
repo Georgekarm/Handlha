@@ -9,6 +9,7 @@ import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_loading_view.dart';
 import '../../../shared/widgets/handelha_header.dart';
 import '../../../shared/widgets/handelha_task_card.dart';
+import '../../assistant/data/user_energy_preferences.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../notifications/notification_inbox_store.dart';
 import '../../projects/domain/focus_session.dart';
@@ -17,6 +18,7 @@ import '../../projects/presentation/project_providers.dart';
 import '../../projects/presentation/widgets/focus_tree_canvas.dart';
 import '../../tasks/domain/task.dart';
 import '../../tasks/presentation/task_providers.dart';
+import '../data/dashboard_task_selector.dart';
 
 final _dashboardReadIdsProvider =
     FutureProvider.autoDispose.family<Set<String>, String>((ref, userId) {
@@ -133,9 +135,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     final openTasks =
         dayTasks.where((t) => !t.isCompleted && !t.isCancelled).toList();
-    final heroTask = openTasks.isNotEmpty ? openTasks.first : null;
-    final remainingTasks =
-        heroTask != null ? openTasks.skip(1).take(4).toList() : const <Task>[];
+    final energyPrefs = ref.watch(userEnergyPreferencesProvider);
+    final rankedOpen = DashboardTaskSelector.rankOpenTasks(
+      openTasks,
+      energyPrefs,
+      today,
+    );
+    final heroSelection = DashboardTaskSelector.pickHeroTask(
+      openTasks,
+      energyPrefs,
+      today,
+    );
+    final heroTask = heroSelection?.task;
+    final remainingTasks = heroTask != null
+        ? rankedOpen.where((t) => t.id != heroTask.id).take(4).toList()
+        : const <Task>[];
 
     final readIds = user == null
         ? const <String>{}
@@ -468,6 +482,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               // Hero teal focus card: خطوتك الجاية
               _HeroNextStepCard(
                 heroTask: heroTask,
+                selectionReason: heroSelection == null
+                    ? null
+                    : (isEn ? heroSelection.reasonEn : heroSelection.reasonAr),
                 projectName: heroTask?.projectId != null
                     ? projectMap[heroTask!.projectId!]?.title
                     : null,
@@ -615,12 +632,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
 class _HeroNextStepCard extends StatelessWidget {
   final Task? heroTask;
+  final String? selectionReason;
   final String? projectName;
   final VoidCallback onStartFocus;
   final VoidCallback onOpenAssistant;
 
   const _HeroNextStepCard({
     required this.heroTask,
+    this.selectionReason,
     this.projectName,
     required this.onStartFocus,
     required this.onOpenAssistant,
@@ -696,6 +715,19 @@ class _HeroNextStepCard extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.82),
                       ),
                     ),
+                    if (selectionReason != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        selectionReason!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.78),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

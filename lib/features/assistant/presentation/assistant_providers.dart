@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../app/locale/language_controller.dart';
 import '../../../core/database/shared_preferences_conversation_store.dart';
+import '../../../core/telemetry/local_core_loop_telemetry.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../notifications/alarm_reminder_store.dart';
 import '../../tasks/presentation/task_providers.dart';
@@ -25,6 +26,19 @@ final llmServiceProvider = Provider<LLMService>((ref) {
     languageCodeProvider: () => ref.read(appLanguageProvider).wireCode,
     onAlertModeSelected: (mode) {
       ref.read(assistantAlertModeProvider.notifier).state = mode;
+    },
+    onTelemetryEvent: (event) {
+      LocalCoreLoopTelemetry.instance.recordEvent(
+        ref.read(authNotifierProvider).value?.id,
+        event,
+      );
+    },
+    onDraftConfirmLatency: (ms) {
+      LocalCoreLoopTelemetry.instance.recordEvent(
+        ref.read(authNotifierProvider).value?.id,
+        'confirm_latency',
+        latencyMs: ms,
+      );
     },
   );
 });

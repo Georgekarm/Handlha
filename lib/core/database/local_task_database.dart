@@ -35,42 +35,7 @@ class LocalTaskDatabase {
 
   Future<Result<List<Task>>> getTasksForUser(String userId) async {
     try {
-      var all = await _readAll();
-      // Auto-heal legacy merged multi-exam task if present in user storage.
-      final mergedIdx = all.indexWhere(
-        (t) =>
-            t.userId == userId &&
-            t.deletedAt == null &&
-            t.title.trim() == 'امتحان عربي وامتحان انجليزي',
-      );
-      if (mergedIdx != -1) {
-        final old = all[mergedIdx];
-        final baseDay = old.dueAt ?? old.scheduledStartAt ?? DateTime.now().add(const Duration(days: 1));
-        final morning = DateTime(baseDay.year, baseDay.month, baseDay.day, 8, 0);
-        final evening = DateTime(baseDay.year, baseDay.month, baseDay.day, 20, 0);
-        final task1 = old.copyWith(
-          id: _uuid.v4(),
-          title: 'امتحان عربي',
-          dueAt: morning,
-          scheduledStartAt: morning,
-          priority: TaskPriority.high,
-        );
-        final task2 = old.copyWith(
-          id: _uuid.v4(),
-          title: 'امتحان انجليزي',
-          dueAt: evening,
-          scheduledStartAt: evening,
-          priority: TaskPriority.high,
-        );
-        all = [
-          ...all.sublist(0, mergedIdx),
-          task1,
-          task2,
-          ...all.sublist(mergedIdx + 1),
-        ];
-        await _writeAll(all);
-      }
-
+      final all = await _readAll();
       final tasks = all
           .where((t) => t.userId == userId && t.deletedAt == null)
           .toList();
@@ -202,6 +167,50 @@ class LocalTaskDatabase {
       return const Failure(LocalDatabaseFailure());
     }
   });
+
+  /// Idempotent upsert by task ID — safe for repeated backup restores.
+  Future<Result<List<Task>>> upsertTasks(List<Task> tasks) => _serialized(() async {
+    try {
+      final all = await _readAll();
+      final byId = <String, int>{
+        for (var i = 0; i < all.length; i++) all[i].id: i,
+      };
+      for (final task in tasks) {
+        final existingIdx = byId[task.id];
+        if (existingIdx == null) {
+          byId[task.id] = all.length;
+          all.add(task);
+        } else {
+          all[existingIdx] = task;
+        }
+      }
+      await _writeAll(all);
+      return Success(tasks);
+    } catch (e, st) {
+      AppLogger.error('upsertTasks failed', tag: _tag, error: e, stackTrace: st);
+      return const Failure(LocalDatabaseFailure());
+    }
+  });
+
+  /// Atomically replaces all stored tasks belonging to [userId] (used for rollback).
+  Future<Result<void>> replaceAllForUser(String userId, List<Task> tasks) =>
+      _serialized(() async {
+        try {
+          final others =
+              (await _readAll()).where((t) => t.userId != userId).toList();
+          others.addAll(tasks);
+          await _writeAll(others);
+          return const Success(null);
+        } catch (e, st) {
+          AppLogger.error(
+            'replaceAllForUser failed',
+            tag: _tag,
+            error: e,
+            stackTrace: st,
+          );
+          return const Failure(LocalDatabaseFailure());
+        }
+      });
 
   Future<Result<Task>> updateTask(Task updated) => _serialized(() async {
     try {

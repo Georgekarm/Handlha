@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/environment/environment.dart';
 import '../../../app/locale/language_controller.dart';
 import '../../../app/theme/app_theme_extension.dart';
+import '../../../core/cloud/firebase_cloud_service.dart';
 import '../../../core/result/result.dart';
 import '../../../shared/widgets/handelha_ambient_background.dart';
 import '../../../shared/widgets/handelha_privacy_policy_sheet.dart';
@@ -19,11 +21,13 @@ String localizeAuthError(WidgetRef ref, AppFailure failure) {
   final isEn = ref.read(appLanguageProvider).isEnglish;
   if (!isEn) return failure.message;
   return switch (failure) {
+    SocialOAuthNotConfiguredFailure() =>
+      'External OAuth sign-in is not enabled in this build. Please sign in with your local email account.',
     SocialSignInFailure() =>
       'Sign-in could not be completed. Check your connection and try again.',
     InvalidCredentialsFailure() => 'Invalid email or password.',
     UserNotFoundFailure() =>
-      'No account found on this device. Create a new account or continue with Google or Facebook.',
+      'No local account found on this device. Create a new account to get started.',
     EmailAlreadyInUseFailure() =>
       'An account already exists on this device. Sign in instead.',
     WeakPasswordFailure() =>
@@ -275,55 +279,105 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         const SizedBox(height: 14),
 
-                        // Social buttons row
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _SocialPillButton(
-                                label: appLang.tr('جوجل', 'Google'),
-                                badge: _GoogleMark(),
-                                onTap: () =>
-                                    _socialAuth(AuthProviderType.google),
+                        // Social OAuth buttons are shown ONLY when verified OAuth is enabled.
+                        if (Environment.verifiedSocialOAuthEnabled) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _SocialPillButton(
+                                  label: appLang.tr('جوجل', 'Google'),
+                                  badge: _GoogleMark(),
+                                  onTap: () =>
+                                      _socialAuth(AuthProviderType.google),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _SocialPillButton(
-                                label: appLang.tr('فيسبوك', 'Facebook'),
-                                badge: _FacebookMark(),
-                                onTap: () =>
-                                    _socialAuth(AuthProviderType.facebook),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _SocialPillButton(
+                                  label: appLang.tr('فيسبوك', 'Facebook'),
+                                  badge: _FacebookMark(),
+                                  onTap: () =>
+                                      _socialAuth(AuthProviderType.facebook),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(child: Divider(color: c.divider)),
-                            Flexible(
-                              flex: 3,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                  ),
-                                  child: Text(
-                                    appLang.tr('أو بالبريد الإلكتروني', 'Or with email'),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: c.textSecondary,
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(child: Divider(color: c.divider)),
+                              Flexible(
+                                flex: 3,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    child: Text(
+                                      appLang.tr(
+                                        'أو بالبريد الإلكتروني',
+                                        'Or with email',
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: c.textSecondary,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
+                              Expanded(child: Divider(color: c.divider)),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                        ] else ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
                             ),
-                            Expanded(child: Divider(color: c.divider)),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
+                            decoration: BoxDecoration(
+                              color: c.primarySoft.withValues(alpha: 0.65),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: c.primary.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  FirebaseCloudService.instance.isEnabled
+                                      ? Icons.cloud_done_outlined
+                                      : Icons.phonelink_lock_rounded,
+                                  size: 18,
+                                  color: c.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    FirebaseCloudService.instance.isEnabled
+                                        ? appLang.tr(
+                                            'حساب بالبريد الإلكتروني مع مزامنة سحابية اختيارية.',
+                                            'Email account with optional cloud snapshot sync.',
+                                          )
+                                        : appLang.tr(
+                                            'حساب محلي على جهازك فقط — بياناتك محفوظة بأمان مع نسخ احتياطي واستعادة كاملة.',
+                                            'Local-first account on this device — full JSON backup & restore anytime.',
+                                          ),
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: c.textPrimary,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
 
                         if (_errorMessage != null) ...[
                           Container(

@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "phase": "phase3_discovery_interviews",
+  "privacy_notice": "ZERO PII: Never record interviewee names, phone numbers, emails, or verbatim private task content. Use anonymous IDs P01..P20 only.",
+  "interviews": [
+    {
+      "participant_id": "P01",
+      "date": "YYYY-MM-DD",
+      "segment": "student",
+      "missed_commitment_last_14d": null,
+      "current_tool": "whatsapp_self | notes | paper | todo_app | memory",
+      "prior_app_abandonment_reason": "",
+      "baseline_completion_rate": null,
+      "preferred_input_mode": "text | voice",
+      "understood_preview_without_help": null,
+      "slot_errors_out_of_3": null,
+      "installed_for_2w_pilot": null,
+      "notes_non_pii": ""
+    }
+  ]
+}

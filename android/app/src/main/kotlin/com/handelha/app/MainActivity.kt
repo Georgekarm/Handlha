@@ -45,8 +45,28 @@ class MainActivity : FlutterActivity() {
     private var pendingAccountResult: MethodChannel.Result? = null
     private var alarmChannel: MethodChannel? = null
 
+    @Volatile
+    private var pendingSharedText: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureSharedTextIntent(intent)
+    }
+
+    private fun captureSharedTextIntent(incoming: Intent?) {
+        if (incoming == null) return
+        if (incoming.action == Intent.ACTION_SEND && incoming.type?.startsWith("text/") == true) {
+            val shared = incoming.getStringExtra(Intent.EXTRA_TEXT)?.trim()
+            if (!shared.isNullOrEmpty()) {
+                pendingSharedText = shared
+                // Clear action so configuration changes do not re-trigger the same shared text.
+                incoming.action = Intent.ACTION_MAIN
+                try {
+                    alarmChannel?.invokeMethod("onSharedTextReceived", shared)
+                } catch (_: Exception) {
+                }
+            }
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -267,8 +287,19 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
 
+                    "requestFullScreenIntentPermission" -> {
+                        NativeAlarmScheduler.openFullScreenIntentSettings(this)
+                        result.success(true)
+                    }
+
                     "consumePendingActions" -> {
                         result.success(NativeAlarmStore.drainPendingActions(applicationContext))
+                    }
+
+                    "consumeSharedText" -> {
+                        val text = pendingSharedText
+                        pendingSharedText = null
+                        result.success(text)
                     }
 
                     else -> result.notImplemented()
@@ -280,6 +311,7 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        captureSharedTextIntent(intent)
         if (intent.action == AlarmActivity.ACTION_START_FOCUS_FROM_ALARM) {
             try {
                 alarmChannel?.invokeMethod("onPendingActionsUpdated", null)

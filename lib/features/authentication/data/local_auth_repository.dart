@@ -1,11 +1,14 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../app/mode/student_mode_controller.dart';
+import '../../../core/cloud/cloud_sync_engine.dart';
 import '../../../core/cloud/firebase_cloud_service.dart';
+import '../../../core/database/handelha_sqlite_store.dart';
 import '../../../core/database/local_backup_service.dart';
 import '../../../core/database/local_focus_session_database.dart';
 import '../../../core/database/local_project_database.dart';
@@ -56,7 +59,9 @@ final class LocalAuthRepository implements AuthRepository {
           await SecureStorageService.instance.read(
             SecureStorageKeys.localEmail,
           );
-      if (userId == null || email == null) return null;
+      if (userId == null) return null;
+      final isLocalGuest = userId.startsWith('local_');
+      if (!isLocalGuest && email == null) return null;
 
       final displayName = await SecureStorageService.instance.read(
         SecureStorageKeys.userName,
@@ -72,7 +77,7 @@ final class LocalAuthRepository implements AuthRepository {
       final subRecord = await LocalSubscriptionStore.loadForUser(userId);
       _currentUser = _buildUser(
         userId: userId,
-        email: email,
+        email: email ?? '',
         displayName: displayName,
         avatarUrl: avatarUrl,
         provider: provider,
@@ -128,14 +133,26 @@ final class LocalAuthRepository implements AuthRepository {
         return Failure(cloudRes.failure);
       }
       final session = (cloudRes as Success<FirebaseAuthSession>).data;
-      final cloudJson = await FirebaseCloudService.instance.fetchWorkspaceJson(
+      await _migrateGuestWorkspaceIfNeeded(session.uid);
+      await CloudSyncEngine.instance.syncUser(session.uid);
+      final existingTasks = await LocalTaskDatabase.instance.getTasksForUser(
         session.uid,
       );
-      if (cloudJson != null && cloudJson.trim().isNotEmpty) {
-        await LocalBackupService.instance.importTasksForUser(
-          userId: session.uid,
-          backupJson: cloudJson,
+      final hasLocalTasks = switch (existingTasks) {
+        Success(data: final tasks) => tasks.isNotEmpty,
+        Failure() => false,
+      };
+      if (!hasLocalTasks) {
+        // Legacy fallback: import pre-Phase-1 single-document workspace snapshot if present.
+        final cloudJson = await FirebaseCloudService.instance.fetchWorkspaceJson(
+          session.uid,
         );
+        if (cloudJson != null && cloudJson.trim().isNotEmpty) {
+          await LocalBackupService.instance.importTasksForUser(
+            userId: session.uid,
+            backupJson: cloudJson,
+          );
+        }
       }
       final isOnboardingDone = await isOnboardingComplete();
       final tone = await _loadTone();
@@ -166,16 +183,19 @@ final class LocalAuthRepository implements AuthRepository {
     if (savedEmail == null || savedHash == null || salt == null) {
       return const Failure(UserNotFoundFailure());
     }
-    if (savedEmail != normalizedEmail ||
-        !_verifyPassword(password, salt, savedHash)) {
+    if (savedEmail != normalizedEmail) {
+      return const Failure(InvalidCredentialsFailure());
+    }
+    final verification = await _verifyPasswordAsync(password, salt, savedHash);
+    if (!verification.matched) {
       return const Failure(InvalidCredentialsFailure());
     }
 
-    // Transparently upgrade legacy single-pass SHA-256 hashes to PBKDF2-HMAC-SHA256.
-    if (!savedHash.startsWith('$_kdfPrefix\$')) {
+    // Transparently upgrade legacy hashes or <100k PBKDF2 hashes in background Isolate.
+    if (verification.needsUpgrade) {
       await SecureStorageService.instance.write(
         SecureStorageKeys.localPasswordHash,
-        _hash(password, salt),
+        await _hashAsync(password, salt),
       );
     }
 
@@ -183,6 +203,8 @@ final class LocalAuthRepository implements AuthRepository {
       SecureStorageKeys.localAccountId,
     );
     if (userId == null) return const Failure(UserNotFoundFailure());
+
+    await _migrateGuestWorkspaceIfNeeded(userId);
 
     final displayName = await SecureStorageService.instance.read(
           SecureStorageKeys.localAccountName,
@@ -228,11 +250,16 @@ final class LocalAuthRepository implements AuthRepository {
         return Failure(cloudRes.failure);
       }
       final session = (cloudRes as Success<FirebaseAuthSession>).data;
+      final migratedGuest = await _migrateGuestWorkspaceIfNeeded(session.uid);
+      if (migratedGuest) {
+        await CloudSyncEngine.instance.syncUser(session.uid);
+      }
       final user = _buildUser(
         userId: session.uid,
         email: session.email,
         displayName: session.displayName ?? displayName?.trim(),
         provider: AuthProviderType.email,
+        onboardingComplete: await isOnboardingComplete(),
         tone: await _loadTone(),
       );
       await LocalSubscriptionStore.clearForUser(user.id);
@@ -250,6 +277,7 @@ final class LocalAuthRepository implements AuthRepository {
       email: normalizedEmail,
       displayName: displayName?.trim(),
       provider: AuthProviderType.email,
+      onboardingComplete: await isOnboardingComplete(),
       tone: await _loadTone(),
     );
     await SecureStorageService.instance.write(
@@ -273,10 +301,48 @@ final class LocalAuthRepository implements AuthRepository {
     );
     await SecureStorageService.instance.write(
       SecureStorageKeys.localPasswordHash,
-      _hash(password, salt),
+      await _hashAsync(password, salt),
     );
+    await _migrateGuestWorkspaceIfNeeded(user.id);
     await LocalSubscriptionStore.clearForUser(user.id);
     await _startSession(user);
+    return Success(user);
+  }
+
+  @override
+  Future<Result<AppUser>> continueLocallyWithoutAccount({
+    String? displayName,
+  }) async {
+    var guestId = await SecureStorageService.instance.read(
+      SecureStorageKeys.localGuestId,
+    );
+    if (guestId == null || guestId.trim().isEmpty || !guestId.startsWith('local_')) {
+      guestId = 'local_${_uuid.v4()}';
+      await SecureStorageService.instance.write(
+        SecureStorageKeys.localGuestId,
+        guestId,
+      );
+    }
+    final existingName = await SecureStorageService.instance.read(
+      SecureStorageKeys.userName,
+    );
+    final tone = await _loadTone();
+    final subRecord = await LocalSubscriptionStore.loadForUser(guestId);
+    await markOnboardingComplete();
+    final user = _buildUser(
+      userId: guestId,
+      email: '',
+      displayName: (displayName?.trim().isNotEmpty == true)
+          ? displayName!.trim()
+          : existingName,
+      provider: AuthProviderType.email,
+      onboardingComplete: true,
+      tone: tone,
+      subscriptionCategory: subRecord.category,
+      activePlanId: subRecord.activePlanId,
+    );
+    await _startSession(user);
+    AppLogger.info('Started local guest workspace ($guestId)', tag: _tag);
     return Success(user);
   }
 
@@ -323,6 +389,7 @@ final class LocalAuthRepository implements AuthRepository {
           return Failure(SocialOAuthNotConfiguredFailure(provider));
         }
         final userId = '${provider.name}_${profile.id}';
+        await _migrateGuestWorkspaceIfNeeded(userId);
         final isOnboardingDone = await isOnboardingComplete();
         final tone = await _loadTone();
         final subRecord = await LocalSubscriptionStore.loadForUser(userId);
@@ -388,7 +455,7 @@ final class LocalAuthRepository implements AuthRepository {
     );
     await SecureStorageService.instance.write(
       SecureStorageKeys.localPasswordHash,
-      _hash(newPassword, salt),
+      await _hashAsync(newPassword, salt),
     );
     return const Success(null);
   }
@@ -439,14 +506,9 @@ final class LocalAuthRepository implements AuthRepository {
     final userId = _currentUser?.id;
     if (userId != null &&
         userId.isNotEmpty &&
+        !userId.startsWith('local_') &&
         FirebaseCloudService.instance.isEnabled) {
-      final exported = await LocalBackupService.instance.exportForUser(userId);
-      if (exported is Success<String>) {
-        await FirebaseCloudService.instance.syncWorkspaceJson(
-          userId: userId,
-          backupJson: exported.data,
-        );
-      }
+      await CloudSyncEngine.instance.syncUser(userId);
     }
     _currentUser = null;
     _onboardingComplete = false;
@@ -469,12 +531,15 @@ final class LocalAuthRepository implements AuthRepository {
     _currentUser = null;
     _onboardingComplete = false;
 
-    await FirebaseCloudService.instance.deleteUserCloudData(userId);
+    if (userId != null && !userId.startsWith('local_')) {
+      await FirebaseCloudService.instance.deleteUserCloudData(userId);
+    }
 
     if (userId != null && userId.isNotEmpty) {
       await LocalTaskDatabase.instance.clearForUser(userId);
       await LocalProjectDatabase.instance.clearForUser(userId);
       await LocalFocusSessionDatabase.instance.clearForUser(userId);
+      await HandelhaSqliteStore.instance.clearAllSyncMetadataForUser(userId);
       await SharedPreferencesConversationStore.clearForUser(userId);
       await LocalNotificationPreferences.clear(userId);
       await NotificationInboxStore.clearForUser(userId);
@@ -484,6 +549,9 @@ final class LocalAuthRepository implements AuthRepository {
       await TokenBalanceNotifier.clearForUser(userId);
       await LocalSubscriptionStore.clearForUser(userId);
       await LocalCoreLoopTelemetry.instance.clearForUser(userId);
+      if (userId.startsWith('local_')) {
+        await SecureStorageService.instance.delete(SecureStorageKeys.localGuestId);
+      }
     }
     await StudentModeController.clearSaved();
     await LocalNotificationService.instance.cancelAll();
@@ -625,64 +693,120 @@ final class LocalAuthRepository implements AuthRepository {
     return null;
   }
 
-  static const String _kdfPrefix = 'pbkdf2_sha256';
-  static const int _kdfIterations = 10000;
+  Future<bool> _migrateGuestWorkspaceIfNeeded(String targetUserId) async {
+    final currentId = _currentUser?.id;
+    final guestId = (currentId != null && currentId.startsWith('local_'))
+        ? currentId
+        : await SecureStorageService.instance.read(
+            SecureStorageKeys.localGuestId,
+          );
+    if (guestId == null ||
+        guestId.trim().isEmpty ||
+        !guestId.startsWith('local_') ||
+        guestId == targetUserId) {
+      return false;
+    }
 
-  String _hash(String password, String salt) {
-    final derivedHex = _pbkdf2Sha256Hex(
-      password: password,
-      salt: salt,
-      iterations: _kdfIterations,
+    if (await HandelhaSqliteStore.instance.ensureReadyIfSupported()) {
+      await HandelhaSqliteStore.instance.reassignUserWorkspace(
+        fromUserId: guestId,
+        toUserId: targetUserId,
+      );
+    } else {
+      await LocalTaskDatabase.instance.reassignUserLegacy(guestId, targetUserId);
+      await LocalProjectDatabase.instance.reassignUserLegacy(
+        guestId,
+        targetUserId,
+      );
+      await LocalFocusSessionDatabase.instance.reassignUserLegacy(
+        guestId,
+        targetUserId,
+      );
+    }
+
+    // Migrate auxiliary preference & student/alarm stores so guest energy profile,
+    // exam grades, notification preferences, and scheduled alarms carry over too.
+    try {
+      final guestGrades = await ExamGradesStore.load(guestId);
+      if (guestGrades.isNotEmpty) {
+        await ExamGradesStore.upsertAll(targetUserId, guestGrades);
+        await ExamGradesStore.clearForUser(guestId);
+      }
+      final guestEnergy = await UserEnergyPreferencesStore.load(guestId);
+      if (guestEnergy.completedWizard) {
+        await UserEnergyPreferencesStore.save(targetUserId, guestEnergy);
+      }
+      final guestNotif = await LocalNotificationPreferences.load(guestId);
+      await LocalNotificationPreferences.save(targetUserId, guestNotif);
+      final guestAlarms = await AlarmReminderStore.load(guestId);
+      if (guestAlarms.items.isNotEmpty || guestAlarms.taskAlertModes.isNotEmpty) {
+        final targetAlarms = await AlarmReminderStore.load(targetUserId);
+        final mergedById = <String, AlarmReminderItem>{
+          for (final item in targetAlarms.items) item.id: item,
+          for (final item in guestAlarms.items) item.id: item,
+        };
+        await AlarmReminderStore.save(
+          targetUserId,
+          targetAlarms.copyWith(
+            defaultAlertMode: guestAlarms.defaultAlertMode,
+            items: mergedById.values.toList(),
+            taskAlertModes: {
+              ...targetAlarms.taskAlertModes,
+              ...guestAlarms.taskAlertModes,
+            },
+          ),
+        );
+        await AlarmReminderStore.clearForUser(guestId);
+      }
+    } catch (_) {}
+
+    await SecureStorageService.instance.delete(SecureStorageKeys.localGuestId);
+    AppLogger.info(
+      'Migrated local guest workspace ($guestId -> $targetUserId)',
+      tag: _tag,
     );
-    return '$_kdfPrefix\$$_kdfIterations\$$derivedHex';
+    return true;
   }
 
-  bool _verifyPassword(String password, String salt, String storedHash) {
+  static const String _kdfPrefix = 'pbkdf2_sha256';
+  static const int kdfIterations = 100000;
+
+  Future<String> _hashAsync(String password, String salt) async {
+    final derivedHex = await Isolate.run(
+      () => _derivePbkdf2Sha256HexIsolate(
+        (password: password, salt: salt, iterations: kdfIterations),
+      ),
+    );
+    return '$_kdfPrefix\$$kdfIterations\$$derivedHex';
+  }
+
+  Future<({bool matched, bool needsUpgrade})> _verifyPasswordAsync(
+    String password,
+    String salt,
+    String storedHash,
+  ) async {
     if (storedHash.startsWith('$_kdfPrefix\$')) {
       final parts = storedHash.split('\$');
       if (parts.length == 3) {
-        final iterations = int.tryParse(parts[1]) ?? _kdfIterations;
+        final iterations = int.tryParse(parts[1]) ?? kdfIterations;
         final expectedHex = parts[2];
-        final actualHex = _pbkdf2Sha256Hex(
-          password: password,
-          salt: salt,
-          iterations: iterations,
+        final actualHex = await Isolate.run(
+          () => _derivePbkdf2Sha256HexIsolate(
+            (password: password, salt: salt, iterations: iterations),
+          ),
         );
-        return _constantTimeEquals(actualHex, expectedHex);
+        return (
+          matched: _constantTimeEquals(actualHex, expectedHex),
+          needsUpgrade: iterations < kdfIterations,
+        );
       }
     }
     // Fallback verification for legacy single-pass SHA-256 hashes (upgraded on sign-in).
     final legacyHex = sha256.convert(utf8.encode('$salt:$password')).toString();
-    return _constantTimeEquals(legacyHex, storedHash);
-  }
-
-  String _pbkdf2Sha256Hex({
-    required String password,
-    required String salt,
-    required int iterations,
-  }) {
-    final hmac = Hmac(sha256, utf8.encode(password));
-    final saltBytes = utf8.encode(salt);
-    final blockInput = Uint8List(saltBytes.length + 4);
-    blockInput.setRange(0, saltBytes.length, saltBytes);
-    blockInput[saltBytes.length] = 0;
-    blockInput[saltBytes.length + 1] = 0;
-    blockInput[saltBytes.length + 2] = 0;
-    blockInput[saltBytes.length + 3] = 1;
-
-    var u = hmac.convert(blockInput).bytes;
-    final out = Uint8List.fromList(u);
-    for (var i = 1; i < iterations; i++) {
-      u = hmac.convert(u).bytes;
-      for (var j = 0; j < out.length; j++) {
-        out[j] ^= u[j];
-      }
-    }
-    final sb = StringBuffer();
-    for (final byte in out) {
-      sb.write(byte.toRadixString(16).padLeft(2, '0'));
-    }
-    return sb.toString();
+    return (
+      matched: _constantTimeEquals(legacyHex, storedHash),
+      needsUpgrade: true,
+    );
   }
 
   bool _constantTimeEquals(String a, String b) {
@@ -693,4 +817,33 @@ final class LocalAuthRepository implements AuthRepository {
     }
     return diff == 0;
   }
+}
+
+/// Top-level pure PBKDF2-HMAC-SHA256 derivation executed in a background Isolate
+/// so 100,000 iterations never drop frames on the Flutter UI thread.
+String _derivePbkdf2Sha256HexIsolate(
+  ({String password, String salt, int iterations}) input,
+) {
+  final hmac = Hmac(sha256, utf8.encode(input.password));
+  final saltBytes = utf8.encode(input.salt);
+  final blockInput = Uint8List(saltBytes.length + 4);
+  blockInput.setRange(0, saltBytes.length, saltBytes);
+  blockInput[saltBytes.length] = 0;
+  blockInput[saltBytes.length + 1] = 0;
+  blockInput[saltBytes.length + 2] = 0;
+  blockInput[saltBytes.length + 3] = 1;
+
+  var u = hmac.convert(blockInput).bytes;
+  final out = Uint8List.fromList(u);
+  for (var i = 1; i < input.iterations; i++) {
+    u = hmac.convert(u).bytes;
+    for (var j = 0; j < out.length; j++) {
+      out[j] ^= u[j];
+    }
+  }
+  final sb = StringBuffer();
+  for (final byte in out) {
+    sb.write(byte.toRadixString(16).padLeft(2, '0'));
+  }
+  return sb.toString();
 }

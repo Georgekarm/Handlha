@@ -18,6 +18,10 @@ class Environment {
     'ENABLE_QA_PREVIEW',
     defaultValue: false,
   );
+  static const bool _legacyPreviewFlag = bool.fromEnvironment(
+    'ENABLE_PREVIEW_ACCOUNT',
+    defaultValue: false,
+  );
 
   /// Social OAuth providers remain disabled & hidden until genuine verified
   /// OAuth token exchange is configured and explicitly enabled.
@@ -25,9 +29,14 @@ class Environment {
     'ENABLE_VERIFIED_SOCIAL_OAUTH',
     defaultValue: false,
   );
+  static const bool _shortVerifiedSocialOAuthFlag = bool.fromEnvironment(
+    'VERIFIED_SOCIAL_OAUTH',
+    defaultValue: false,
+  );
 
   static AppEnvironment get current {
-    return _env == 'production'
+    final norm = _env.trim().toLowerCase();
+    return (norm == 'production' || norm == 'prod')
         ? AppEnvironment.production
         : AppEnvironment.development;
   }
@@ -40,8 +49,12 @@ class Environment {
 
   /// Strictly disabled in release/profile builds and in production.
   static bool get enableQaPreviewAccount =>
-      kDebugMode && !kReleaseMode && isDevelopment && _qaPreviewFlag;
+      kDebugMode &&
+      !kReleaseMode &&
+      isDevelopment &&
+      (_qaPreviewFlag || _legacyPreviewFlag);
 
   /// True only when verified social OAuth is enabled for this build.
-  static bool get verifiedSocialOAuthEnabled => _verifiedSocialOAuthFlag;
+  static bool get verifiedSocialOAuthEnabled =>
+      _verifiedSocialOAuthFlag || _shortVerifiedSocialOAuthFlag;
 }

@@ -119,6 +119,9 @@ class LocalNotificationService {
   Future<NotificationPermissionStatus> Function()? testPermissionProvider;
 
   @visibleForTesting
+  DateTime Function()? testNowProvider;
+
+  @visibleForTesting
   Future<AlarmScheduleOutcome> Function({
     required String id,
     required String title,
@@ -347,7 +350,8 @@ class LocalNotificationService {
 
       if (testPermissionProvider != null || testSchedulerOverride != null) {
         final permissions = await checkPermissions();
-        if (scheduledAt.toLocal().isBefore(DateTime.now())) {
+        final nowRef = testNowProvider?.call() ?? DateTime.now();
+        if (scheduledAt.toLocal().isBefore(nowRef)) {
           return const AlarmScheduleOutcome(
             status: AlarmScheduleStatus.pastTime,
             detail: 'الموعد المختار في الماضي.',

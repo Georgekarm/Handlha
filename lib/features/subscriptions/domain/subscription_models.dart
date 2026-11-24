@@ -164,9 +164,6 @@ class SubscriptionState extends Equatable {
   }
 
   bool canUse(PremiumFeature feature) {
-    if (feature == PremiumFeature.studentExamTracking) {
-      return isStudent;
-    }
     if (isPro) return true;
     return switch (feature) {
       PremiumFeature.advancedPlanning => false,
@@ -175,6 +172,9 @@ class SubscriptionState extends Equatable {
       PremiumFeature.studentExamTracking => false,
     };
   }
+
+  /// Alias used by UI gates and providers.
+  bool canUseFeature(PremiumFeature feature) => canUse(feature);
 
   SubscriptionState copyWith({
     SubscriptionStatus? status,

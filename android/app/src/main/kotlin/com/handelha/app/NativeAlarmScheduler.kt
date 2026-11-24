@@ -18,8 +18,10 @@ object NativeAlarmScheduler {
     const val EXTRA_IS_PREVIEW = "handelha_is_preview"
 
     fun stableRequestCode(id: String): Int {
-        val raw = abs(id.hashCode()) % 1_000_000_000
-        return 100_000 + raw
+        // Mask sign bit safely (avoids abs(Int.MIN_VALUE) negative overflow)
+        // and space by 10 so reqCode..reqCode+4 PendingIntents never collide across IDs.
+        val positiveHash = (id.hashCode() and 0x7fffffff) % 80_000_000
+        return 100_000 + (positiveHash * 10)
     }
 
     fun canScheduleExactAlarms(context: Context): Boolean {
@@ -50,6 +52,33 @@ object NativeAlarmScheduler {
 
     fun openOverlayPermissionSettings(@Suppress("UNUSED_PARAMETER") context: Context) {
         // No-op: SYSTEM_ALERT_WINDOW is removed to comply with Google Play policy.
+    }
+
+    fun openFullScreenIntentSettings(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (canUseFullScreenIntent(context)) return
+            try {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                    Uri.parse("package:${context.packageName}"),
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return
+            } catch (_: Exception) {
+            }
+        }
+        try {
+            val fallback = Intent(
+                Settings.ACTION_APP_NOTIFICATION_SETTINGS,
+            ).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(fallback)
+        } catch (_: Exception) {
+        }
     }
 
     fun openExactAlarmSettings(context: Context) {

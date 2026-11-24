@@ -218,6 +218,7 @@ class SecureStorageKeys {
   static const String authProvider = 'auth_provider';
   static const String userAvatarUrl = 'user_avatar_url';
   static const String localAccountName = 'local_account_name';
+  static const String localGuestId = 'local_guest_id';
   static const String assistantTone = 'assistant_tone';
   static const String localAccountId = 'local_account_id';
   static const String localEmail = 'local_email';

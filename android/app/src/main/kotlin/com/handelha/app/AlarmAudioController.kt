@@ -10,6 +10,7 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -49,6 +50,9 @@ object AlarmAudioController {
     private var focusRequest: AudioFocusRequest? = null
 
     @Volatile
+    private var ringWakeLock: PowerManager.WakeLock? = null
+
+    @Volatile
     private var isActive = false
 
     private val autoStopRunnable = Runnable {
@@ -58,6 +62,8 @@ object AlarmAudioController {
     /**
      * Starts alarm audio and vibration asynchronously off the main thread so
      * [AlarmActivity] and [AlarmReceiver] never block or ANR on slower devices.
+     * Holds a bounded PARTIAL_WAKE_LOCK for the ringing duration so Android 12-16
+     * OEM cached-process freezers do not kill the audio thread after [AlarmReceiver] exits.
      */
     fun start(context: Context) {
         val appContext = context.applicationContext
@@ -68,6 +74,7 @@ object AlarmAudioController {
             }
             myGen = generation.incrementAndGet()
             isActive = true
+            acquireRingWakeLockLocked(appContext)
         }
 
         mainHandler.removeCallbacks(autoStopRunnable)
@@ -200,6 +207,33 @@ object AlarmAudioController {
         } catch (_: Throwable) {
         }
         audioManager = null
+        releaseRingWakeLockLocked()
+    }
+
+    private fun acquireRingWakeLockLocked(context: Context) {
+        releaseRingWakeLockLocked()
+        try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+            ringWakeLock = pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "handelha:AlarmAudioWakeLock",
+            ).apply {
+                setReferenceCounted(false)
+                acquire(AUTO_STOP_MS + 5_000L)
+            }
+        } catch (_: Throwable) {
+            ringWakeLock = null
+        }
+    }
+
+    private fun releaseRingWakeLockLocked() {
+        try {
+            if (ringWakeLock?.isHeld == true) {
+                ringWakeLock?.release()
+            }
+        } catch (_: Throwable) {
+        }
+        ringWakeLock = null
     }
 
     private fun startSystemFallbackRingtone(context: Context, myGen: Long) {

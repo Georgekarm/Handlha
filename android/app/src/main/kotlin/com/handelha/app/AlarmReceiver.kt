@@ -174,15 +174,25 @@ class AlarmReceiver : BroadcastReceiver() {
                     .setCategory(NotificationCompat.CATEGORY_ALARM)
                     .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                     .setPublicVersion(publicNotif)
-                    .setOngoing(false)
+                    .setOngoing(true)
                     .setAutoCancel(true)
-                    .setSilent(true) // Audio played asynchronously by AlarmAudioController on USAGE_ALARM
+                    .setSilent(true) // Audio played asynchronously by AlarmAudioController on USAGE_ALARM with dedicated WakeLock
                     .setContentIntent(fullScreenPi)
                     .setDeleteIntent(dismissPi)
                     .addAction(0, if (isEn) "Snooze 10m" else "غفوة ١٠ د", snoozePi)
                     .addAction(0, if (isEn) "Dismiss" else "إيقاف", dismissPi)
                 if (NativeAlarmScheduler.canUseFullScreenIntent(context)) {
                     builder.setFullScreenIntent(fullScreenPi, true)
+                } else if (pm?.isInteractive == true) {
+                    // Best-effort direct activity launch when screen is unlocked and FSI permission is not yet granted.
+                    NativeAlarmScheduler.launchAlarmActivityNow(
+                        context = context,
+                        id = id,
+                        title = title,
+                        taskId = taskId,
+                        isEn = isEn,
+                        isPreview = false,
+                    )
                 }
                 nm.notify(reqCode, builder.build())
             }

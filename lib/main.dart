@@ -3,11 +3,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
+import 'core/database/handelha_sqlite_store.dart';
 import 'features/notifications/local_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  if (HandelhaSqliteStore.isNativeMobilePlatform) {
+    try {
+      await HandelhaSqliteStore.instance.initialize();
+    } catch (_) {
+      // Repositories gracefully handle fallback / surface errors if OS storage fails.
+    }
+  }
   await LocalNotificationService.instance.initialize();
 
   ErrorWidget.builder = (details) {

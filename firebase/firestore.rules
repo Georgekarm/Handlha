@@ -1,0 +1,90 @@
+rules_version = '2';
+
+// Handelha — Production Cloud Firestore Security Rules
+// Deploy with: firebase deploy --only firestore:rules
+//
+// Security invariants:
+// 1. Default deny-all across the entire database.
+// 2. Strict per-UID isolation: only the authenticated owner (`request.auth.uid == userId`)
+//    can read, create, update, or delete their own subcollections.
+// 3. Per-document field bounds and key-count caps protect against abuse and payload bloat.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validBaseEntity(userId, docId) {
+      return request.resource.data.keys().size() <= 40
+        && request.resource.data.user_id == userId
+        && request.resource.data.id == docId
+        && request.resource.data.updated_at is string
+        && request.resource.data.updated_at.size() > 0
+        && request.resource.data.updated_at.size() <= 40;
+    }
+
+    match /users/{userId} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.data.keys().size() <= 20;
+
+      match /tasks/{taskId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validBaseEntity(userId, taskId)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 500
+          && (
+            !('description' in request.resource.data)
+            || request.resource.data.description == null
+            || (
+              request.resource.data.description is string
+              && request.resource.data.description.size() <= 5000
+            )
+          );
+      }
+
+      match /projects/{projectId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validBaseEntity(userId, projectId)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 300
+          && (
+            !('phases_json' in request.resource.data)
+            || request.resource.data.phases_json == null
+            || (
+              request.resource.data.phases_json is string
+              && request.resource.data.phases_json.size() <= 100000
+            )
+          );
+      }
+
+      match /focus_sessions/{sessionId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validBaseEntity(userId, sessionId)
+          && request.resource.data.elapsed_minutes is int
+          && request.resource.data.elapsed_minutes >= 0
+          && request.resource.data.elapsed_minutes <= 1440;
+      }
+
+      // Legacy pre-Phase-1 single-document backup path (kept read/delete-safe for migration).
+      match /workspaces/{docId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && docId == 'primary'
+          && request.resource.data.userId == userId
+          && request.resource.data.keys().size() <= 5;
+      }
+    }
+
+    // Default deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

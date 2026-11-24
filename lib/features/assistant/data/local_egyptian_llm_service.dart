@@ -73,6 +73,8 @@ class LocalEgyptianLlmService implements LLMService {
     this.onAlertModeSelected,
     this.onTelemetryEvent,
     this.onDraftConfirmLatency,
+    this.onEnergyPreferencesUpdated,
+    this.onExamGradeReported,
     this.requireMutationConfirmation = true,
   })  : _nlu = EgyptianNluAnalyzer(intentModel: intentModel),
         _planner = planner ?? const DeterministicSchedulePlanner() {
@@ -99,6 +101,12 @@ class LocalEgyptianLlmService implements LLMService {
   final void Function(String alertMode)? onAlertModeSelected;
   final void Function(String eventName)? onTelemetryEvent;
   final void Function(int latencyMs)? onDraftConfirmLatency;
+  final void Function(UserEnergyPreferences prefs)? onEnergyPreferencesUpdated;
+  final void Function({
+    required String examTitle,
+    required String gradeTier,
+    required String scoreLabel,
+  })? onExamGradeReported;
 
   /// Enforces explicit user preview & confirmation before ANY write/destructive
   /// tool execution (`create_task`, `update_task`, `delete_task`, `complete_task`,
@@ -213,8 +221,24 @@ class LocalEgyptianLlmService implements LLMService {
       return planningReply;
     }
 
-    // 2b. Active mutation preview draft (Confirm / Edit / Cancel before ANY write)
-    final pendingDraft = _pendingDraftByCid[cid];
+    // 2b. Active mutation preview draft (Confirm / Edit / Cancel before ANY write).
+    // If the app restarted while a preview card was on screen, recover the draft
+    // from the persisted conversation history automatically.
+    var pendingDraft = _pendingDraftByCid[cid];
+    if (pendingDraft == null &&
+        (_isDraftConfirm(norm) ||
+            _isDraftCancel(norm) ||
+            raw.startsWith('تعديل المسودة |') ||
+            raw.startsWith('EDIT_DRAFT |'))) {
+      pendingDraft = _tryRecoverDraftFromHistory(
+        cid: cid,
+        messages: request.messages,
+        now: now,
+      );
+      if (pendingDraft != null) {
+        _pendingDraftByCid[cid] = pendingDraft;
+      }
+    }
     if (pendingDraft != null) {
       final draftReply = _handlePendingMutationDraft(
         cid: cid,
@@ -1421,6 +1445,40 @@ class LocalEgyptianLlmService implements LLMService {
     );
   }
 
+  _PendingMutationDraft? _tryRecoverDraftFromHistory({
+    required String cid,
+    required List<ConversationMessage> messages,
+    required DateTime now,
+  }) {
+    // Expect at least: [..., user(originalPrompt), assistant(previewCard), user(confirm/cancel/edit)]
+    if (messages.length < 3) return null;
+    final prevAssistant = messages[messages.length - 2];
+    if (prevAssistant.role != MessageRole.assistant) return null;
+    final assistantText = prevAssistant.content.trim();
+    final isPreview = assistantText.startsWith('🔍 مراجعة قبل') ||
+        assistantText.startsWith('⚠️ تأكيد قبل الحذف') ||
+        assistantText.startsWith('🔍 Review before') ||
+        assistantText.startsWith('⚠️ Confirm before deleting');
+    if (!isPreview) return null;
+
+    for (var i = messages.length - 3; i >= 0; i--) {
+      final m = messages[i];
+      if (m.role == MessageRole.user && m.content.trim().isNotEmpty) {
+        final prompt = m.content.trim();
+        final specs = _nlu.extractTaskSpecs(prompt, now);
+        if (specs.isNotEmpty) {
+          return _PendingMutationDraft(
+            actionKind: 'create_task',
+            toolCalls: _buildCreateCalls(specs),
+            originalPrompt: prompt,
+          );
+        }
+        break;
+      }
+    }
+    return null;
+  }
+
   LlmReply? _handlePendingMutationDraft({
     required String cid,
     required _PendingMutationDraft draft,
@@ -2446,6 +2504,7 @@ class LocalEgyptianLlmService implements LLMService {
       completedWizard: true,
     );
     UserEnergyPreferencesStore.setCurrent(next);
+    onEnergyPreferencesUpdated?.call(next);
     return _tr(
       '⚡ تمام جدًا! سجّلت في بصمة طاقتك إن ذروة نشاطك «${next.peakLabelAr}».\n'
       'من دلوقتي هرتّبلك أهم التاسكات والمشاريع والامتحانات في الوقت ده، وهقسّمها لجلسات من ${ArabicFormatters.toArabicDigits(next.preferredSessionMinutes)} دقيقة!',
@@ -2490,6 +2549,11 @@ class LocalEgyptianLlmService implements LLMService {
       }
     }
 
+    onExamGradeReported?.call(
+      examTitle: subject,
+      gradeTier: gradeTier,
+      scoreLabel: scoreLabel,
+    );
     final enc = ExamGradesStore.buildEncouragement(
       examTitle: subject,
       gradeTier: gradeTier,
@@ -2536,6 +2600,8 @@ class LocalEgyptianLlmService implements LLMService {
         ? input['goal'].toString().trim()
         : title;
     final refinement = input['refinement']?.toString().trim() ?? '';
+    final constraints = input['constraints']?.toString().trim() ?? '';
+    final rawDeadline = input['deadline']?.toString().trim() ?? '';
     final existingTasks = (input['existing_tasks'] is List)
         ? (input['existing_tasks'] as List).whereType<Map>().toList()
         : const <Map>[];
@@ -2543,6 +2609,32 @@ class LocalEgyptianLlmService implements LLMService {
         .map((t) => t['id']?.toString() ?? '')
         .where((id) => id.isNotEmpty)
         .toSet();
+
+    final combinedNorm = _nlu.normalize('$title $goal $refinement $constraints');
+    final isStudyDomain = _nlu.containsAny(combinedNorm, [
+      'امتحان', 'مذاكر', 'مراجع', 'منهج', 'ماده', 'شيت', 'محاضر', 'فصل', 'شابتر',
+      'exam', 'study', 'course', 'chapter', 'lecture', 'revision',
+    ]);
+    final isSoftwareDomain = _nlu.containsAny(combinedNorm, [
+      'تطبيق', 'برمج', 'كود', 'موقع', 'سيستم', 'باك', 'فرونت', 'داتابيز', 'api', 'mvp', 'app', 'software', 'code', 'website',
+    ]);
+    final isResearchDomain = _nlu.containsAny(combinedNorm, [
+      'بحث', 'تخرج', 'رساله', 'ورقه', 'مقال', 'تقرير', 'عرض', 'برزينتيشن',
+      'research', 'thesis', 'paper', 'report', 'presentation',
+    ]);
+
+    final wantsCompact = _nlu.containsAny(_nlu.normalize(refinement), [
+      'قلل', 'مختصر', 'سريع', 'مهمتين', 'خطوتين', 'بسيط', 'mvp', 'fewer', 'short', 'quick', 'simple', '2',
+    ]);
+    final wantsDetailed = _nlu.containsAny(_nlu.normalize(refinement), [
+      'تفصيل', 'اكتر', 'زود', 'كامل', 'شامل', 'more', 'detail', 'expand', '4', '5',
+    ]);
+
+    final parsedDeadline = _nlu.parseDate(_nlu.normalize(rawDeadline), now) ??
+        DateTime.tryParse(rawDeadline);
+    final totalSpanDays = (parsedDeadline != null && parsedDeadline.isAfter(now))
+        ? parsedDeadline.difference(now).inDays.clamp(2, 60)
+        : (wantsDetailed ? 6 : 3);
 
     final seq = ++_callSeq;
     String freshId(String suffix) {
@@ -2554,13 +2646,244 @@ class LocalEgyptianLlmService implements LLMService {
       return candidate;
     }
 
-    final t1 = freshId('t1');
-    final t2 = freshId('t2');
-    final t3 = freshId('t3');
-    final d1 = _ymd(now.add(const Duration(days: 1)));
-    final d2 = _ymd(now.add(const Duration(days: 2)));
-    final d3 = _ymd(now.add(const Duration(days: 3)));
+    final sessionMins = UserEnergyPreferencesStore.current.preferredSessionMinutes;
     final prevDep = existingIds.isNotEmpty ? [existingIds.first] : <String>[];
+
+    // Build domain-specific phase specifications
+    final phaseSpecs = <({
+      String phaseTitle,
+      String phaseDesc,
+      List<({String title, String? desc, int mins, String prio})> tasks,
+    })>[];
+
+    if (isStudyDomain) {
+      phaseSpecs.add((
+        phaseTitle: _tr('١. مسح المنهج وتحديد الأجزاء الحرجة', '1. Syllabus Triage & Key Topics'),
+        phaseDesc: _tr('تحديد الفصول والأسئلة الأكثر أهمية في $title', 'Identify high-yield chapters and core concepts for $title'),
+        tasks: [
+          (
+            title: _tr('تجميع وتقسيم فصول $title حسب الأهمية', 'Map chapters and priority topics for $title'),
+            desc: goal,
+            mins: sessionMins,
+            prio: 'high',
+          ),
+        ],
+      ));
+      phaseSpecs.add((
+        phaseTitle: _tr('٢. المذاكرة المركزة والاسترجاع النشط', '2. Deep Study & Active Recall'),
+        phaseDesc: refinement.isNotEmpty
+            ? refinement
+            : _tr('مذاكرة الأجزاء الأساسية وتلخيص النقاط الصعبة', 'Study core chapters and summarize key takeaways'),
+        tasks: [
+          (
+            title: _tr('مذاكرة الجزء الأساسي الأول من $title', 'Study primary core section of $title'),
+            desc: refinement.isNotEmpty ? refinement : goal,
+            mins: sessionMins * 2,
+            prio: 'high',
+          ),
+          if (!wantsCompact)
+            (
+              title: _tr('حل تدريبات وأسئلة عملية على $title', 'Solve practice problems and past questions for $title'),
+              desc: constraints.isNotEmpty ? constraints : null,
+              mins: sessionMins,
+              prio: 'high',
+            ),
+        ],
+      ));
+      if (!wantsCompact) {
+        phaseSpecs.add((
+          phaseTitle: _tr('٣. المراجعة النهائية وسد الثغرات', '3. Final Review & Weak-Spot Drill'),
+          phaseDesc: _tr('مراجعة الملخصات والتأكد من الجاهزية الكاملة', 'Review summaries and verify exam readiness'),
+          tasks: [
+            (
+              title: _tr('مراجعة سريعة لأهم النقاط في $title', 'Final rapid review of key points in $title'),
+              desc: null,
+              mins: sessionMins,
+              prio: 'medium',
+            ),
+          ],
+        ));
+      }
+    } else if (isSoftwareDomain) {
+      phaseSpecs.add((
+        phaseTitle: _tr('١. تصميم النواة والمتطلبات (MVP Scope)', '1. Architecture & MVP Scope'),
+        phaseDesc: _tr('حسم الوظائف الأساسية وهيكل البيانات لـ $title', 'Lock core data models and MVP flows for $title'),
+        tasks: [
+          (
+            title: _tr('تحديد مسار المستخدم وهيكل البيانات لـ $title', 'Define core user flow and schema for $title'),
+            desc: goal,
+            mins: sessionMins,
+            prio: 'high',
+          ),
+        ],
+      ));
+      phaseSpecs.add((
+        phaseTitle: _tr('٢. بناء وتطوير الوظائف الأساسية', '2. Core Feature Implementation'),
+        phaseDesc: refinement.isNotEmpty
+            ? refinement
+            : _tr('برمجة وربط المكونات الأساسية في $title', 'Build and wire the primary vertical slice of $title'),
+        tasks: [
+          (
+            title: _tr('تطوير التدفق الرئيسي لـ $title', 'Implement primary functional flow for $title'),
+            desc: refinement.isNotEmpty ? refinement : goal,
+            mins: sessionMins * 2,
+            prio: 'high',
+          ),
+          if (wantsDetailed)
+            (
+              title: _tr('ربط الواجهة والتحقق من الحالات الحرجة في $title', 'Integrate UI states and edge-case handling for $title'),
+              desc: constraints.isNotEmpty ? constraints : null,
+              mins: sessionMins,
+              prio: 'medium',
+            ),
+        ],
+      ));
+      if (!wantsCompact) {
+        phaseSpecs.add((
+          phaseTitle: _tr('٣. الاختبار والإطلاق', '3. Testing & Release Verification'),
+          phaseDesc: _tr('اختبار الأداء وإغلاق الأخطاء قبل التسليم', 'Run verification checks and ship'),
+          tasks: [
+            (
+              title: _tr('اختبار شامل وتجهيز إصدار $title', 'End-to-end test and package $title'),
+              desc: null,
+              mins: sessionMins,
+              prio: 'medium',
+            ),
+          ],
+        ));
+      }
+    } else if (isResearchDomain) {
+      phaseSpecs.add((
+        phaseTitle: _tr('١. جمع المصادر وبناء الهيكل العام', '1. Research & Outline Structure'),
+        phaseDesc: _tr('تجميع المراجع وتقسيم محاور $title', 'Gather sources and structure sections for $title'),
+        tasks: [
+          (
+            title: _tr('إعداد الهيكل الرئيسي والمصادر لـ $title', 'Draft structural outline and key references for $title'),
+            desc: goal,
+            mins: sessionMins,
+            prio: 'high',
+          ),
+        ],
+      ));
+      phaseSpecs.add((
+        phaseTitle: _tr('٢. الصياغة وكتابة المسودة الأولى', '2. Core Drafting & Analysis'),
+        phaseDesc: refinement.isNotEmpty
+            ? refinement
+            : _tr('كتابة الأقسام الأساسية وتحليل النتائج', 'Write primary sections and synthesize findings'),
+        tasks: [
+          (
+            title: _tr('كتابة المسودة الأساسية لـ $title', 'Write complete first draft of $title'),
+            desc: refinement.isNotEmpty ? refinement : goal,
+            mins: sessionMins * 2,
+            prio: 'high',
+          ),
+        ],
+      ));
+      if (!wantsCompact) {
+        phaseSpecs.add((
+          phaseTitle: _tr('٣. التدقيق والتنسيق النهائي', '3. Editing & Final Formatting'),
+          phaseDesc: _tr('مراجعة الصياغة والتنسيق قبل التسليم', 'Polish language, citations, and formatting'),
+          tasks: [
+            (
+              title: _tr('مراجعة وتنسيق النسخة النهائية من $title', 'Proofread and finalize $title for submission'),
+              desc: null,
+              mins: sessionMins,
+              prio: 'medium',
+            ),
+          ],
+        ));
+      }
+    } else {
+      phaseSpecs.add((
+        phaseTitle: _tr('١. التحضير وتحديد الأولويات', '1. Preparation & Scope'),
+        phaseDesc: _tr('تجهيز الأساسيات اللازمة لـ $title', 'Setting up the foundation for $title'),
+        tasks: [
+          (
+            title: _tr('تحديد المتطلبات الأساسية لـ $title', 'Define core requirements for $title'),
+            desc: goal,
+            mins: sessionMins,
+            prio: 'high',
+          ),
+        ],
+      ));
+      phaseSpecs.add((
+        phaseTitle: _tr('٢. التنفيذ الأساسي', '2. Core Execution'),
+        phaseDesc: refinement.isNotEmpty
+            ? refinement
+            : _tr('إنجاز الجزء الأكبر من الهدف خطوة بخطوة', 'Completing the primary deliverables step by step'),
+        tasks: [
+          (
+            title: _tr('تنفيذ الخطوة الرئيسية في $title', 'Execute core milestone for $title'),
+            desc: refinement.isNotEmpty ? refinement : goal,
+            mins: sessionMins * 2,
+            prio: 'high',
+          ),
+          if (wantsDetailed)
+            (
+              title: _tr('استكمال الجزء الثاني من $title', 'Complete secondary milestone for $title'),
+              desc: constraints.isNotEmpty ? constraints : null,
+              mins: sessionMins,
+              prio: 'medium',
+            ),
+        ],
+      ));
+      if (!wantsCompact) {
+        phaseSpecs.add((
+          phaseTitle: _tr('٣. المراجعة والإنهاء', '3. Review & Finalization'),
+          phaseDesc: _tr('مراجعة المخرجات والتأكد من اكتمال الهدف', 'Review deliverables and finalize'),
+          tasks: [
+            (
+              title: _tr('مراجعة وتسليم $title', 'Review and finalize $title'),
+              desc: null,
+              mins: sessionMins,
+              prio: 'medium',
+            ),
+          ],
+        ));
+      }
+    }
+
+    final phasesJson = <Map<String, dynamic>>[];
+    var lastTaskDeps = prevDep;
+    var taskCounter = 0;
+
+    for (var pIdx = 0; pIdx < phaseSpecs.length; pIdx++) {
+      final spec = phaseSpecs[pIdx];
+      final dayOffset = (((pIdx + 1) * totalSpanDays) / phaseSpecs.length)
+          .round()
+          .clamp(1, totalSpanDays);
+      final phaseDate = _ymd(now.add(Duration(days: dayOffset)));
+      var phaseTotalMins = 0;
+      final phaseTasksJson = <Map<String, dynamic>>[];
+
+      for (final tSpec in spec.tasks) {
+        final tId = freshId('t${++taskCounter}');
+        phaseTotalMins += tSpec.mins;
+        phaseTasksJson.add({
+          'id': tId,
+          'title': tSpec.title,
+          'description': tSpec.desc,
+          'estimated_duration_minutes': tSpec.mins,
+          'duration_uncertainty': _tr(
+            'مبني على جلسة تركيزك (${ArabicFormatters.toArabicDigits(sessionMins)} د)',
+            'Based on your $sessionMins-min focus block',
+          ),
+          'priority': tSpec.prio,
+          'suggested_deadline': phaseDate,
+          'depends_on': lastTaskDeps,
+        });
+        lastTaskDeps = [tId];
+      }
+
+      phasesJson.add({
+        'id': 'phase_${seq}_${pIdx + 1}',
+        'title': spec.phaseTitle,
+        'description': spec.phaseDesc,
+        'estimated_duration_minutes': phaseTotalMins,
+        'suggested_deadline': phaseDate,
+        'tasks': phaseTasksJson,
+      });
+    }
 
     final plan = {
       'title': title,
@@ -2571,67 +2894,7 @@ class LocalEgyptianLlmService implements LLMService {
               'Would you like to focus on quick wins first or spread the steps across more days?',
             )
           : null,
-      'phases': [
-        {
-          'id': 'phase_${seq}_1',
-          'title': _tr('١. التحضير وتحديد الأولويات', '1. Preparation & Scope'),
-          'description': _tr('تجهيز الأساسيات اللازمة لـ $title', 'Setting up the foundation for $title'),
-          'estimated_duration_minutes': 45,
-          'suggested_deadline': d1,
-          'tasks': [
-            {
-              'id': t1,
-              'title': _tr('تحديد المتطلبات الأساسية لـ $title', 'Define core requirements for $title'),
-              'description': goal,
-              'estimated_duration_minutes': 45,
-              'duration_uncertainty': _tr('تقدير مبدئي قابل للتعديل', 'Initial estimate'),
-              'priority': 'high',
-              'suggested_deadline': d1,
-              'depends_on': prevDep,
-            },
-          ],
-        },
-        {
-          'id': 'phase_${seq}_2',
-          'title': _tr('٢. التنفيذ الأساسي', '2. Core Execution'),
-          'description': refinement.isNotEmpty
-              ? refinement
-              : _tr('إنجاز الجزء الأكبر من الهدف خطوة بخطوة', 'Completing the primary deliverables step by step'),
-          'estimated_duration_minutes': 90,
-          'suggested_deadline': d2,
-          'tasks': [
-            {
-              'id': t2,
-              'title': _tr('تنفيذ الخطوة الرئيسية في $title', 'Execute core milestone for $title'),
-              'description': refinement.isNotEmpty ? refinement : goal,
-              'estimated_duration_minutes': 90,
-              'duration_uncertainty': _tr('يعتمد على تفاصيل التنفيذ', 'Depends on implementation scope'),
-              'priority': 'high',
-              'suggested_deadline': d2,
-              'depends_on': [t1],
-            },
-          ],
-        },
-        {
-          'id': 'phase_${seq}_3',
-          'title': _tr('٣. المراجعة والإنهاء', '3. Review & Finalization'),
-          'description': _tr('مراجعة المخرجات والتأكد من اكتمال الهدف', 'Review deliverables and finalize'),
-          'estimated_duration_minutes': 45,
-          'suggested_deadline': d3,
-          'tasks': [
-            {
-              'id': t3,
-              'title': _tr('مراجعة وتسليم $title', 'Review and finalize $title'),
-              'description': null,
-              'estimated_duration_minutes': 45,
-              'duration_uncertainty': _tr('تقدير مبدئي', 'Initial estimate'),
-              'priority': 'medium',
-              'suggested_deadline': d3,
-              'depends_on': [t2],
-            },
-          ],
-        },
-      ],
+      'phases': phasesJson,
     };
     return jsonEncode(plan);
   }

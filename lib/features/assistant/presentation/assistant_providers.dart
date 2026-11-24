@@ -7,8 +7,10 @@ import '../../../core/database/shared_preferences_conversation_store.dart';
 import '../../../core/telemetry/local_core_loop_telemetry.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../../notifications/alarm_reminder_store.dart';
+import '../../projects/data/exam_grades_store.dart';
 import '../../tasks/presentation/task_providers.dart';
 import '../data/local_egyptian_llm_service.dart';
+import '../data/user_energy_preferences.dart';
 import '../local_task_tool_executor.dart';
 import '../planning/ai_planning_service.dart';
 import 'chat_session_controller.dart';
@@ -38,6 +40,22 @@ final llmServiceProvider = Provider<LLMService>((ref) {
         ref.read(authNotifierProvider).value?.id,
         'confirm_latency',
         latencyMs: ms,
+      );
+    },
+    onEnergyPreferencesUpdated: (prefs) {
+      ref.read(userEnergyPreferencesProvider.notifier).updatePreferences(prefs);
+    },
+    onExamGradeReported: ({
+      required String examTitle,
+      required String gradeTier,
+      required String scoreLabel,
+    }) {
+      final uid = ref.read(authNotifierProvider).value?.id ?? 'guest';
+      ExamGradesStore.addGrade(
+        userId: uid,
+        examTitle: examTitle,
+        gradeTier: gradeTier,
+        scoreLabel: scoreLabel,
       );
     },
   );

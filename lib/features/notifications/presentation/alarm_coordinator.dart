@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router/app_router.dart';
+import '../../../core/cloud/cloud_sync_engine.dart';
+import '../../assistant/presentation/assistant_providers.dart';
 import '../../authentication/presentation/auth_providers.dart';
 import '../alarm_reminder_store.dart';
 import '../local_notification_service.dart';
@@ -36,7 +38,10 @@ class _HandelhaAlarmCoordinatorState
     WidgetsBinding.instance.addObserver(this);
     _tapSub =
         LocalNotificationService.instance.onNotificationTap.listen(_openPayload);
-    NativeAlarmBridge.instance.setNativeActionListener(_syncPendingNativeActions);
+    NativeAlarmBridge.instance.setNativeActionListener(
+      _syncPendingNativeActions,
+      onSharedText: _handleSharedText,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await LocalNotificationService.instance.initialize(
@@ -45,6 +50,10 @@ class _HandelhaAlarmCoordinatorState
       if (!mounted) return;
       await _syncPendingNativeActions();
       if (!mounted) return;
+      final shared = await NativeAlarmBridge.instance.consumeSharedText();
+      if (shared != null && shared.isNotEmpty) {
+        _handleSharedText(shared);
+      }
       final launchPayload =
           LocalNotificationService.instance.takePendingLaunchPayload();
       if (launchPayload != null) {
@@ -71,12 +80,36 @@ class _HandelhaAlarmCoordinatorState
       ref.read(alarmReminderProvider.notifier).refreshPermissions();
       _syncPendingNativeActions();
       _checkDueForegroundAlarms();
+      final userId = ref.read(authNotifierProvider).value?.id;
+      if (userId != null && !userId.startsWith('local_')) {
+        CloudSyncEngine.instance.scheduleAutoSync(
+          userId,
+          delay: const Duration(milliseconds: 500),
+        );
+      }
+      NativeAlarmBridge.instance.consumeSharedText().then((shared) {
+        if (shared != null && shared.isNotEmpty && mounted) {
+          _handleSharedText(shared);
+        }
+      });
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       _dueTimer?.cancel();
       _dueTimer = null;
     }
+  }
+
+  void _handleSharedText(String sharedText) {
+    final cleaned = sharedText.trim();
+    if (cleaned.isEmpty || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navContext = rootNavigatorKey.currentContext;
+      if (navContext != null && navContext.mounted) {
+        GoRouter.maybeOf(navContext)?.go('/chat');
+        ref.read(chatSessionProvider).send(cleaned);
+      }
+    });
   }
 
   @override

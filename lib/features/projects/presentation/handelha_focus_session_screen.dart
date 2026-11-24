@@ -93,7 +93,11 @@ class _HandelhaFocusSessionScreenState
 
   void _syncForegroundService() {
     if (!mounted) return;
-    if (_phase != _FocusPhase.active && _phase != _FocusPhase.onBreak) {
+    // Google Play policy compliance: only run FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+    // when an audible ambient soundscape is actively playing. Silent focus timers
+    // rely on _targetEndTime wall-clock delta without holding a mediaPlayback FGS.
+    if ((_phase != _FocusPhase.active && _phase != _FocusPhase.onBreak) ||
+        _ambient == AmbientSoundscape.silent) {
       NativeAlarmBridge.instance.stopFocusService();
       return;
     }
@@ -105,8 +109,10 @@ class _HandelhaFocusSessionScreenState
             ? '${widget.taskTitle} • $mmSs'
             : '${widget.taskTitle} • ${ArabicFormatters.toArabicDigits(mmSs)}');
     final subtitle = _phase == _FocusPhase.onBreak
-        ? (isEn ? 'Take a calm breath' : 'خد نفس هادي واستريح')
-        : (isEn ? 'Handelha Focus Session active' : 'جلسة تركيز هندلها شغّالة');
+        ? (isEn ? 'Calm soundscape playing' : 'صوت التركيز الهادئ شغّال')
+        : (isEn
+            ? '${_ambient.labelEn} • Handelha Focus'
+            : '${_ambient.labelAr} • جلسة تركيز هندلها');
     NativeAlarmBridge.instance.startOrUpdateFocusService(
       title: title,
       subtitle: subtitle,
@@ -185,6 +191,7 @@ class _HandelhaFocusSessionScreenState
       sound,
       volume: _defaultAmbientVolume,
     );
+    _syncForegroundService();
   }
 
   void _pause() {

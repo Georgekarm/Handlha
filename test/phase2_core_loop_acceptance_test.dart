@@ -10,7 +10,9 @@ import 'package:handelha/core/database/local_task_database.dart';
 import 'package:handelha/core/result/result.dart';
 import 'package:handelha/core/telemetry/local_core_loop_telemetry.dart';
 import 'package:handelha/features/assistant/data/local_egyptian_llm_service.dart';
+import 'package:handelha/features/assistant/data/user_energy_preferences.dart';
 import 'package:handelha/features/assistant/local_task_tool_executor.dart';
+import 'package:handelha/features/assistant/planning/ai_planning_service.dart';
 import 'package:handelha/features/assistant/presentation/assistant_providers.dart';
 import 'package:handelha/features/assistant/presentation/chat_screen.dart';
 import 'package:handelha/features/assistant/presentation/chat_session_controller.dart';
@@ -74,6 +76,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     FlutterSecureStorage.setMockInitialValues({});
     LocalNotificationService.instance.testPermissionProvider = null;
+    LocalNotificationService.instance.testNowProvider = () => fixedNow;
     LocalNotificationService.instance.testSchedulerOverride = ({
       required String id,
       required String title,
@@ -87,6 +90,7 @@ void main() {
   tearDown(() {
     LocalNotificationService.instance.testSchedulerOverride = null;
     LocalNotificationService.instance.testPermissionProvider = null;
+    LocalNotificationService.instance.testNowProvider = null;
   });
 
   Future<List<Task>> loadTasks() async {
@@ -563,6 +567,90 @@ void main() {
       final afterOff = await t.load(userId);
       expect(afterOff.consentGranted, isFalse);
       expect(afterOff.previewsShown, 0);
+    });
+
+    test('persists energy & exam grade reports from chat, recovers draft after in-memory reset, and adapts project breakdown to domain & refinement', () async {
+      UserEnergyPreferences? savedEnergy;
+      String? savedExamSubject;
+      String? savedExamTier;
+
+      final llm = LocalEgyptianLlmService(
+        onEnergyPreferencesUpdated: (prefs) => savedEnergy = prefs,
+        onExamGradeReported: ({
+          required String examTitle,
+          required String gradeTier,
+          required String scoreLabel,
+        }) {
+          savedExamSubject = examTitle;
+          savedExamTier = gradeTier;
+        },
+      );
+
+      // 1. Energy preference update in chat calls persistence callback
+      final energyReply = await llm.complete(
+        LlmRequest(
+          conversationId: 'c-energy',
+          systemPrompt: 'Now: $nowIso',
+          messages: [ConversationMessage.user('طاقتي بتكون بليل')],
+          tools: const [],
+        ),
+      );
+      expect(energyReply.text, contains('مسائي'));
+      expect(savedEnergy, isNotNull);
+      expect(savedEnergy!.peakEnergyPeriod, 'evening');
+
+      // 2. Exam grade report in chat calls persistence callback
+      final examReply = await llm.complete(
+        LlmRequest(
+          conversationId: 'c-exam',
+          systemPrompt: 'Now: $nowIso',
+          messages: [ConversationMessage.user('جبت امتياز في امتحان الفيزياء')],
+          tools: const [],
+        ),
+      );
+      expect(examReply.text, contains('امتياز'));
+      expect(savedExamSubject, 'امتحان فيزياء');
+      expect(savedExamTier, 'excellent');
+
+      // 3. Process-death draft recovery: fresh LLM instance recovers staged draft from conversation history
+      final freshLlmAfterRestart = LocalEgyptianLlmService();
+      final recovered = await freshLlmAfterRestart.complete(
+        LlmRequest(
+          conversationId: 'c-restart',
+          systemPrompt: 'Now: $nowIso',
+          messages: [
+            ConversationMessage.user('ضيفلي مذاكرة كيمياء بكرة الساعة 7 بالليل'),
+            ConversationMessage.assistant(
+              '🔍 مراجعة قبل الحفظ (مسودة — لم يتم الحفظ بعد):\n'
+              '• «مذاكرة كيمياء» — الميعاد: 2026-11-23 الساعة 7:00 م',
+            ),
+            ConversationMessage.user('اعتمد'),
+          ],
+          tools: const [],
+        ),
+      );
+      expect(recovered.toolCalls, hasLength(1));
+      expect(recovered.toolCalls.single.name, 'create_task');
+      expect(recovered.toolCalls.single.arguments['title'], contains('كيمياء'));
+
+      // 4. Domain-aware & refinement-responsive project breakdown
+      final planner = AiPlanningService(llm);
+      final studyPlan = await planner.breakdownProject(
+        title: 'مراجعة امتحان الجراحة',
+        goal: 'مذاكرة الفصول وحل امتحانات سابقة',
+        currentDatetime: nowIso,
+      );
+      expect(studyPlan.phases, hasLength(3));
+      expect(studyPlan.phases.first.title, contains('مسح المنهج'));
+
+      final compactSoftwarePlan = await planner.breakdownProject(
+        title: 'تطبيق موبايل',
+        goal: 'بناء تطبيق فلاتر',
+        refinement: 'قلل عدد المهام وركز على MVP مختصر',
+        currentDatetime: nowIso,
+      );
+      expect(compactSoftwarePlan.phases, hasLength(2));
+      expect(compactSoftwarePlan.clarificationQuestion, isNull);
     });
   });
 }

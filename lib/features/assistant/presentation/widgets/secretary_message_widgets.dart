@@ -10,6 +10,7 @@ import '../../../notifications/native_alarm_bridge.dart';
 import '../../../notifications/presentation/alarm_ringing_dialog.dart';
 import '../../../notifications/presentation/notification_permission_sheet.dart';
 import '../../../tasks/domain/task.dart';
+import '../../../tasks/presentation/task_providers.dart';
 
 /// Renders assistant responses as rich, interactive "Executive Secretary" widgets
 /// (schedule timeline boards, multi-task registration cards, step-by-step roadmaps,
@@ -907,10 +908,27 @@ class _CreatedTaskMiniCardState extends ConsumerState<_CreatedTaskMiniCard> {
 
   Future<void> _setAlertMode(String mode) async {
     setState(() => _selectedMode = mode);
+    final allTasks = ref.read(allTasksProvider).value ?? const <Task>[];
+    final cleanTitle = widget.title.trim();
+    final matchedTask = allTasks
+        .where(
+          (t) =>
+              !t.isCompleted &&
+              !t.isCancelled &&
+              (t.title.trim() == cleanTitle ||
+                  t.title.contains(cleanTitle) ||
+                  cleanTitle.contains(t.title.trim())),
+        )
+        .firstOrNull;
+    final scheduledAt = matchedTask?.dueAt ??
+        matchedTask?.scheduledStartAt ??
+        DateTime.now().add(const Duration(hours: 1));
     final saved = await ref.read(alarmReminderProvider.notifier).addOrUpdateAlarm(
+          id: matchedTask?.id,
           title: widget.title,
-          scheduledAt: DateTime.now().add(const Duration(hours: 1)),
+          scheduledAt: scheduledAt,
           alertMode: mode,
+          taskId: matchedTask?.id,
         );
     if (!mounted) return;
     if (saved.scheduleStatus == 'permissionDenied') {

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/mode/student_mode_controller.dart';
+import '../../../core/database/handelha_sqlite_store.dart';
 import '../../../core/database/local_focus_session_database.dart';
 import '../../../core/database/local_project_database.dart';
 import '../../../core/database/local_task_database.dart';
@@ -77,6 +78,21 @@ class AuthNotifier extends AsyncNotifier<AppUser?> {
     final result = await _repo.createAccountWithEmail(
       email: email,
       password: password,
+      displayName: displayName,
+    );
+    if (result is Success<AppUser>) {
+      state = AsyncData(result.data);
+    } else {
+      state = const AsyncData(null);
+    }
+    return result;
+  }
+
+  Future<Result<AppUser>> continueLocallyWithoutAccount({
+    String? displayName,
+  }) async {
+    state = const AsyncLoading<AppUser?>();
+    final result = await _repo.continueLocallyWithoutAccount(
       displayName: displayName,
     );
     if (result is Success<AppUser>) {
@@ -181,6 +197,7 @@ class AuthNotifier extends AsyncNotifier<AppUser?> {
       await LocalTaskDatabase.instance.clearForUser(userId);
       await LocalProjectDatabase.instance.clearForUser(userId);
       await LocalFocusSessionDatabase.instance.clearForUser(userId);
+      await HandelhaSqliteStore.instance.clearAllSyncMetadataForUser(userId);
       await SharedPreferencesConversationStore.clearForUser(userId);
       await LocalNotificationPreferences.clear(userId);
       await NotificationInboxStore.clearForUser(userId);

@@ -9,6 +9,7 @@ import '../../../shared/widgets/handelha_ambient_background.dart';
 import '../../../shared/widgets/handelha_date_time_picker.dart';
 import '../../../shared/widgets/handelha_feedback.dart';
 import '../../../shared/widgets/handelha_header.dart';
+import '../../assistant/data/egyptian_nlu_analyzer.dart';
 import '../../notifications/alarm_reminder_store.dart';
 import '../../notifications/presentation/notification_permission_sheet.dart';
 import '../../projects/domain/project.dart';
@@ -564,42 +565,85 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
       return;
     }
 
-    var cleaned = raw.length > 120 ? raw.substring(0, 120).trim() : raw;
-    var nextPriority = _priority;
-    var nextMinutes = _estimatedMinutes;
-    DateTime? nextSchedule = _scheduledAt;
     final now = DateTime.now();
+    final nlu = EgyptianNluAnalyzer();
+    final analysis = nlu.analyze(raw, now: now);
+    final spec = analysis.taskSpecs.isNotEmpty ? analysis.taskSpecs.first : null;
 
-    if (cleaned.contains('عاجل') || cleaned.toLowerCase().contains('urgent')) {
-      nextPriority = TaskPriority.urgent;
-    } else if (cleaned.contains('عالية') ||
-        cleaned.contains('مهم') ||
-        cleaned.toLowerCase().contains('high')) {
-      nextPriority = TaskPriority.high;
+    var cleanedTitle = (spec != null &&
+            !spec.isMissingTitle &&
+            spec.title.trim().isNotEmpty)
+        ? spec.title.trim()
+        : nlu.extractCleanClauseTitle(raw).trim();
+    if (cleanedTitle.isEmpty) {
+      cleanedTitle = raw.length > 120 ? raw.substring(0, 120).trim() : raw;
     }
 
-    if (cleaned.contains('بكرة') ||
-        cleaned.contains('غدا') ||
-        cleaned.toLowerCase().contains('tomorrow')) {
-      final tmr = now.add(const Duration(days: 1));
-      nextSchedule = DateTime(tmr.year, tmr.month, tmr.day, 10, 0);
-    } else if (cleaned.contains('النهارده') ||
-        cleaned.contains('اليوم') ||
-        cleaned.toLowerCase().contains('today')) {
-      nextSchedule =
-          DateTime(now.year, now.month, now.day, (now.hour + 1).clamp(9, 21), 0);
+    var nextPriority = _priority;
+    final prioStr = spec?.priority ?? analysis.requestedPriority;
+    if (prioStr != null) {
+      for (final p in TaskPriority.values) {
+        if (p.name == prioStr) {
+          nextPriority = p;
+          break;
+        }
+      }
     }
 
+    var nextRecurrence = _recurrence;
+    if (spec != null && spec.recurrence != 'none') {
+      for (final r in TaskRecurrence.values) {
+        if (r.name == spec.recurrence) {
+          nextRecurrence = r;
+          break;
+        }
+      }
+    }
+
+    var nextMinutes = _estimatedMinutes;
     for (final min in [15, 25, 30, 45, 60, 90]) {
-      if (cleaned.contains('$min')) {
+      if (raw.contains('$min')) {
         nextMinutes = min;
         break;
       }
     }
 
+    DateTime? nextSchedule = _scheduledAt;
+    final inMins = spec?.inMinutes ?? analysis.inMinutes;
+    final extractedDate = spec?.date ?? analysis.requestedDate;
+    final extractedTime = spec?.time ?? analysis.requestedTime;
+    if (inMins != null && inMins > 0) {
+      nextSchedule = now.add(Duration(minutes: inMins));
+    } else if (extractedDate != null) {
+      var hour = 10;
+      var minute = 0;
+      if (extractedTime != null && extractedTime.contains(':')) {
+        final parts = extractedTime.split(':');
+        hour = int.tryParse(parts[0]) ?? 10;
+        minute = int.tryParse(parts[1]) ?? 0;
+      }
+      nextSchedule = DateTime(
+        extractedDate.year,
+        extractedDate.month,
+        extractedDate.day,
+        hour,
+        minute,
+      );
+    } else if (extractedTime != null && extractedTime.contains(':')) {
+      final parts = extractedTime.split(':');
+      final hour = int.tryParse(parts[0]) ?? 10;
+      final minute = int.tryParse(parts[1]) ?? 0;
+      var candidate = DateTime(now.year, now.month, now.day, hour, minute);
+      if (!candidate.isAfter(now)) {
+        candidate = candidate.add(const Duration(days: 1));
+      }
+      nextSchedule = candidate;
+    }
+
     setState(() {
-      _titleController.text = cleaned;
+      _titleController.text = cleanedTitle;
       _priority = nextPriority;
+      _recurrence = nextRecurrence;
       _estimatedMinutes = nextMinutes;
       _scheduledAt = nextSchedule;
       _mode = _AddTaskMode.manual;
@@ -1170,23 +1214,31 @@ class _AddTaskScreenState extends ConsumerState<AddTaskScreen>
                                 final missingCore =
                                     !alarmState.permissionGranted;
                                 if (!missingCore) {
+                                  final isExact = alarmState.exactAlarmGranted;
                                   return Row(
                                     children: [
                                       Icon(
-                                        Icons.verified_outlined,
+                                        isExact
+                                            ? Icons.verified_outlined
+                                            : Icons.info_outline_rounded,
                                         size: 15,
-                                        color: c.primary,
+                                        color: isExact ? c.primary : c.warning,
                                       ),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
-                                          isEn
-                                              ? 'Alarm reminder ready — alerts you with sound & vibration on time'
-                                              : 'منبه المواعيد مفعّل — ينبّهك بصوت واهتزاز في ميعاده',
+                                          isExact
+                                              ? (isEn
+                                                  ? 'Exact alarm ready — alerts you with sound & vibration right on time'
+                                                  : 'منبه المواعيد الدقيق مفعّل — ينبّهك بصوت واهتزاز في ميعاده')
+                                              : (isEn
+                                                  ? 'Approximate reminder enabled (enable Exact Alarm in settings for precise ringing)'
+                                                  : 'التنبيه مفعّل بتوقيت تقريبي (فعّل إذن المنبه الدقيق للرنين في الثانية المحددة)'),
                                           style: TextStyle(
                                             fontSize: 11.5,
                                             fontWeight: FontWeight.w600,
-                                            color: c.primary,
+                                            color:
+                                                isExact ? c.primary : c.warning,
                                           ),
                                         ),
                                       ),

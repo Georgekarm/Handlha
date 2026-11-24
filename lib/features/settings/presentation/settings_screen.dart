@@ -9,7 +9,9 @@ import '../../../app/locale/language_controller.dart';
 import '../../../app/mode/student_mode_controller.dart';
 import '../../../app/theme/app_theme_extension.dart';
 import '../../../app/theme/theme_controller.dart';
+import '../../../core/cloud/cloud_sync_engine.dart';
 import '../../../core/cloud/firebase_cloud_service.dart';
+import '../../../core/database/handelha_sqlite_store.dart';
 import '../../../core/database/local_backup_service.dart';
 import '../../../core/database/shared_preferences_conversation_store.dart';
 import '../../../core/result/result.dart';
@@ -47,14 +49,64 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   NotificationPreferences _notifPrefs = const NotificationPreferences();
   String? _loadedUserId;
+  bool _isSyncing = false;
+  int _pendingOutboxCount = 0;
 
   Future<void> _loadNotifPrefs(String userId) async {
     final prefs = await LocalNotificationPreferences.load(userId);
+    final pending = HandelhaSqliteStore.isNativeMobilePlatform
+        ? await HandelhaSqliteStore.instance.pendingOutboxCount(userId)
+        : HandelhaSqliteStore.instance.cachedPendingOutboxCount(userId);
     if (!mounted) return;
     setState(() {
       _notifPrefs = prefs;
+      _pendingOutboxCount = pending;
       _loadedUserId = userId;
     });
+  }
+
+  Future<void> _syncNow(String userId) async {
+    if (_isSyncing) return;
+    final appLang = ref.read(appLanguageProvider);
+    setState(() => _isSyncing = true);
+    try {
+      final res = await CloudSyncEngine.instance.syncUser(userId);
+      final pending =
+          await HandelhaSqliteStore.instance.pendingOutboxCount(userId);
+      ref.invalidate(allTasksProvider);
+      ref.invalidate(projectsProvider);
+      ref.invalidate(focusSessionsProvider);
+      if (!mounted) return;
+      setState(() {
+        _pendingOutboxCount = pending;
+        _isSyncing = false;
+      });
+      if (res is Success<SyncRunSummary>) {
+        final s = res.data;
+        if (s.isClean) {
+          HandelhaFeedback.showSuccess(
+            context,
+            appLang.tr(
+              'تمت المزامنة (رفع ${ArabicFormatters.toArabicDigits(s.pushedCount)} • تحديث ${ArabicFormatters.toArabicDigits(s.pulledCount)})',
+              'Synced (pushed ${s.pushedCount} • pulled ${s.pulledCount})',
+            ),
+          );
+        } else {
+          HandelhaFeedback.showError(
+            context,
+            s.lastError ??
+                appLang.tr(
+                  'تعذّر إتمام بعض عمليات المزامنة وسيتم إعادة المحاولة تلقائيًا.',
+                  'Some items could not sync yet and will retry automatically.',
+                ),
+          );
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
   }
 
   Future<void> _toggleNotifications(String userId, bool enabled) async {
@@ -1731,31 +1783,129 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               builder: (_) {
                                 final syncStatus =
                                     FirebaseCloudService.instance.lastSyncStatus;
-                                final text = !FirebaseCloudService.instance.isEnabled
+                                final isLocalGuest =
+                                    user?.id.startsWith('local_') ?? false;
+                                final sqliteActive =
+                                    HandelhaSqliteStore.instance.isOpen;
+                                final engineLine = sqliteActive
                                     ? appLang.tr(
-                                        'كل بياناتك محفوظة محليًا على الجهاز فقط. استخدم التصدير والاستعادة (JSON) من قسم الخصوصية لحفظ نسختك.',
-                                        'All workspace data stays on this device. Use Export & Restore (JSON) in Privacy anytime.',
+                                        'محرك التخزين: SQLite محلي منظّم',
+                                        'Storage engine: Normalized local SQLite',
                                       )
-                                    : (syncStatus.lastError != null
-                                        ? syncStatus.lastError!
-                                        : (syncStatus.lastSyncedAt != null
-                                            ? appLang.tr(
-                                                'آخر مزامنة ناجحة: ${syncStatus.lastSyncedAt!.toLocal()}',
-                                                'Last synced: ${syncStatus.lastSyncedAt!.toLocal()}',
+                                    : appLang.tr(
+                                        'التخزين محلي على هذا الجهاز فقط.',
+                                        'Stored locally on this device only.',
+                                      );
+                                final statusText = isLocalGuest
+                                    ? appLang.tr(
+                                        '$engineLine. إنت شغال حاليًا بدون حساب — تقدر تربط حساب في أي وقت بدون ما تفقد ولا مهمة.',
+                                        '$engineLine. You are using a local workspace — link an account anytime without losing a single task.',
+                                      )
+                                    : !FirebaseCloudService.instance.isEnabled
+                                        ? appLang.tr(
+                                            '$engineLine. كل بياناتك محفوظة محليًا على الجهاز فقط. استخدم التصدير والاستعادة (JSON) من قسم الخصوصية لحفظ نسختك.',
+                                            '$engineLine. All workspace data stays on this device. Use Export & Restore (JSON) in Privacy anytime.',
+                                          )
+                                        : (syncStatus.lastError != null
+                                            ? syncStatus.lastError!
+                                            : (syncStatus.lastSyncedAt != null
+                                                ? appLang.tr(
+                                                    'آخر مزامنة ناجحة: ${syncStatus.lastSyncedAt!.toLocal()}',
+                                                    'Last synced: ${syncStatus.lastSyncedAt!.toLocal()}',
+                                                  )
+                                                : appLang.tr(
+                                                    'المزامنة السحابية التزايدية (Delta Sync) مفعّلة لكل مهمة ومشروع.',
+                                                    'Per-item incremental cloud delta sync is enabled.',
+                                                  )));
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      statusText,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: syncStatus.lastError != null &&
+                                                !isLocalGuest
+                                            ? c.danger
+                                            : c.textSecondary,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                    if (_pendingOutboxCount > 0 &&
+                                        FirebaseCloudService.instance.isEnabled &&
+                                        !isLocalGuest) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        appLang.tr(
+                                          'بانتظار المزامنة: ${ArabicFormatters.toArabicDigits(_pendingOutboxCount)} تعديلات',
+                                          'Pending sync: $_pendingOutboxCount changes',
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: c.primary,
+                                        ),
+                                      ),
+                                    ],
+                                    if (isLocalGuest) ...[
+                                      const SizedBox(height: 10),
+                                      OutlinedButton.icon(
+                                        onPressed: () =>
+                                            context.push('/signup?link=true'),
+                                        icon: const Icon(
+                                          Icons.person_add_alt_1_rounded,
+                                          size: 16,
+                                        ),
+                                        label: Text(
+                                          appLang.tr(
+                                            'ربط بحساب لحفظ ومزامنة بياناتك',
+                                            'Link Account to Back Up & Sync',
+                                          ),
+                                          style: const TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ] else if (FirebaseCloudService
+                                            .instance.isEnabled &&
+                                        user != null) ...[
+                                      const SizedBox(height: 10),
+                                      OutlinedButton.icon(
+                                        onPressed: _isSyncing
+                                            ? null
+                                            : () => _syncNow(user.id),
+                                        icon: _isSyncing
+                                            ? SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: c.primary,
+                                                ),
                                               )
-                                            : appLang.tr(
-                                                'المزامنة السحابية مفعّلة كنسخة لقطة عند الدخول والخروج.',
-                                                'Cloud snapshot sync is active on sign-in and sign-out.',
-                                              )));
-                                return Text(
-                                  text,
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    color: syncStatus.lastError != null
-                                        ? c.danger
-                                        : c.textSecondary,
-                                    height: 1.4,
-                                  ),
+                                            : const Icon(
+                                                Icons.sync_rounded,
+                                                size: 16,
+                                              ),
+                                        label: Text(
+                                          appLang.tr(
+                                            _isSyncing
+                                                ? 'جاري المزامنة...'
+                                                : 'مزامنة الآن',
+                                            _isSyncing
+                                                ? 'Syncing...'
+                                                : 'Sync Now',
+                                          ),
+                                          style: const TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 );
                               },
                             ),

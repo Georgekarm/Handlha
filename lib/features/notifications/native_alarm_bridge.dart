@@ -63,6 +63,7 @@ class NativeAlarmBridge {
 
   bool _handlerRegistered = false;
   VoidCallback? _onNativeUpdate;
+  ValueChanged<String>? _onSharedText;
 
   bool get _isAndroidNative {
     if (kIsWeb) return false;
@@ -75,13 +76,22 @@ class NativeAlarmBridge {
     }
   }
 
-  void setNativeActionListener(VoidCallback? onUpdated) {
+  void setNativeActionListener(
+    VoidCallback? onUpdated, {
+    ValueChanged<String>? onSharedText,
+  }) {
     _onNativeUpdate = onUpdated;
+    _onSharedText = onSharedText;
     if (!_isAndroidNative || _handlerRegistered) return;
     _handlerRegistered = true;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onPendingActionsUpdated') {
         _onNativeUpdate?.call();
+      } else if (call.method == 'onSharedTextReceived') {
+        final shared = call.arguments?.toString().trim() ?? '';
+        if (shared.isNotEmpty) {
+          _onSharedText?.call(shared);
+        }
       }
     });
   }
@@ -261,6 +271,24 @@ class NativeAlarmBridge {
     try {
       await _channel.invokeMethod<bool>('requestExactAlarmPermission');
     } catch (_) {}
+  }
+
+  Future<void> requestFullScreenIntentPermission() async {
+    if (!_isAndroidNative) return;
+    try {
+      await _channel.invokeMethod<bool>('requestFullScreenIntentPermission');
+    } catch (_) {}
+  }
+
+  Future<String?> consumeSharedText() async {
+    if (!_isAndroidNative) return null;
+    try {
+      final raw = await _channel.invokeMethod<String>('consumeSharedText');
+      final trimmed = raw?.trim();
+      return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<List<NativeAlarmAction>> consumePendingActions() async {

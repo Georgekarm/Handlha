@@ -21,6 +21,9 @@ abstract interface class AuthRepository {
     String? displayName,
   });
 
+  /// Starts or resumes a zero-friction local workspace without creating an account.
+  Future<Result<AppUser>> continueLocallyWithoutAccount({String? displayName});
+
   /// Initiate verified Google OAuth Sign-In flow.
   Future<Result<AppUser>> signInWithGoogle({
     String? email,

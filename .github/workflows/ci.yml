@@ -63,6 +63,9 @@ jobs:
       - name: Build Android debug APK (reproducibility check)
         run: flutter build apk --debug
 
+      - name: Build Android release APK with R8 minification check
+        run: flutter build apk --release -PallowDebugReleaseSigning=true
+
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:

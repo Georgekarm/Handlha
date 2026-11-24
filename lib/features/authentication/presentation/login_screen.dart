@@ -88,6 +88,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _continueLocally() async {
+    if (_isSubmitting) return;
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+    final result = await ref
+        .read(authNotifierProvider.notifier)
+        .continueLocallyWithoutAccount();
+    if (!mounted) return;
+    setState(() => _isSubmitting = false);
+    if (result is Failure<AppUser>) {
+      setState(() => _errorMessage = localizeAuthError(ref, result.failure));
+    }
+  }
+
   Future<void> _socialAuth(AuthProviderType provider) async {
     if (_isSubmitting) return;
     SocialAccountSelection? selection;
@@ -223,10 +239,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  appLang.tr('وحشتنا! نكمّل منين؟', 'Welcome back! Ready to continue?'),
+                  appLang.tr(
+                    'رتّب يومك بهدوء.. خطوة بخطوة',
+                    'Organize your day calmly, step by step',
+                  ),
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 23,
                     fontWeight: FontWeight.w800,
                     color: c.textPrimary,
                   ),
@@ -234,8 +253,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 4),
                 Text(
                   appLang.tr(
-                    'ادخل لحسابك، وخطوتك الجاية مستنياك.',
-                    'Sign in to your account — your next step is waiting.',
+                    'ابدأ فورًا على جهازك بدون حساب، أو سجّل دخولك لحسابك.',
+                    'Start immediately on your device without an account, or sign in.',
                   ),
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -358,8 +377,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   child: Text(
                                     FirebaseCloudService.instance.isEnabled
                                         ? appLang.tr(
-                                            'حساب بالبريد الإلكتروني مع مزامنة سحابية اختيارية.',
-                                            'Email account with optional cloud snapshot sync.',
+                                            'حساب بالبريد الإلكتروني مع مزامنة سحابية تلقائية لكل عنصر.',
+                                            'Email account with automatic per-item cloud delta sync.',
                                           )
                                         : appLang.tr(
                                             'حساب محلي على جهازك فقط — بياناتك محفوظة بأمان مع نسخ احتياطي واستعادة كاملة.',
@@ -528,7 +547,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 48,
+                          child: OutlinedButton.icon(
+                            onPressed: _isSubmitting ? null : _continueLocally,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: c.primary,
+                              side: BorderSide(
+                                color: c.primary.withValues(alpha: 0.45),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            icon: const Icon(Icons.flash_on_rounded, size: 18),
+                            label: Text(
+                              appLang.tr(
+                                'ابدأ فورًا بدون إنشاء حساب',
+                                'Start Immediately Without an Account',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Center(
                           child: TextButton(
                             onPressed: () => context.go('/signup'),

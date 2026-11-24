@@ -144,6 +144,11 @@ class FirebaseCloudService {
     _lastSyncStatus = status;
   }
 
+  /// Updates the observable cloud sync status (used by [CloudSyncEngine]).
+  void updateSyncStatus(CloudSyncStatus status) {
+    _recordStatus(status);
+  }
+
   Future<Result<FirebaseAuthSession>> signInWithEmail({
     required String email,
     required String password,
@@ -468,34 +473,423 @@ class FirebaseCloudService {
     return Failure(_mapRawFailure(raw));
   }
 
-  Future<void> deleteUserCloudData(String? userId) async {
-    if (!isEnabled) return;
-    final idToken = await SecureStorageService.instance.read(
+  // ---------------------------------------------------------------------------
+  // Subcollection Delta Sync API (Phase 1 — per-entity Firestore documents)
+  // ---------------------------------------------------------------------------
+
+  /// Upserts an individual entity document under `users/{userId}/{collection}/{docId}`.
+  Future<Result<void>> upsertSubcollectionDoc({
+    required String userId,
+    required String collection,
+    required String docId,
+    required Map<String, dynamic> fields,
+  }) async {
+    if (!isEnabled || userId.trim().isEmpty || docId.trim().isEmpty) {
+      return const Failure(
+        AuthFailure('المزامنة السحابية غير مفعّلة في هذه النسخة المحلية.'),
+      );
+    }
+
+    final firestoreFields = _toFirestoreFields(fields);
+    final body = <String, dynamic>{'fields': firestoreFields};
+    final payloadBytes = utf8.encode(jsonEncode(body)).length;
+    if (payloadBytes > maxSafePayloadBytes) {
+      const msg = 'حجم العنصر تجاوز الحد الآمن لوثيقة السحابة (900 KB).';
+      return const Failure(ValidationFailure(msg));
+    }
+
+    var idToken = await SecureStorageService.instance.read(
       SecureStorageKeys.accessToken,
     );
-    if (idToken == null || idToken.isEmpty) return;
+    if (idToken == null || idToken.isEmpty) {
+      const msg = 'لا يوجد رمز مصادقة سحابي نشط. سجّل الدخول لإعادة المزامنة.';
+      return const Failure(AuthFailure(msg));
+    }
+
+    final url =
+        'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/users/${Uri.encodeComponent(userId)}/${Uri.encodeComponent(collection)}/${Uri.encodeComponent(docId)}';
+
+    var res = await _requestJsonRaw(
+      method: 'PATCH',
+      url: url,
+      bearerToken: idToken,
+      body: body,
+    );
+
+    if (res is _RawHttpSuccess && res.statusCode == 401) {
+      final refreshed = await refreshIdToken();
+      if (refreshed is Failure<String>) {
+        return Failure(refreshed.failure);
+      }
+      idToken = (refreshed as Success<String>).data;
+      res = await _requestJsonRaw(
+        method: 'PATCH',
+        url: url,
+        bearerToken: idToken,
+        body: body,
+      );
+    }
+
+    if (res is _RawHttpSuccess && res.statusCode >= 200 && res.statusCode < 300) {
+      return const Success(null);
+    }
+    return Failure(_mapRawFailure(res));
+  }
+
+  /// Lists entity documents in `users/{userId}/{collection}`.
+  ///
+  /// When [updatedAfter] is supplied, queries incrementally via Firestore
+  /// `:runQuery` on `updated_at > updatedAfter` (UTC ISO-8601). When null,
+  /// paginates through the subcollection documents (up to 20 pages).
+  Future<Result<List<Map<String, dynamic>>>> listSubcollectionDocs({
+    required String userId,
+    required String collection,
+    DateTime? updatedAfter,
+  }) async {
+    if (!isEnabled || userId.trim().isEmpty) {
+      return const Success([]);
+    }
+    var idToken = await SecureStorageService.instance.read(
+      SecureStorageKeys.accessToken,
+    );
+    if (idToken == null || idToken.isEmpty) {
+      return const Failure(
+        AuthFailure('لا يوجد رمز مصادقة سحابي نشط.'),
+      );
+    }
+
+    if (updatedAfter != null) {
+      final queryUrl =
+          'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/users/${Uri.encodeComponent(userId)}:runQuery';
+      final collectedDelta = <Map<String, dynamic>>[];
+      var cursorIso = updatedAfter.toUtc().toIso8601String();
+      const pageLimit = 300;
+
+      for (var page = 0; page < 20; page++) {
+        final queryBody = <String, dynamic>{
+          'structuredQuery': {
+            'from': [
+              {'collectionId': collection},
+            ],
+            'where': {
+              'fieldFilter': {
+                'field': {'fieldPath': 'updated_at'},
+                'op': 'GREATER_THAN',
+                'value': {'stringValue': cursorIso},
+              },
+            },
+            'orderBy': [
+              {
+                'field': {'fieldPath': 'updated_at'},
+                'direction': 'ASCENDING',
+              },
+            ],
+            'limit': pageLimit,
+          },
+        };
+
+        var res = await _requestJsonRaw(
+          method: 'POST',
+          url: queryUrl,
+          bearerToken: idToken,
+          body: queryBody,
+        );
+        if (res is _RawHttpSuccess && res.statusCode == 401) {
+          final refreshed = await refreshIdToken();
+          if (refreshed is Failure<String>) return Failure(refreshed.failure);
+          idToken = (refreshed as Success<String>).data;
+          res = await _requestJsonRaw(
+            method: 'POST',
+            url: queryUrl,
+            bearerToken: idToken,
+            body: queryBody,
+          );
+        }
+
+        if (res is _RawHttpSuccess && res.statusCode == 404) {
+          break;
+        }
+        if (res is _RawHttpSuccess &&
+            res.statusCode >= 200 &&
+            res.statusCode < 300) {
+          final batch = _extractDocumentsFromResponse(res.body);
+          collectedDelta.addAll(batch);
+          if (batch.length < pageLimit) {
+            break;
+          }
+          final lastUpdated = batch.last['updated_at']?.toString() ?? '';
+          if (lastUpdated.isEmpty || lastUpdated == cursorIso) {
+            break;
+          }
+          cursorIso = lastUpdated;
+        } else {
+          return Failure(_mapRawFailure(res));
+        }
+      }
+      return Success(collectedDelta);
+    }
+
+    final collected = <Map<String, dynamic>>[];
+    String? pageToken;
+    for (var page = 0; page < 20; page++) {
+      final baseUrl =
+          'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/users/${Uri.encodeComponent(userId)}/${Uri.encodeComponent(collection)}?pageSize=300';
+      final url = pageToken == null || pageToken.isEmpty
+          ? baseUrl
+          : '$baseUrl&pageToken=${Uri.encodeComponent(pageToken)}';
+
+      var res = await _requestJsonRaw(
+        method: 'GET',
+        url: url,
+        bearerToken: idToken,
+      );
+      if (res is _RawHttpSuccess && res.statusCode == 401) {
+        final refreshed = await refreshIdToken();
+        if (refreshed is Failure<String>) return Failure(refreshed.failure);
+        idToken = (refreshed as Success<String>).data;
+        res = await _requestJsonRaw(
+          method: 'GET',
+          url: url,
+          bearerToken: idToken,
+        );
+      }
+
+      if (res is _RawHttpSuccess && res.statusCode == 404) {
+        break;
+      }
+      if (res is _RawHttpSuccess &&
+          res.statusCode >= 200 &&
+          res.statusCode < 300) {
+        collected.addAll(_extractDocumentsFromResponse(res.body));
+        final next = res.body['nextPageToken']?.toString();
+        if (next == null || next.isEmpty) break;
+        pageToken = next;
+      } else {
+        return Failure(_mapRawFailure(res));
+      }
+    }
+    return Success(collected);
+  }
+
+  /// Deletes a single subcollection document under `users/{userId}/{collection}/{docId}`.
+  Future<Result<void>> deleteSubcollectionDoc({
+    required String userId,
+    required String collection,
+    required String docId,
+  }) async {
+    if (!isEnabled || userId.trim().isEmpty || docId.trim().isEmpty) {
+      return const Success(null);
+    }
+    var idToken = await SecureStorageService.instance.read(
+      SecureStorageKeys.accessToken,
+    );
+    if (idToken == null || idToken.isEmpty) {
+      return const Failure(AuthFailure('لا يوجد رمز مصادقة سحابي نشط.'));
+    }
+    final url =
+        'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/users/${Uri.encodeComponent(userId)}/${Uri.encodeComponent(collection)}/${Uri.encodeComponent(docId)}';
+    var res = await _requestJsonRaw(
+      method: 'DELETE',
+      url: url,
+      bearerToken: idToken,
+    );
+    if (res is _RawHttpSuccess && res.statusCode == 401) {
+      final refreshed = await refreshIdToken();
+      if (refreshed is Failure<String>) return Failure(refreshed.failure);
+      idToken = (refreshed as Success<String>).data;
+      res = await _requestJsonRaw(
+        method: 'DELETE',
+        url: url,
+        bearerToken: idToken,
+      );
+    }
+    if (res is _RawHttpSuccess &&
+        (res.statusCode == 404 ||
+            (res.statusCode >= 200 && res.statusCode < 300))) {
+      return const Success(null);
+    }
+    return Failure(_mapRawFailure(res));
+  }
+
+  /// Deletes every document across `tasks`, `projects`, and `focus_sessions`
+  /// subcollections for [userId] (required by Google Play account deletion policy).
+  Future<Result<int>> deleteAllUserSubcollections(String userId) async {
+    if (!isEnabled || userId.trim().isEmpty) return const Success(0);
+    var deleted = 0;
+    for (final col in const ['tasks', 'projects', 'focus_sessions']) {
+      final listed = await listSubcollectionDocs(
+        userId: userId,
+        collection: col,
+      );
+      if (listed is Failure<List<Map<String, dynamic>>>) {
+        return Failure(listed.failure);
+      }
+      final docs = (listed as Success<List<Map<String, dynamic>>>).data;
+      for (final doc in docs) {
+        final docId = doc['id']?.toString();
+        if (docId == null || docId.isEmpty) continue;
+        final del = await deleteSubcollectionDoc(
+          userId: userId,
+          collection: col,
+          docId: docId,
+        );
+        if (del is Success<void>) deleted++;
+      }
+    }
+    return Success(deleted);
+  }
+
+  Future<void> deleteUserCloudData(String? userId) async {
+    if (!isEnabled) return;
+    var idToken = await SecureStorageService.instance.read(
+      SecureStorageKeys.accessToken,
+    );
+    if (idToken == null || idToken.isEmpty) {
+      final refreshed = await refreshIdToken();
+      if (refreshed is Success<String>) {
+        idToken = refreshed.data;
+      } else {
+        return;
+      }
+    }
 
     if (userId != null && userId.trim().isNotEmpty) {
+      await deleteAllUserSubcollections(userId);
+      // Re-read in case deleteAllUserSubcollections refreshed an expired token.
+      idToken = await SecureStorageService.instance.read(
+            SecureStorageKeys.accessToken,
+          ) ??
+          idToken;
       final docUrl =
           'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/users/${Uri.encodeComponent(userId)}/workspaces/primary';
-      await _requestJson(
+      var docRes = await _requestJsonRaw(
         method: 'DELETE',
         url: docUrl,
         bearerToken: idToken,
       );
+      if (docRes is _RawHttpSuccess && docRes.statusCode == 401) {
+        final refreshed = await refreshIdToken();
+        if (refreshed is Success<String>) {
+          idToken = refreshed.data;
+          await _requestJsonRaw(
+            method: 'DELETE',
+            url: docUrl,
+            bearerToken: idToken,
+          );
+        }
+      }
       final userUrl =
           'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/users/${Uri.encodeComponent(userId)}';
-      await _requestJson(
+      await _requestJsonRaw(
         method: 'DELETE',
         url: userUrl,
         bearerToken: idToken,
       );
     }
 
-    await _postJson(
-      'https://identitytoolkit.googleapis.com/v1/accounts:delete?key=$_apiKey',
-      {'idToken': idToken},
+    var delAuth = await _requestJsonRaw(
+      method: 'POST',
+      url: 'https://identitytoolkit.googleapis.com/v1/accounts:delete?key=$_apiKey',
+      body: {'idToken': idToken},
     );
+    if (delAuth is _RawHttpSuccess && delAuth.statusCode == 401) {
+      final refreshed = await refreshIdToken();
+      if (refreshed is Success<String>) {
+        await _requestJsonRaw(
+          method: 'POST',
+          url: 'https://identitytoolkit.googleapis.com/v1/accounts:delete?key=$_apiKey',
+          body: {'idToken': refreshed.data},
+        );
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> _extractDocumentsFromResponse(
+    Map<String, dynamic> body,
+  ) {
+    final out = <Map<String, dynamic>>[];
+
+    final rawDocs = body['documents'];
+    if (rawDocs is List) {
+      for (final item in rawDocs) {
+        if (item is Map) {
+          final parsed = _parseFirestoreDocument(item);
+          if (parsed != null) out.add(parsed);
+        }
+      }
+    }
+
+    final rawResults = body['results'];
+    if (rawResults is List) {
+      for (final item in rawResults) {
+        if (item is Map && item['document'] is Map) {
+          final parsed = _parseFirestoreDocument(item['document'] as Map);
+          if (parsed != null) out.add(parsed);
+        }
+      }
+    }
+    return out;
+  }
+
+  Map<String, dynamic>? _parseFirestoreDocument(Map<dynamic, dynamic> doc) {
+    final fields = doc['fields'];
+    if (fields is! Map) return null;
+    final parsed = _fromFirestoreFields(fields);
+    if ((parsed['id'] == null || parsed['id'].toString().isEmpty) &&
+        doc['name'] is String) {
+      final name = doc['name'] as String;
+      final segments = name.split('/');
+      if (segments.isNotEmpty && segments.last.isNotEmpty) {
+        parsed['id'] = Uri.decodeComponent(segments.last);
+      }
+    }
+    return parsed;
+  }
+
+  Map<String, dynamic> _toFirestoreFields(Map<String, dynamic> data) {
+    final out = <String, dynamic>{};
+    for (final entry in data.entries) {
+      final val = entry.value;
+      if (val == null) {
+        out[entry.key] = {'nullValue': null};
+      } else if (val is bool) {
+        out[entry.key] = {'booleanValue': val};
+      } else if (val is int) {
+        out[entry.key] = {'integerValue': val.toString()};
+      } else if (val is double) {
+        out[entry.key] = {'doubleValue': val};
+      } else if (val is String) {
+        out[entry.key] = {'stringValue': val};
+      } else {
+        out[entry.key] = {'stringValue': jsonEncode(val)};
+      }
+    }
+    return out;
+  }
+
+  Map<String, dynamic> _fromFirestoreFields(Map<dynamic, dynamic> fields) {
+    final out = <String, dynamic>{};
+    for (final entry in fields.entries) {
+      final key = entry.key.toString();
+      final raw = entry.value;
+      if (raw is! Map) continue;
+      if (raw.containsKey('nullValue')) {
+        out[key] = null;
+      } else if (raw.containsKey('stringValue')) {
+        out[key] = raw['stringValue']?.toString();
+      } else if (raw.containsKey('timestampValue')) {
+        out[key] = raw['timestampValue']?.toString();
+      } else if (raw.containsKey('integerValue')) {
+        final v = raw['integerValue'];
+        out[key] = v is int ? v : int.tryParse(v.toString());
+      } else if (raw.containsKey('doubleValue')) {
+        final v = raw['doubleValue'];
+        out[key] = v is num ? v.toDouble() : double.tryParse(v.toString());
+      } else if (raw.containsKey('booleanValue')) {
+        out[key] = raw['booleanValue'] == true;
+      }
+    }
+    return out;
   }
 
   Future<Result<FirebaseAuthSession>> _parseAuthResponse(
@@ -566,8 +960,13 @@ class FirebaseCloudService {
       return const NetworkFailure();
     }
     final ok = raw as _RawHttpSuccess;
-    if (ok.statusCode == 401) {
+    if (ok.statusCode == 401 || ok.statusCode == 403) {
       return const AuthFailure('انتهت جلسة المزامنة السحابية. سجّل الدخول مرة تانية.');
+    }
+    if (ok.statusCode >= 500 || ok.statusCode == 429) {
+      return const NetworkFailure(
+        'الخادم غير متاح حاليًا، سيتم إعادة المحاولة تلقائيًا.',
+      );
     }
     final errCode = ((ok.body['error'] is Map)
             ? (ok.body['error']['message'] ?? '')
@@ -632,7 +1031,9 @@ class FirebaseCloudService {
           raw.isNotEmpty ? jsonDecode(raw) : const <String, dynamic>{};
       final map = decoded is Map
           ? decoded.cast<String, dynamic>()
-          : <String, dynamic>{};
+          : (decoded is List
+              ? <String, dynamic>{'results': decoded}
+              : <String, dynamic>{});
       return _RawHttpSuccess(statusCode: resp.statusCode, body: map);
     } catch (e) {
       AppLogger.warning('Cloud request failed', tag: _tag, error: e);

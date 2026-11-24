@@ -51,14 +51,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
+  bool _isZeroCostDraftControlAction(String text) {
+    final t = text.trim();
+    if (t.startsWith('تعديل المسودة |') || t.startsWith('EDIT_DRAFT |')) {
+      return true;
+    }
+    return RegExp(
+      r'^(?:اعتمد|اعتمدها|اعتمدهم|احفظ|تأكيد\s+الحذف|تاكيد\s+الحذف|إلغاء|الغاء|تراجع|confirm|approve|cancel|confirm\s+delete)$',
+      caseSensitive: false,
+    ).hasMatch(t);
+  }
+
   Future<void> _send([String? preset]) async {
     final text = (preset ?? _messageController.text).trim();
     if (text.isEmpty) return;
-    final hasTokens =
-        await ref.read(tokenBalanceProvider.notifier).consumeTextToken();
-    if (!hasTokens) {
-      if (mounted) _showTokenRefillSheet(context);
-      return;
+    // Never charge tokens for confirming, editing, or cancelling a staged draft
+    // or tapping a quick-reply action card (prevents double-charging & deadlocks).
+    final isFreeControlAction =
+        preset != null || _isZeroCostDraftControlAction(text);
+    if (!isFreeControlAction) {
+      final hasTokens =
+          await ref.read(tokenBalanceProvider.notifier).consumeTextToken();
+      if (!hasTokens) {
+        if (mounted) _showTokenRefillSheet(context);
+        return;
+      }
     }
     if (preset == null) {
       _messageController.clear();

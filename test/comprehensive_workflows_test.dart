@@ -888,7 +888,10 @@ void main() {
         SecureStorageKeys.localPasswordHash,
       );
       expect(storedHash, isNotNull);
-      expect(storedHash, startsWith('pbkdf2_sha256\$10000\$'));
+      expect(
+        storedHash,
+        startsWith('pbkdf2_sha256\$${LocalAuthRepository.kdfIterations}\$'),
+      );
 
       // Populate all local stores for this user
       await LocalTaskDatabase.instance.createTask(

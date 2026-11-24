@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../authentication/presentation/auth_providers.dart';
+import '../../subscriptions/data/subscription_repository.dart';
 import '../../subscriptions/domain/subscription_models.dart';
 import '../../subscriptions/presentation/subscription_providers.dart';
 
@@ -20,7 +21,6 @@ class TokenBalanceState {
   static const int defaultDailyAllowance = 50;
   static const int textMessageCost = 2;
   static const int voiceMessageCost = 5;
-  static const int googleAdReward = 15;
 
   final int balance;
   final int dailyAllowance;
@@ -29,8 +29,16 @@ class TokenBalanceState {
   final bool isLoadingAd;
   final bool isUnlimitedPro;
 
-  bool get canSendText => isUnlimitedPro || balance >= textMessageCost;
-  bool get canSendVoice => isUnlimitedPro || balance >= voiceMessageCost;
+  /// Local-first builds without Google Play Billing configured never block
+  /// the user from capturing tasks on their own device CPU.
+  bool get canSendText =>
+      isUnlimitedPro ||
+      !SubscriptionConfig.isStoreBillingConfigured ||
+      balance >= textMessageCost;
+  bool get canSendVoice =>
+      isUnlimitedPro ||
+      !SubscriptionConfig.isStoreBillingConfigured ||
+      balance >= voiceMessageCost;
 
   double get fillRatio => isUnlimitedPro
       ? 1.0
@@ -129,7 +137,14 @@ class TokenBalanceNotifier extends StateNotifier<TokenBalanceState> {
   Future<bool> _consume(int cost) async {
     await _ensureDailyRenewal();
     if (state.isUnlimitedPro) return true;
-    if (state.balance < cost) return false;
+    if (state.balance < cost) {
+      if (!SubscriptionConfig.isStoreBillingConfigured) {
+        // Auto-renew local pilot quota so local-first users never hit a dead-end wall.
+        state = state.copyWith(balance: TokenBalanceState.defaultDailyAllowance);
+        return true;
+      }
+      return false;
+    }
     final next = state.balance - cost;
     state = state.copyWith(balance: next);
     try {
@@ -138,23 +153,6 @@ class TokenBalanceNotifier extends StateNotifier<TokenBalanceState> {
       await prefs.setString(_dateKey, state.lastRenewalDate);
     } catch (_) {}
     return true;
-  }
-
-  Future<void> rewardFromGoogleAd() async {
-    await _ensureDailyRenewal();
-    final nextBal = state.balance + TokenBalanceState.googleAdReward;
-    final nextAds = state.adsWatchedToday + 1;
-    state = state.copyWith(
-      balance: nextBal,
-      adsWatchedToday: nextAds,
-      isLoadingAd: false,
-    );
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_balKey, nextBal);
-      await prefs.setInt(_adsKey, nextAds);
-      await prefs.setString(_dateKey, state.lastRenewalDate);
-    } catch (_) {}
   }
 
   Future<void> _ensureDailyRenewal() async {

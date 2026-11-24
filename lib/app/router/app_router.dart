@@ -109,7 +109,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       if (!isLoggedIn && !isAuthPath && !isOnboardingPath) return '/login';
-      if (isLoggedIn && isAuthPath) {
+      final isGuestLinking =
+          (authState.value?.id.startsWith('local_') ?? false) &&
+          state.uri.queryParameters['link'] == 'true';
+      if (isLoggedIn && isAuthPath && !isGuestLinking) {
         return authState.value?.onboardingComplete == true
             ? '/home'
             : '/onboarding';

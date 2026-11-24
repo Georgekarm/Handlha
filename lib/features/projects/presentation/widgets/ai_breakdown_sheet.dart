@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../app/theme/app_colors.dart';
+import '../../../../app/theme/app_theme_extension.dart';
 import '../../../../core/database/local_project_database.dart';
 import '../../../../core/result/result.dart';
 import '../../../../shared/widgets/handelha_feedback.dart';
@@ -179,46 +180,48 @@ class _AiBreakdownModalState extends ConsumerState<AiBreakdownModal> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     final isEn = Directionality.of(context) == TextDirection.ltr;
     final tasksCount = _plan?.phases.fold<int>(0, (sum, phase) => sum + phase.tasks.length) ?? 0;
     return Container(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      decoration: BoxDecoration(color: c.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(28))),
       child: Column(children: [
         const SizedBox(height: 12),
-        Container(width: 44, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2))),
-        ListTile(leading: const Icon(Icons.auto_fix_high_rounded, color: AppColors.primaryDark),
-          title: Text(isEn ? 'AI Project Breakdown' : 'تقسيم المشروع بالذكاء الاصطناعي'),
+        Container(width: 44, height: 4, decoration: BoxDecoration(color: c.border, borderRadius: BorderRadius.circular(2))),
+        ListTile(leading: Icon(Icons.auto_fix_high_rounded, color: c.primary),
+          title: Text(isEn ? 'Smart Project Breakdown' : 'تقسيم ذكي للمشروع', style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.w800)),
           subtitle: Text(_plan == null
               ? (isEn ? 'Reviewing goal and requirements' : 'بنراجع الهدف والمتطلبات')
-              : (isEn ? '$tasksCount suggested tasks • Review before approving' : '$tasksCount مهمة مقترحة • راجعها قبل الاعتماد')),
-          trailing: IconButton(onPressed: _saving ? null : () => Navigator.pop(context), icon: const Icon(Icons.close_rounded))),
-        const Divider(height: 1),
+              : (isEn ? '$tasksCount suggested tasks • Review before approving' : '$tasksCount مهمة مقترحة • راجعها قبل الاعتماد'),
+              style: TextStyle(color: c.textSecondary)),
+          trailing: IconButton(onPressed: _saving ? null : () => Navigator.pop(context), icon: Icon(Icons.close_rounded, color: c.textSecondary))),
+        Divider(height: 1, color: c.border),
         Expanded(child: _loading ? const Center(child: CircularProgressIndicator()) : _plan == null
-          ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error ?? (isEn ? 'No plan available.' : 'مفيش خطة متاحة.'), textAlign: TextAlign.center)))
+          ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error ?? (isEn ? 'No plan available.' : 'مفيش خطة متاحة.'), textAlign: TextAlign.center, style: TextStyle(color: c.textPrimary))))
           : ListView(padding: const EdgeInsets.all(20), children: [
-              Text(_plan!.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              Text(_plan!.title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: c.textPrimary)),
               const SizedBox(height: 6),
-              Text(_plan!.goal, style: const TextStyle(color: AppColors.textSecondary, height: 1.5)),
-              if (_plan!.clarificationQuestion != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(isEn ? 'Clarification: ${_plan!.clarificationQuestion}' : 'سؤال للمراجعة: ${_plan!.clarificationQuestion}', style: const TextStyle(color: AppColors.accentWarm))),
+              Text(_plan!.goal, style: TextStyle(color: c.textSecondary, height: 1.5)),
+              if (_plan!.clarificationQuestion != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(isEn ? 'Clarification: ${_plan!.clarificationQuestion}' : 'سؤال للمراجعة: ${_plan!.clarificationQuestion}', style: TextStyle(color: c.warning))),
               const SizedBox(height: 18),
               for (final phase in _plan!.phases) ...[
-                Text(phase.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                if (phase.description != null) Text(phase.description!, style: const TextStyle(color: AppColors.textSecondary)),
-                if (phase.estimatedDurationMinutes != null) Text(isEn ? 'Phase estimate: ${phase.estimatedDurationMinutes} min' : 'تقدير المرحلة: ${phase.estimatedDurationMinutes} دقيقة', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                if (phase.suggestedDeadline != null) Text(isEn ? 'Suggested deadline: ${_date(phase.suggestedDeadline!)}' : 'ميعاد مقترح: ${_date(phase.suggestedDeadline!)}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                Text(phase.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: c.textPrimary)),
+                if (phase.description != null) Text(phase.description!, style: TextStyle(color: c.textSecondary)),
+                if (phase.estimatedDurationMinutes != null) Text(isEn ? 'Phase estimate: ${phase.estimatedDurationMinutes} min' : 'تقدير المرحلة: ${phase.estimatedDurationMinutes} دقيقة', style: TextStyle(fontSize: 12, color: c.textMuted)),
+                if (phase.suggestedDeadline != null) Text(isEn ? 'Suggested deadline: ${_date(phase.suggestedDeadline!)}' : 'ميعاد مقترح: ${_date(phase.suggestedDeadline!)}', style: TextStyle(fontSize: 12, color: c.textMuted)),
                 const SizedBox(height: 8),
-                for (final task in phase.tasks) Card(margin: const EdgeInsets.only(bottom: 8), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(task.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  if (task.description != null) Text(task.description!, style: const TextStyle(color: AppColors.textSecondary)),
+                for (final task in phase.tasks) Card(color: c.surfaceSoft, margin: const EdgeInsets.only(bottom: 8), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(task.title, style: TextStyle(fontWeight: FontWeight.w700, color: c.textPrimary)),
+                  if (task.description != null) Text(task.description!, style: TextStyle(color: c.textSecondary)),
                   const SizedBox(height: 6),
                   Wrap(spacing: 8, runSpacing: 4, children: [
-                    if (task.estimatedDurationMinutes != null) Text(isEn ? 'Est: ${task.estimatedDurationMinutes} min' : 'تقدير: ${task.estimatedDurationMinutes} دقيقة', style: const TextStyle(fontSize: 12)),
-                    if (task.priority != null) Text(isEn ? 'Suggested priority: ${task.priority!.name}' : 'أولوية مقترحة: ${task.priority!.name}', style: const TextStyle(fontSize: 12)),
-                    if (task.suggestedDeadline != null) Text(_date(task.suggestedDeadline!), style: const TextStyle(fontSize: 12)),
-                    if (task.dependsOn.isNotEmpty) Text(isEn ? 'Depends on: ${task.dependsOn.join(', ')}' : 'يعتمد على: ${task.dependsOn.join('، ')}', style: const TextStyle(fontSize: 12))]),
-                  if (task.durationUncertainty != null) Text(isEn ? 'Uncertainty: ${task.durationUncertainty}' : 'دقة التقدير: ${task.durationUncertainty}', style: const TextStyle(fontSize: 11, color: AppColors.textMuted))]))),
+                    if (task.estimatedDurationMinutes != null) Text(isEn ? 'Est: ${task.estimatedDurationMinutes} min' : 'تقدير: ${task.estimatedDurationMinutes} دقيقة', style: TextStyle(fontSize: 12, color: c.textSecondary)),
+                    if (task.priority != null) Text(isEn ? 'Suggested priority: ${task.priority!.name}' : 'أولوية مقترحة: ${task.priority!.name}', style: TextStyle(fontSize: 12, color: c.textSecondary)),
+                    if (task.suggestedDeadline != null) Text(_date(task.suggestedDeadline!), style: TextStyle(fontSize: 12, color: c.textSecondary)),
+                    if (task.dependsOn.isNotEmpty) Text(isEn ? 'Depends on: ${task.dependsOn.join(', ')}' : 'يعتمد على: ${task.dependsOn.join('، ')}', style: TextStyle(fontSize: 12, color: c.textSecondary))]),
+                  if (task.durationUncertainty != null) Text(isEn ? 'Uncertainty: ${task.durationUncertainty}' : 'دقة التقدير: ${task.durationUncertainty}', style: TextStyle(fontSize: 11, color: c.textMuted))]))),
                 const SizedBox(height: 14)],
               TextField(controller: _refinementController, minLines: 1, maxLines: 3, decoration: InputDecoration(labelText: isEn ? 'Refine plan in your words' : 'عدّل الخطة بكلامك', hintText: isEn ? 'Example: fewer tasks, focus on MVP' : 'مثال: قلل عدد المهام وركّز على الـ MVP')),
               TextButton.icon(onPressed: _generate, icon: const Icon(Icons.refresh), label: Text(isEn ? 'Regenerate with changes' : 'إعادة توليد بالتعديلات')),

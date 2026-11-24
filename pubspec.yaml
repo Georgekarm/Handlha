@@ -54,6 +54,8 @@ dependencies:
   # Internal Project-Owned AI Assistant module
   ai_assistant:
     path: packages/ai_assistant
+  sqflite: ^2.4.6
+  path: ^1.9.1
 
 dev_dependencies:
   flutter_test:
@@ -63,6 +65,7 @@ dev_dependencies:
   freezed: ^4.0.2
   json_serializable: ^6.14.1
   riverpod_generator: ^4.0.9
+  sqflite_common_ffi: ^2.4.7
 
 flutter:
   uses-material-design: true

@@ -13,7 +13,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Opt-in exact alarm scheduling (user-controlled in Android 12+ system settings). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- Keeps the focus timer & calm soundscapes running accurately in background. -->
+    <!-- Required on Android 14+ (API 34-36) for lock-screen full-screen ringing alarm activity. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Keeps calm soundscapes running accurately in background when active audio is selected. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -25,7 +27,6 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true"
-        android:largeHeap="true"
         android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
@@ -47,6 +48,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- OS Share-Sheet capture: share any WhatsApp/Telegram/Notes text directly into Handelha -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
         <activity
